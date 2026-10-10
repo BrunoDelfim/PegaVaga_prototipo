@@ -103,6 +103,8 @@ function cacheElements() {
   els.baseUrl = document.getElementById('base-url');
   els.location = document.getElementById('location');
   els.terms = document.getElementById('terms');
+  els.termsPreview = document.getElementById('terms-preview');
+  els.termsQueue = document.getElementById('terms-queue');
   els.settingsHint = document.getElementById('settings-hint');
   els.scheduleHint = document.getElementById('schedule-hint');
   els.applyEnabled = document.getElementById('apply-enabled');
@@ -225,6 +227,9 @@ async function onStartClick() {
     run.term = '';
   }
 
+  // Resumo da fila, usado nas mensagens de início ("3 termos em loop (a → b)").
+  const queue = describeQueue(run);
+
   // Se o agendador estiver ligado (ou a proteção da conta ativa), a execução
   // vai esperar: avisamos no mesmo lugar.
   const warn = buildWindowWarning(parsed) || buildGuardWarning(await getGuard());
@@ -254,13 +259,23 @@ async function onStartClick() {
     run.tabId = tab.id;
     await chrome.storage.local.set({ [STORAGE_RUN_KEY]: run });
 
-    say('Navegando para a busca configurada e iniciando a varredura…', 'ok');
+    say(
+      'Navegando para a primeira busca' +
+        (queue ? ' (' + queue + ')' : '') +
+        ' e iniciando a varredura…',
+      'ok'
+    );
     await chrome.tabs.update(tab.id, { url: firstUrl });
     return;
   }
 
   // 3) Não é uma aba do LinkedIn: abre uma nova aba já na busca configurada.
-  say('Abrindo a busca do LinkedIn em uma nova aba…', 'ok');
+  say(
+    'Abrindo a busca do LinkedIn em uma nova aba' +
+      (queue ? ' (' + queue + ')' : '') +
+      '…',
+    'ok'
+  );
 
   const created = await chrome.tabs.create({ url: firstUrl, active: true });
 
@@ -307,7 +322,14 @@ async function kickOffTab(tabId, run, say) {
     }
 
     setScanning(true);
-    report('Varredura em andamento. O PegaVaga avança pelos termos sozinho.', 'ok');
+
+    const queue = describeQueue(run);
+    report(
+      'Varredura em andamento' +
+        (queue ? ': ' + queue : '.') +
+        ' O PegaVaga avança pelos termos sozinho.',
+      'ok'
+    );
   } catch (error) {
     setStatus(
       'Não consegui falar com a página. Recarregue o LinkedIn (F5) e tente de novo.',
@@ -388,6 +410,7 @@ async function loadSettingsToForm() {
     input.checked = settings.schedule.days.includes(Number(input.value));
   });
 
+  renderTermsQueue();
   renderQuota();
   renderScheduleHint();
 }
@@ -409,10 +432,55 @@ function msFromSeconds(value, fallbackMs) {
 }
 
 function onSettingsInput() {
+  renderTermsQueue(); // a fila de busca aparece na hora, antes de salvar
   els.settingsHint.className = 'hint';
   els.settingsHint.textContent = 'Salvando…';
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => saveSettingsFromForm(), SAVE_DELAY_MS);
+}
+
+/**
+ * Mostra, embaixo do campo, a fila de busca que vai rodar: os termos na ordem
+ * digitada, um por vez, em loop. É o que deixa visível que vários termos foram
+ * cadastrados (e não um único termo gigante).
+ */
+function renderTermsQueue() {
+  const terms = SHARED.normalizeTerms(els.terms.value);
+  const baseUrl = els.baseUrl.value || SHARED.DEFAULT_SETTINGS.baseUrl;
+  const location = els.location.value;
+
+  els.termsPreview.textContent = '';
+
+  terms.forEach((term, index) => {
+    const item = document.createElement('li');
+    const order = document.createElement('b');
+
+    order.textContent = String(index + 1) + '. ';
+    item.appendChild(order);
+    item.appendChild(document.createTextNode(term));
+    item.title = SHARED.buildSearchUrl(baseUrl, term, location); // a busca de cada termo
+
+    els.termsPreview.appendChild(item);
+  });
+
+  els.termsPreview.hidden = !terms.length;
+  els.termsQueue.className = 'hint';
+  els.termsQueue.textContent = terms.length
+    ? 'A busca roda em loop, um termo por vez, nesta ordem (' +
+      terms.length +
+      (terms.length === 1 ? ' termo' : ' termos') +
+      '). Passe o mouse sobre cada um para ver a busca.'
+    : 'Sem termos: a varredura percorre a página de vagas que estiver aberta.';
+}
+
+/** Resume a fila que vai rodar: "3 termos em loop (react → node.js → vue)". */
+function describeQueue(run) {
+  const terms = (run && Array.isArray(run.terms) ? run.terms : []).filter(Boolean);
+  if (!terms.length) return '';
+  if (terms.length === 1) return 'Termo: ' + terms[0] + '.';
+
+  const shown = terms.slice(0, 5).join(' → ') + (terms.length > 5 ? ' → …' : '');
+  return terms.length + ' termos em loop (' + shown + ').';
 }
 
 /** Lê o formulário (busca + cotas + agendador) e grava no storage. */
@@ -464,6 +532,7 @@ async function saveSettingsFromForm(options) {
   settings = parsed;
   await chrome.storage.local.set({ [STORAGE_SETTINGS_KEY]: parsed });
 
+  renderTermsQueue();
   renderQuota();
   renderScheduleHint();
 

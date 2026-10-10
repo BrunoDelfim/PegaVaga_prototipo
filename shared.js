@@ -83,23 +83,41 @@ globalThis.PegaVagaShared = (() => {
   }
 
   /** Transforma texto (uma linha por termo) em lista limpa e sem repetições. */
+  /**
+   * O que separa um termo do outro: quebra de linha, vírgula, ponto e vírgula,
+   * barra vertical ou tabulação. Assim "react, node.js" e "react\nnode.js"
+   * viram dois termos (um por busca) — do jeito que a fila em loop espera.
+   */
+  const TERM_SPLIT_RE = /\r?\n|[;|,\t]+/;
+
+  /**
+   * Lista limpa de termos: aceita texto (uma linha ou separado por vírgula) ou
+   * array, tira espaços/aspas, descarta vazios e repetidos e respeita MAX_TERMS,
+   * mantendo a ordem digitada (é a ordem da fila de busca).
+   */
   function normalizeTerms(raw) {
-    const list = Array.isArray(raw) ? raw : String(raw || '').split(/\r?\n/);
+    const list = Array.isArray(raw) ? raw : [raw];
     const seen = new Set();
     const out = [];
 
     for (const item of list) {
-      const term = String(item == null ? '' : item)
-        .trim()
-        .replace(/\s+/g, ' ');
-      if (!term) continue;
+      const pieces = String(item == null ? '' : item).split(TERM_SPLIT_RE);
 
-      const key = term.toLowerCase();
-      if (seen.has(key)) continue;
+      for (const piece of pieces) {
+        const term = piece
+          .trim()
+          .replace(/\s+/g, ' ')
+          .replace(/^["']+|["']+$/g, '')
+          .trim();
+        if (!term) continue;
 
-      seen.add(key);
-      out.push(term);
-      if (out.length >= MAX_TERMS) break;
+        const key = term.toLowerCase();
+        if (seen.has(key)) continue;
+
+        seen.add(key);
+        out.push(term);
+        if (out.length >= MAX_TERMS) return out;
+      }
     }
 
     return out;

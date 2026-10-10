@@ -233,6 +233,39 @@
         color: var(--error);
       }
 
+      /* Vale para os elementos que o JS esconde via .hidden: sem isso o
+         display: block/flex do CSS venceria o atributo. */
+      [hidden] {
+        display: none !important;
+      }
+
+      .terms-preview {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin: 6px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .terms-preview:empty {
+        display: none;
+      }
+
+      .terms-preview li {
+        padding: 2px 6px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #eef2f7;
+        font-size: 10px;
+        color: var(--text);
+      }
+
+      .terms-preview li b {
+        font-weight: 600;
+        color: var(--bg-dark);
+      }
+
       .counter .runinfo {
         display: block;
         margin-top: 4px;
@@ -372,13 +405,15 @@
         <label for="location">Localização (opcional)</label>
         <input id="location" type="text" placeholder="Ex.: Brasil, São Paulo, Remoto" />
 
-        <label for="terms">Termos de vaga (um por linha)</label>
+        <label for="terms">Termos de vaga (vários, separados por vírgula ou um por linha)</label>
         <textarea
           id="terms"
           rows="4"
           spellcheck="false"
-          placeholder="desenvolvedor frontend&#10;react&#10;node.js"
+          placeholder="desenvolvedor frontend, react, node.js"
         ></textarea>
+        <ol class="terms-preview" id="terms-preview"></ol>
+        <p class="hint" id="terms-queue"></p>
 
         <div class="group">
           <strong>Candidaturas</strong>

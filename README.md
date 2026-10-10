@@ -42,8 +42,11 @@ pegavaga_chrome/
      um perfil/empresa (ex.: `https://www.linkedin.com/company/acme/jobs/`).
    - **Localização (opcional)**: vai como parâmetro `location` na busca
      (ex.: `Brasil`, `São Paulo`, `Remoto`).
-   - **Termos de vaga (um por linha)**: cada linha é um termo pesquisado e
-     varrido **um por vez** (ex.: `desenvolvedor frontend`). Linhas vazias e
+   - **Termos de vaga (vários)**: cadastre quantos quiser — **um por linha** ou
+     **separados por vírgula** (`desenvolvedor frontend, react, node.js`;
+     também valem `;`, `|` e tabulação). Cada termo é uma busca própria, varrida
+     **um por vez, em loop, na ordem digitada**; abaixo do campo aparece a
+     **fila numerada** (passe o mouse para ver a busca de cada termo). Vazios e
      repetidos são descartados (limite de 40 termos).
 3. Em **Candidaturas** (opcional), ligue
    **“Candidatar-se sozinho pela Candidatura Simplificada”** e ajuste as cotas:
@@ -94,8 +97,10 @@ pegavaga_chrome/
      **Candidatura Simplificada**, preenche/avança o formulário e **envia** —
      e as vagas que saem do LinkedIn (site da empresa) são **registradas no
      relatório e puladas, sem clique**;
-   - Ao terminar um termo (lista no fim, teto de vagas ou cota do termo), ele
-     **navega sozinho para o próximo** termo da fila, até acabarem os termos.
+   - A fila roda **em loop pelos termos cadastrados**: termina a lista do
+     termo atual (fim da lista, teto de vagas ou cota do termo), ele **navega
+     sozinho para o próximo** termo, até acabarem os termos — a barra de status
+     mostra a fila, ex.: `Varredura em andamento: 3 termos em loop (react → node.js → vue).`
 7. Acompanhe no pop-up:
    - `N vagas capturadas` e o resumo das candidaturas, ex.:
      `12 candidatada(s) · 8 não candidatada(s) · 3 na fila: 4 travada em campo obrigatório · 2 externa (site da empresa)`;
