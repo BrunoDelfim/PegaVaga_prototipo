@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "PegaVaga - Rastreamento de Vagas do LinkedIn",
+  "version": "1.0.0",
+  "description": "Automação de candidaturas e rastreamento de vagas no LinkedIn: extrai título, empresa, link e descrição das vagas e exporta para Excel (CSV).",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.linkedin.com/*"
+  ],
+  "action": {
+    "default_title": "PegaVaga",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.linkedin.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
