@@ -527,6 +527,7 @@
             paused: run.paused === true,
             resumeAt: run.resumeAt || null,
             pauseReason: run.pauseReason || null,
+            problem: run.problem || null,
             index: run.index || 0,
             total: Array.isArray(run.urls) ? run.urls.length : 1,
             term: run.term || '',
@@ -1534,6 +1535,37 @@
     }
   }
 
+  /**
+   * A página abriu a lista de vagas? Separa "a busca não achou nada" (a lista
+   * está lá, só vazia — segue o jogo normalmente) de "isto nem parece a página de
+   * vagas" (login, verificação de segurança, aba errada). Só o segundo caso
+   * merece a luz vermelha de atenção no ícone.
+   */
+  function scanProblem() {
+    if (getCards().length) return null;
+    if (queryFirst(SEL.list) || queryFirst(SEL.detailsRoot)) return null;
+
+    return 'Não encontrei a lista de vagas nesta página.';
+  }
+
+  /**
+   * Marca (ou limpa, com `null`) o problema da varredura atual. Fica gravado na
+   * fila e é o que acende a luz vermelha do ícone da extensão. A fila não para
+   * por causa disso: o problema pode ser só desta página/termo.
+   */
+  async function setRunProblem(text) {
+    const run = state.run;
+    const problem = text || null;
+
+    if (!run || run.running !== true) return;
+    if ((run.problem || null) === problem) return;
+
+    const next = Object.assign({}, run, { problem });
+    state.run = next;
+    await saveRun(next);
+    broadcastProgress();
+  }
+
   /* ------------------------------------------------------------------------ */
   /* Pausa e retomada dinâmica (cotas e janela do agendador)                   */
   /* ------------------------------------------------------------------------ */
@@ -1842,6 +1874,11 @@
       state.scanning = false;
       const aborted = state.abort;
       state.abort = false;
+
+      // Página sem a lista de vagas: é o caso que acende a luz vermelha do ícone
+      // ("precisa de atenção"). O aviso é recalculado a cada varredura, então
+      // nunca fica velho — basta a próxima página carregar bem para apagar.
+      await setRunProblem(scanProblem());
 
       await persist();
       broadcastProgress();

@@ -790,10 +790,111 @@ globalThis.PegaVagaShared = (() => {
     return 'Janela: ' + window + ' · próxima: ' + stamp + '.';
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* Luz de status (ícone da extensão e cabeçalho do pop-up)                   */
+  /* ------------------------------------------------------------------------ */
+
+  /** Como cada motivo de pausa aparece para o usuário. */
+  const PAUSE_REASON_LABELS = {
+    cota: 'cota de candidaturas',
+    guard: 'proteção da conta (limite do LinkedIn)',
+    usuario: 'você estava usando o navegador',
+    schedule: 'janela do agendador',
+  };
+
+  /** As três luzinhas: verde capturando, amarela pronta, vermelha atenção. */
+  const STATUS_LIGHTS = {
+    capturing: { key: 'capturing', color: '#1f9d55', label: 'Capturando' },
+    ready: { key: 'ready', color: '#f0a500', label: 'Pronta' },
+    attention: { key: 'attention', color: '#d93025', label: 'Precisa de atenção' },
+  };
+
+  /**
+   * Traduz o estado da extensão na luzinha do ícone:
+   *   capturing (verde)    - está capturando vagas agora;
+   *   ready (amarela)      - pronta ou esperando algo normal (cota, janela do
+   *                          agendador, descanso, você no navegador): volta só;
+   *   attention (vermelha) - proteção da conta ligada (o LinkedIn avisou limite)
+   *                          ou varredura que parou com problema.
+   * Aceita tanto o estado lido do storage quanto o `PEGAVAGA_PROGRESS` que o
+   * content script envia (que traz `scanning`, `run`, `guard` e `breakUntil`).
+   */
+  function statusLight(input) {
+    const state = input || {};
+    const now = Number.isFinite(state.now) ? state.now : Date.now();
+    const run = state.run && state.run.running === true ? state.run : null;
+    const guard =
+      state.guard && Number(state.guard.blockedUntil) > now ? state.guard : null;
+    const paused = Boolean(run && run.paused);
+    const reason = (run && run.pauseReason) || 'cota';
+    const why = PAUSE_REASON_LABELS[reason] || 'cota de candidaturas';
+
+    // 1) Proteção da conta: a extensão parou sozinha para o LinkedIn não
+    //    bloquear você — precisa da sua atenção (e de paciência).
+    if (guard || (paused && reason === 'guard')) {
+      const until = guard ? guard.blockedUntil : run.resumeAt;
+      const reasonText = guard && guard.reason ? ' (' + guard.reason + ')' : '';
+
+      return light(
+        'attention',
+        'LinkedIn sinalizou limite de uso' +
+          reasonText +
+          '. Descanso até ' +
+          formatClock(until) +
+          '.'
+      );
+    }
+
+    // 2) A varredura bateu em algo (ex.: página sem a lista de vagas).
+    if (run && run.problem) return light('attention', String(run.problem));
+
+    // 3) Pausa normal: cota, janela do agendador, descanso ou vez do usuário.
+    if (paused) {
+      return light(
+        'ready',
+        'Pausada por ' + why + ' até ' + formatClock(run.resumeAt) + '.'
+      );
+    }
+
+    if (Number(state.breakUntil) > now) {
+      return light('ready', 'Descansando até ' + formatClock(state.breakUntil) + '.');
+    }
+
+    // 4) Fila ativa (ou varredura em andamento): capturando agora.
+    if (run || state.scanning === true) {
+      if (!run) return light('capturing', 'Capturando a página de vagas aberta.');
+
+      const total = Array.isArray(run.urls) ? run.urls.length : Number(run.total) || 1;
+      const position = 'termo ' + ((Number(run.index) || 0) + 1) + (total > 1 ? ' de ' + total : '');
+      const label = run.term ? '"' + run.term + '"' : 'página atual';
+
+      return light('capturing', 'Capturando vagas — ' + position + ': ' + label + '.');
+    }
+
+    // 5) Nada rodando.
+    return light('ready', 'Pronta: nenhuma varredura em andamento.');
+  }
+
+  /** Monta a luzinha com a cor do nível e o texto (tooltip) já pronto. */
+  function light(key, detail) {
+    const preset = STATUS_LIGHTS[key] || STATUS_LIGHTS.ready;
+
+    return {
+      key: preset.key,
+      color: preset.color,
+      label: preset.label,
+      detail: detail,
+      title: 'PegaVaga — ' + detail,
+    };
+  }
+
   return {
     STORAGE,
     MSG,
     DEFAULT_SETTINGS,
+    PAUSE_REASON_LABELS,
+    STATUS_LIGHTS,
+    statusLight,
     LINKEDIN_SEARCH_URL,
     MAX_TERMS,
     HOUR_MS,

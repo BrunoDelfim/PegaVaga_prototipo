@@ -49,6 +49,29 @@
         opacity: 0.85;
       }
 
+      /* Luzinha do status: mesma cor do ponto desenhado no ícone da extensão. */
+      .light {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        vertical-align: middle;
+        background: var(--muted);
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+      }
+
+      .light.capturing {
+        background: #1f9d55;
+      }
+
+      .light.ready {
+        background: #f0a500;
+      }
+
+      .light.attention {
+        background: #d93025;
+      }
+
       main {
         padding: 12px 14px 14px;
       }
@@ -373,7 +396,10 @@
   </head>
   <body>
     <header>
-      <h1>PegaVaga</h1>
+      <h1>
+        PegaVaga
+        <span class="light" id="status-light" role="status" title=""></span>
+      </h1>
       <p>Rastreamento de vagas do LinkedIn</p>
     </header>
 

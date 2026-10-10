@@ -51,13 +51,8 @@ const FAILURE_CSV_HEADERS = [
 
 const CSV_SEPARATOR = ';'; // Excel pt-BR usa ponto e vírgula como separador padrão
 
-/** Como cada motivo de pausa aparece para o usuário. */
-const PAUSE_LABELS = {
-  cota: 'cota de candidaturas',
-  guard: 'proteção da conta (limite do LinkedIn)',
-  usuario: 'você estava usando o navegador',
-  schedule: 'janela do agendador',
-};
+/** Como cada motivo de pausa aparece para o usuário (definido no shared.js). */
+const PAUSE_LABELS = SHARED.PAUSE_REASON_LABELS;
 
 const SAVE_DELAY_MS = 400; // debounce do salvamento automático da configuração
 const DAY_LABELS = SHARED.WEEKDAYS;
@@ -72,6 +67,8 @@ let settings = SHARED.parseSettings(null);
 let appsCache = [];
 let runCache = null;
 let breakCache = null;
+let guardCache = null; // proteção da conta em vigor (ou null)
+let scanCache = false; // o content script está varrendo agora?
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -90,6 +87,7 @@ async function init() {
 }
 
 function cacheElements() {
+  els.statusLight = document.getElementById('status-light');
   els.count = document.getElementById('count');
   els.lastRun = document.getElementById('last-run');
   els.runInfo = document.getElementById('run-info');
@@ -634,6 +632,9 @@ function renderApplySummary(jobs) {
 
 /** Faixa de aviso quando a proteção da conta (limite do LinkedIn) está ligada. */
 function renderGuard(guard) {
+  guardCache = guard || null;
+  renderStatusLight();
+
   if (!els.guardInfo) return;
 
   const active = guard && guard.blockedUntil > Date.now();
@@ -726,6 +727,7 @@ function renderRun(run, totalFallback, breakUntil) {
 
   renderQuota();
   renderScheduleHint();
+  renderStatusLight();
 
   if (run && run.running) {
     const total =
@@ -748,6 +750,10 @@ function renderRun(run, totalFallback, breakUntil) {
 
     if (breakCache) {
       info += ` · descansando até ${SHARED.formatClock(breakCache)}`;
+    }
+
+    if (run.problem) {
+      info += ` · ⚠ ${run.problem}`; // mesmo aviso da luz vermelha do ícone
     }
 
     els.runInfo.textContent = info;
@@ -780,8 +786,29 @@ async function syncScanningState() {
 }
 
 function setScanning(isScanning) {
-  els.btnStart.disabled = isScanning;
-  els.btnStop.disabled = !isScanning;
+  scanCache = Boolean(isScanning);
+  els.btnStart.disabled = scanCache;
+  els.btnStop.disabled = !scanCache;
+  renderStatusLight();
+}
+
+/**
+ * Acende a luzinha do cabeçalho com a mesma leitura que o ícone da extensão usa:
+ * verde capturando, amarela pronta, vermelha quando precisa de atenção.
+ */
+function renderStatusLight() {
+  if (!els.statusLight) return;
+
+  const light = SHARED.statusLight({
+    run: runCache,
+    guard: guardCache,
+    scanning: scanCache,
+    breakUntil: breakCache,
+  });
+
+  els.statusLight.className = 'light ' + light.key;
+  els.statusLight.title = light.title;
+  els.statusLight.setAttribute('aria-label', light.label);
 }
 
 function setStatus(message, type) {

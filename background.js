@@ -29,31 +29,50 @@ const ALARM_NAME = 'pegavaga-tick';
 const TICK_MINUTES = 1;
 const LINKEDIN_TAB_PATTERN = 'https://www.linkedin.com/*';
 
+/* Luzinha do ícone: o ponto colorido é desenhado por cima do próprio logo. Se o
+ * canvas não estiver disponível, o selo colorido no canto assume o recado. */
+const ICON_SIZES = [16, 32];
+const ICON_FILES = { 16: 'icons/pg-16.png', 32: 'icons/pg-48.png' };
+
 /* -------------------------------------------------------------------------- */
 /* Ciclo de vida                                                               */
 /* -------------------------------------------------------------------------- */
 
 chrome.runtime.onInstalled.addListener(() => {
-  syncAlarm().then(tick);
+  syncAlarm()
+    .then(() => tick())
+    .then(() => refreshStatus());
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  syncAlarm().then(tick);
+  syncAlarm()
+    .then(() => tick())
+    .then(() => refreshStatus());
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm && alarm.name === ALARM_NAME) tick();
+  if (alarm && alarm.name === ALARM_NAME) tick().then(() => refreshStatus());
 });
 
 /* O pop-up e o content script mudam settings/run direto no storage: aqui só
- * mantemos o alarme alinhado com o que precisa acontecer. */
+ * mantemos o alarme (e a luz do ícone) alinhados com o que precisa acontecer. */
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes[STORAGE.settings] || changes[STORAGE.run]) syncAlarm();
+  if (changes[STORAGE.settings] || changes[STORAGE.run] || changes[STORAGE.guard]) {
+    refreshStatus();
+  }
 });
 
-/* Ao subir um service worker novo, garante que o alarme exista se necessário. */
+/* O content script avisa o andamento mesmo com o pop-up fechado: assim a luz do
+ * ícone acompanha a varredura em tempo real. */
+chrome.runtime.onMessage.addListener((message) => {
+  if (message && message.type === MSG.PROGRESS) refreshStatus(message);
+});
+
+/* Ao subir um service worker novo, garante o alarme e a luz certos. */
 syncAlarm();
+refreshStatus();
 
 /* -------------------------------------------------------------------------- */
 /* Leitura de estado                                                           */
@@ -80,6 +99,118 @@ async function readState() {
 
 function writeRun(run) {
   return chrome.storage.local.set({ [STORAGE.run]: run }).catch(() => {});
+}
+
+/* -------------------------------------------------------------------------- */
+/* Luz do ícone (verde capturando · amarela pronta · vermelha atenção)         */
+/* -------------------------------------------------------------------------- */
+
+const iconBitmaps = new Map(); // PNGs do logo já decodificados
+let paintedLight = null; // cor que está desenhada no ícone agora
+
+/**
+ * Acende a luz do ícone. Aceita um `PEGAVAGA_PROGRESS` recém-chegado (mais fresco
+ * que o storage) ou lê o estado gravado. Nada disso é crítico: se o navegador
+ * recusar, a extensão continua funcionando normalmente.
+ */
+async function refreshStatus(progress) {
+  let source = progress && progress.type === MSG.PROGRESS ? progress : null;
+
+  if (!source) {
+    try {
+      const state = await readState();
+      source = { run: state.run, guard: state.guard };
+    } catch (error) {
+      return;
+    }
+  }
+
+  try {
+    await applyLight(SHARED.statusLight(source));
+  } catch (error) {
+    /* ícone é enfeite: falhar aqui não pode atrapalhar a varredura */
+  }
+}
+
+async function applyLight(light) {
+  setAction('setTitle', { title: light.title });
+
+  if (paintedLight === light.color) return; // luz já está nesta cor
+
+  const painted = await paintIcon(light.color).catch(() => false);
+
+  if (painted) {
+    paintedLight = light.color;
+    setAction('setBadgeText', { text: '' });
+    return;
+  }
+
+  // Plano B (sem OffscreenCanvas): logo original + selo colorido no canto.
+  paintedLight = null;
+  setAction('setIcon', { path: ICON_FILES });
+  setAction('setBadgeText', { text: ' ' });
+  setAction('setBadgeBackgroundColor', { color: light.color });
+  setAction('setBadgeTextColor', { color: '#ffffff' });
+}
+
+/** Chama a API do ícone sem deixar promise solta nem derrubar o worker. */
+function setAction(method, details) {
+  try {
+    const result = chrome.action[method](details);
+    if (result && typeof result.catch === 'function') result.catch(() => {});
+  } catch (error) {
+    /* método indisponível nesta versão do Chrome */
+  }
+}
+
+/**
+ * Desenha o ponto colorido por cima do logo. Devolve `false` quando o canvas não
+ * está disponível, para o selo do canto assumir o recado.
+ */
+async function paintIcon(color) {
+  if (typeof OffscreenCanvas !== 'function' || typeof createImageBitmap !== 'function') {
+    return false;
+  }
+
+  const imageData = {};
+
+  for (const size of ICON_SIZES) imageData[size] = await dotImage(size, color);
+
+  await chrome.action.setIcon({ imageData });
+  return true;
+}
+
+/** O logo do tamanho pedido, com a luz no canto inferior direito. */
+async function dotImage(size, color) {
+  const context = new OffscreenCanvas(size, size).getContext('2d');
+
+  context.drawImage(await baseIcon(size), 0, 0, size, size);
+
+  const radius = Math.max(3, Math.round(size * 0.2));
+  const ring = Math.max(1, Math.round(size / 16));
+  const center = size - radius - ring;
+
+  // Anel branco: sem ele o ponto se perde no azul do logo.
+  context.beginPath();
+  context.arc(center, center, radius + ring, 0, Math.PI * 2);
+  context.fillStyle = '#ffffff';
+  context.fill();
+
+  context.beginPath();
+  context.arc(center, center, radius, 0, Math.PI * 2);
+  context.fillStyle = color;
+  context.fill();
+
+  return context.getImageData(0, 0, size, size);
+}
+
+async function baseIcon(size) {
+  if (!iconBitmaps.has(size)) {
+    const response = await fetch(chrome.runtime.getURL(ICON_FILES[size]));
+    iconBitmaps.set(size, await createImageBitmap(await response.blob()));
+  }
+
+  return iconBitmaps.get(size);
 }
 
 /* -------------------------------------------------------------------------- */

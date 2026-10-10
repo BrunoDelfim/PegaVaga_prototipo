@@ -111,6 +111,9 @@ pegavaga_chrome/
      `Janela: Seg, Ter, Qua, Qui, Sex, 08:00 → 18:00 · próxima: seg. 08:00.`
      (quando a fila está pausada, ela também diz **por quê**: cota, janela,
      proteção do LinkedIn ou “você estava usando o navegador”).
+   - a **luzinha ao lado do nome PegaVaga** (a mesma cor do ponto no ícone da
+     extensão): verde capturando, amarela pronta, vermelha quando precisa de
+     atenção — passe o mouse para ver o motivo.
 8. Ao terminar (ou quando quiser), exporte:
    - **⬇ Exportar para Excel (CSV)** — todas as vagas capturadas, com o status e
      o **motivo** das que não foram candidatadas;
@@ -257,6 +260,30 @@ via `Blob` + `<a download>` gerados no próprio pop-up.
   continua mesmo se o alarme atrasar. Fechar o Chrome adia tudo para o próximo
   horário da janela.
 
+## Luz de status no ícone
+
+O ícone da extensão — e a bolinha ao lado do nome no pop-up — mostra o estado num
+relance (a mesma cor nos dois lugares):
+
+| Cor         | Quando aparece                                                                                                                                                  | Leitura         |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| 🟢 Verde     | A fila está ativa: o `content.js` está varrendo e candidatando agora (ou seja, há `PEGAVAGA_PROGRESS` com varredura em andamento).                                | **Capturando**  |
+| 🟡 Amarela   | Parada esperando algo normal: nenhuma varredura, pausa por **cota**, janela do **agendador** fechada, **descanso longo** do ritmo humano ou “você estava usando o navegador”. | **Pronta** (volta sozinha) |
+| 🔴 Vermelha  | **Proteção da conta** ligada (o LinkedIn sinalizou limite de uso) ou varredura que parou com **problema** (ex.: página sem a lista de vagas).                   | **Precisa de atenção** |
+
+- A luz é desenhada **no próprio logo** (um ponto no canto inferior direito, com
+  anel branco para não se perder no azul), pelo service worker, em 16 e 32 px. Se
+  o navegador não tiver `OffscreenCanvas`/`createImageBitmap`, ele cai num **selo
+  colorido** no canto do ícone — o recado é o mesmo.
+- O estado também vira **tooltip**, ex.:
+  `PegaVaga — Capturando vagas — termo 2 de 3: "react".` ou
+  `PegaVaga — Pausada por cota de candidaturas até 14:30.`
+- Quem decide a cor é o `statusLight()` do `shared.js` (função pura e testada), a
+  partir do estado gravado no storage e dos `PEGAVAGA_PROGRESS` que o content
+  script envia — funciona com o pop-up fechado.
+- A luz só redesenha o ícone quando a **cor muda**; os PNGs do logo ficam em
+  cache na memória do worker.
+
 ## Mensagens trocadas (popup ↔ content)
 
 | Mensagem                | Direção        | Efeito                                   |
@@ -266,7 +293,7 @@ via `Blob` + `<a download>` gerados no próprio pop-up.
 | `PEGAVAGA_RESUME`       | worker → content | Sai da pausa por cota e retoma a fila.  |
 | `PEGAVAGA_PING`         | popup → content| Consulta se está varrendo.               |
 | `PEGAVAGA_CLEAR`        | popup → content| Zera o estado em memória e no storage.   |
-| `PEGAVAGA_PROGRESS`     | content → popup| Contador, cotas, pausa (+ motivo), pausa longa e proteção da conta. |
+| `PEGAVAGA_PROGRESS`     | content → popup/worker | Contador, cotas, pausa (+ motivo), pausa longa, proteção da conta e problema da varredura (é o que acende a **luz do ícone** em tempo real). |
 
 ## Observações importantes
 
