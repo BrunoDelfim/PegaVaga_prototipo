@@ -435,7 +435,14 @@ globalThis.PegaVagaShared = (() => {
     externa: {
       label: 'Externa (site da empresa)',
       failure: true,
-      reason: 'A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa.',
+      reason:
+        'A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então ela é pulada.',
+    },
+    desconhecida: {
+      label: 'Botão de candidatura não reconhecido',
+      failure: true,
+      reason:
+        'Não identifiquei a Candidatura Simplificada nesta vaga; para não sair do LinkedIn, não cliquei.',
     },
     sem_botao: {
       label: 'Sem botão de candidatura',
@@ -494,6 +501,108 @@ globalThis.PegaVagaShared = (() => {
     const raw = typeof random === 'function' ? Number(random()) : Math.random();
     const value = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0.5;
     return Math.max(0, Math.round(base * (1 - spread + value * spread * 2)));
+  }
+
+  /* ------------------------------------------------------------------------ */
+  /* Candidatura dentro ou fora do LinkedIn                                    */
+  /* ------------------------------------------------------------------------ */
+
+  /**
+   * Rótulos (pt/en) de botão que manda para fora do LinkedIn: é assim que o
+   * LinkedIn anuncia as vagas que terminam no site da empresa.
+   */
+  const EXTERNAL_APPLY_LABEL =
+    /site da empresa|site da companhia|site externo|no site da|no site do|fora do linkedin|company (web ?)?site|external (site|link|apply)|apply (externally|on)( the)? company/i;
+
+  /**
+   * Rótulos (pt/en) de botão de Candidatura Simplificada (formulário do próprio
+   * LinkedIn).
+   */
+  const EASY_APPLY_LABEL =
+    /candidatura simplificada|simplificada|easy apply|(no|pelo|com o|with) linkedin|linkedin (application|bug)/i;
+
+  /** Resultado da leitura do botão de candidatura. */
+  const APPLY_KINDS = {
+    easy: 'simplificada', // Candidatura Simplificada: o formulário abre aqui dentro
+    external: 'externa', // o botão leva para o site da empresa
+    unknown: 'desconhecida', // não deu para saber (botão ainda sem rótulo/ícone)
+  };
+
+  /**
+   * Domínio de um endereço (para o motivo do relatório). Entende o
+   * redirecionador do LinkedIn e devolve o domínio de destino. '' se ilegível.
+   */
+  function hostOf(href, depth) {
+    const level = Number(depth) || 0;
+
+    try {
+      const url = new URL(String(href), 'https://www.linkedin.com/');
+      const host = url.hostname.toLowerCase().replace(/^www\./, '');
+      const onLinkedIn = host === 'linkedin.com' || host.endsWith('.linkedin.com');
+
+      if (level < 3 && onLinkedIn && /\/redir\/redirect/i.test(url.pathname)) {
+        const target = url.searchParams.get('url');
+        if (target && isOffsiteUrl(target)) return hostOf(target, level + 1);
+      }
+
+      return host;
+    } catch (error) {
+      return '';
+    }
+  }
+
+  /**
+   * O endereço leva para fora do LinkedIn? Também entende o redirecionador do
+   * LinkedIn (`/redir/redirect?url=<destino>`), que é como ele embrulha os links
+   * externos.
+   */
+  function isOffsiteUrl(href, depth) {
+    const level = Number(depth) || 0;
+    if (!href || level > 3) return false;
+
+    let url;
+    try {
+      url = new URL(String(href), 'https://www.linkedin.com/');
+    } catch (error) {
+      return false;
+    }
+
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    const onLinkedIn = host === 'linkedin.com' || host.endsWith('.linkedin.com');
+
+    if (!onLinkedIn) return true;
+
+    if (/\/redir\/redirect/i.test(url.pathname)) {
+      const target = url.searchParams.get('url');
+      return target ? isOffsiteUrl(target, level + 1) : false;
+    }
+
+    return false;
+  }
+
+  /**
+   * Que tipo de candidatura é esta, a partir dos sinais lidos na página do
+   * LinkedIn: { href, label, externalIcon, easyIcon, insight }.
+   *
+   * A ordem é do sinal mais forte para o mais fraco: link de fora → ícone/rótulo
+   * de fora → ícone/rótulo do LinkedIn → aviso de "Candidatura simplificada" na
+   * vaga. Sem nenhum sinal, devolvemos `unknown` e quem chama decide — na
+   * extensão a regra é: na dúvida, não clica, para nunca te levar para fora.
+   */
+  function classifyApply(signals) {
+    const data = signals || {};
+    const label = String(data.label || '').trim();
+    const insight = String(data.insight || '');
+
+    if (data.href && isOffsiteUrl(data.href)) return APPLY_KINDS.external;
+    if (data.externalIcon) return APPLY_KINDS.external;
+    if (label && EXTERNAL_APPLY_LABEL.test(label)) return APPLY_KINDS.external;
+
+    if (data.easyIcon) return APPLY_KINDS.easy;
+    if (label && EASY_APPLY_LABEL.test(label)) return APPLY_KINDS.easy;
+    if (insight && EASY_APPLY_LABEL.test(insight)) return APPLY_KINDS.easy;
+
+    return APPLY_KINDS.unknown;
   }
 
   function applyOutcomeLabel(code) {
@@ -676,6 +785,7 @@ globalThis.PegaVagaShared = (() => {
     LIMIT_LABELS,
     APPLY_OUTCOMES,
     APPLY_PENDING,
+    APPLY_KINDS,
     num,
     normalizeTerms,
     isLinkedInUrl,
@@ -694,6 +804,9 @@ globalThis.PegaVagaShared = (() => {
     computeQuota,
     jitter,
     applyOutcomeLabel,
+    hostOf,
+    isOffsiteUrl,
+    classifyApply,
     describeApplyFailure,
     summarizeApply,
     describeApplySummary,

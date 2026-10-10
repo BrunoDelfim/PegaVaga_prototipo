@@ -91,7 +91,9 @@ pegavaga_chrome/
      primeiro termo;
    - O script seleciona os cards, lê o painel de detalhes de cada vaga (para
      pegar a descrição) e, se a candidatura automática estiver ligada, clica em
-     **Candidatura Simplificada**, preenche/avança o formulário e **envia**;
+     **Candidatura Simplificada**, preenche/avança o formulário e **envia** —
+     e as vagas que saem do LinkedIn (site da empresa) são **registradas no
+     relatório e puladas, sem clique**;
    - Ao terminar um termo (lista no fim, teto de vagas ou cota do termo), ele
      **navega sozinho para o próximo** termo da fila, até acabarem os termos.
 7. Acompanhe no pop-up:
@@ -117,9 +119,22 @@ pegavaga_chrome/
 
 ### Como funciona a candidatura automática
 
-- Só a **Candidatura Simplificada** (Easy Apply) é automatizada. Botões que
-  abrem o site da empresa são **ignorados** (o status fica
-  `Externa (site da empresa)`).
+- Só a **Candidatura Simplificada** (Easy Apply) é automatizada. Vagas cujo botão
+  sai do LinkedIn (site da empresa) são **puladas sem clique nenhum** e ficam
+  registradas com o status `Externa (site da empresa)` e o motivo (ex.: “Botão
+  ‘Candidatar-se no site da empresa’, que aponta para careers.acme.com.”) — assim
+  a extensão nunca leva a sua aba para fora do LinkedIn.
+  - O tipo do botão é lido por **ícone** (`link-external` × `linkedin-bug`),
+    **rótulo/aria-label** (“no site da empresa”, “Candidatura simplificada”,
+    “Easy Apply”…) e **link embutido** (inclusive o redirecionador
+    `/redir/redirect?url=…` do LinkedIn), além do aviso “Candidatura
+    simplificada” na própria vaga.
+  - Quando **não dá para saber** (botão sem ícone, sem rótulo e sem link), a
+    extensão também **não clica**: a vaga fica como
+    `Botão de candidatura não reconhecido` e é tentada de novo mais adiante (as
+    duas tentativas), caso o botão estivesse só demorando a renderizar.
+  - A vaga externa é **pulada de vez**: não gasta cota, não entra na pausa longa
+    e não é mais visitada nas próximas varreduras (mas continua no relatório).
 - O script abre o formulário, clica em **Avançar / Revisar / Enviar
   candidatura** até o LinkedIn confirmar o envio (ou até 15 etapas / 2 min).
 - **Ele não inventa respostas**: se parar em um campo obrigatório que não está
@@ -164,7 +179,8 @@ pegavaga_chrome/
 - `Motivo da nao candidatura` fica **vazio** quando a candidatura foi enviada.
 
 Valores possíveis de `Status da candidatura`: `Enviada`,
-`Externa (site da empresa)`, `Sem botão de candidatura`, `Formulário não abriu`,
+`Externa (site da empresa)`, `Botão de candidatura não reconhecido`,
+`Sem botão de candidatura`, `Formulário não abriu`,
 `Travada em campo obrigatório`, `Formulário incompleto`, `Interrompida (Parar)`,
 `Parada por proteção do LinkedIn`, `Erro na automação`,
 `Adiada (sem cota ou fora do horário)` e `Não tentada`.
@@ -173,7 +189,8 @@ Exemplos de motivo gravado:
 
 | Status                             | Motivo (resumo)                                                                 |
 | ---------------------------------- | ------------------------------------------------------------------------------- |
-| `Externa (site da empresa)`        | A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa.      |
+| `Externa (site da empresa)`        | A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então ela é pulada. `Botão "Candidatar-se no site da empresa", que aponta para careers.acme.com.` |
+| `Botão de candidatura não reconhecido` | Não identifiquei a Candidatura Simplificada nesta vaga; para não sair do LinkedIn, não cliquei. |
 | `Sem botão de candidatura`         | A página da vaga não oferece botão de candidatura.                               |
 | `Travada em campo obrigatório`     | …+ `Campos não preenchidos: Telefone, Pergunta: você autoriza…`                  |
 | `Formulário incompleto`            | …+ `Parou na etapa 3 de 15.`                                                     |

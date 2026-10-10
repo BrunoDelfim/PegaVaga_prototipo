@@ -97,6 +97,8 @@
     applyMaxSteps: 15, // limite de "Avançar/Enviar" por vaga
     applyMaxAttempts: 2, // tentativas por vaga antes de desistir
     applyFlowTimeoutMs: 120000, // tempo máximo dentro do formulário de uma vaga
+    applyKindWaitMs: 3000, // tempo máximo esperando o botão revelar o tipo (ícone/rótulo)
+    applyKindPollMs: 200, // intervalo de releitura do botão de candidatura
     resumeTimerCapMs: 1800000, // teto do timer local de retomada (30 min)
 
     /* Ritmo humano / furtividade */
@@ -173,6 +175,12 @@
     detailsCompany: [
       '.job-details-jobs-unified-top-card__company-name',
       '.jobs-unified-top-card__company-name',
+    ],
+    // Avisos da vaga (ex.: "Candidatura simplificada" aparece aqui).
+    jobInsight: [
+      '.job-details-jobs-unified-top-card__job-insight',
+      '.jobs-unified-top-card__job-insight',
+      '.jobs-unified-top-card__job-insight-view-model-secondary',
     ],
     detailsDescription: [
       '.jobs-description__content',
@@ -925,23 +933,99 @@
   }
 
   /**
-   * O botão é de "Candidatura Simplificada" (formulário aqui dentro) ou manda
-   * para um site externo? Só automatizamos o primeiro caso.
+   * Rótulo do botão de candidatura (aria-label + texto visível).
    */
-  function isEasyApply(button) {
-    const label = normalize(
-      (button.getAttribute('aria-label') || '') + ' ' + (button.textContent || '')
-    );
+  function applyButtonLabel(button) {
+    if (!button) return '';
+    return clean((button.getAttribute('aria-label') || '') + ' ' + (button.textContent || ''));
+  }
 
-    if (button.querySelector('[data-test-icon*="link-external"], li-icon[type*="link-external"]')) {
-      return false;
+  /**
+   * Link escondido no botão de candidatura. No LinkedIn o botão das vagas de
+   * fora é (ou contém) um `<a>` apontando para o site da empresa — às vezes
+   * embrulhado no redirecionador `/redir/redirect?url=...`.
+   */
+  function applyButtonHref(button) {
+    if (!button) return '';
+
+    const own = button.getAttribute && button.getAttribute('href');
+    if (own) return own;
+
+    const links =
+      typeof button.querySelectorAll === 'function' ? Array.from(button.querySelectorAll('a[href]')) : [];
+
+    for (const link of links) {
+      const href = (link.getAttribute && link.getAttribute('href')) || '';
+      if (href) return href;
     }
 
-    if (/simplificada|easy apply|no linkedin|pelo linkedin|com o linkedin/.test(label)) return true;
+    return '';
+  }
 
-    return Boolean(
-      button.querySelector('[data-test-icon*="linkedin-bug"], li-icon[type*="linkedin-bug"]')
-    );
+  /**
+   * Sinais que a página dá sobre o botão de candidatura, prontos para o
+   * `SHARED.classifyApply` decidir.
+   */
+  function applySignals(button) {
+    const icon = (type) =>
+      Boolean(
+        button &&
+          typeof button.querySelector === 'function' &&
+          button.querySelector('[data-test-icon*="' + type + '"], li-icon[type*="' + type + '"]')
+      );
+
+    const insight = queryFirst(SEL.jobInsight);
+
+    return {
+      label: applyButtonLabel(button),
+      href: applyButtonHref(button),
+      externalIcon: icon('link-external'),
+      easyIcon: icon('linkedin-bug'),
+      insight: insight ? clean(insight.textContent) : '',
+    };
+  }
+
+  /**
+   * O botão é de "Candidatura Simplificada" (formulário aqui dentro) ou manda
+   * para um site de fora? Devolve `SHARED.APPLY_KINDS`.
+   */
+  function applyKind(button) {
+    return SHARED.classifyApply(applySignals(button));
+  }
+
+  /**
+   * Lê o tipo de candidatura dando um tempo para o LinkedIn terminar de
+   * renderizar: o botão às vezes aparece antes do ícone/rótulo que o denuncia.
+   * Sem sinal nenhum, devolve `desconhecida`.
+   */
+  async function resolveApplyKind(button) {
+    const deadline = Date.now() + CONFIG.applyKindWaitMs;
+    let kind = applyKind(button);
+
+    while (kind === SHARED.APPLY_KINDS.unknown && Date.now() < deadline) {
+      await wait(CONFIG.applyKindPollMs);
+      if (!document.contains(button)) break;
+      kind = applyKind(button);
+    }
+
+    return kind;
+  }
+
+  /**
+   * Detalhe legível do porquê a vaga não é candidatável aqui — vai para o
+   * relatório junto do motivo (`applyReason`).
+   */
+  function applyDetail(button, kind) {
+    const label = applyButtonLabel(button);
+    const host = SHARED.hostOf(applyButtonHref(button));
+
+    if (label && host) return 'Botão "' + label + '", que aponta para ' + host + '.';
+    if (label) return 'Botão "' + label + '".';
+    if (host) return 'O botão aponta para ' + host + '.';
+
+    return kind === SHARED.APPLY_KINDS.external
+      ? 'O botão leva para fora do LinkedIn.'
+      : 'O botão não é de Candidatura Simplificada.';
   }
 
   function findModal() {
@@ -1142,7 +1226,9 @@
    * Preenche e envia a candidatura simplificada da vaga aberta no painel.
    * Devolve { status, missing?, steps?, error? }, com estes status:
    *   enviada   → candidatura confirmada pelo LinkedIn;
-   *   externa   → botão manda para um site de fora (não automatizamos);
+   *   externa   → botão manda para um site de fora: pulada, sem clique;
+   *   desconhecida → o botão não se parece com a Candidatura Simplificada:
+   *               também pulada, sem clique (tentamos de novo mais tarde);
    *   sem_botao → a vaga não tem botão de candidatura;
    *   sem_modal → clicou e o formulário não abriu;
    *   travada   → parou em um campo obrigatório que não sabemos preencher
@@ -1159,7 +1245,13 @@
     const button = findApplyButton();
 
     if (!button) return { status: 'sem_botao' };
-    if (!isEasyApply(button)) return { status: 'externa' };
+
+    // Vaga que sai do LinkedIn (site da empresa)? Não clicamos: só registramos o
+    // motivo, para nunca levar a sua aba para fora.
+    const kind = await resolveApplyKind(button);
+    if (kind !== SHARED.APPLY_KINDS.easy) {
+      return { status: kind === SHARED.APPLY_KINDS.external ? 'externa' : 'desconhecida', detail: applyDetail(button, kind) };
+    }
 
     await humanPause(CONFIG.applyPreClickMs); // respira antes de abrir o formulário
     humanClick(button);
@@ -1265,6 +1357,9 @@
 
     if (result.error) parts.push('Detalhe: ' + String(result.error).slice(0, 160) + '.');
 
+    // Detalhes lidos na própria página (ex.: para onde o botão externo aponta).
+    if (result.detail) parts.push(result.detail);
+
     return parts.join(' ').trim();
   }
 
@@ -1309,7 +1404,8 @@
       await persistApps();
       await bumpApplied();
     } else if (result.status === 'externa') {
-      // Não é para nós: não vale gastar outra tentativa.
+      // Vaga fora do LinkedIn: não é para nós nem vale gastar outra tentativa —
+      // ela nunca mais é visitada (e não consome cota nenhuma).
       patch.applyAttempts = CONFIG.applyMaxAttempts;
     }
 
@@ -1556,6 +1652,8 @@
     if (!job.description) return true;
     if (!settings.apply.enabled) return false;
     if (job.appliedAt) return false;
+    // Vaga que sai do LinkedIn: já sabemos o desfecho, não voltamos nela.
+    if (job.applyStatus === 'externa') return false;
 
     return (job.applyAttempts || 0) < CONFIG.applyMaxAttempts;
   }
@@ -1588,7 +1686,28 @@
     return null;
   }
 
-  /** Visita a vaga: captura a descrição e, se a cota permitir, candidata-se. */
+  /**
+   * A vaga aberta no painel é candidatável aqui no LinkedIn? Se não for (o botão
+   * manda para o site da empresa, ou não é a Candidatura Simplificada), registra
+   * o motivo na vaga e devolve `true`: a varredura pula para a próxima sem
+   * clicar em nada. Devolve `false` quando é para seguir com a candidatura.
+   */
+  async function skipIfOffsite(id) {
+    const button = findApplyButton();
+    if (!button) return false; // sem botão: o fluxo normal decide o desfecho
+
+    const kind = await resolveApplyKind(button);
+    if (kind === SHARED.APPLY_KINDS.easy) return false;
+
+    const status = kind === SHARED.APPLY_KINDS.external ? 'externa' : 'desconhecida';
+    await recordApplyResult(id, { status, detail: applyDetail(button, kind) });
+
+    return true;
+  }
+
+  /**
+   * Visita a vaga: captura a descrição e, se a cota permitir, candidata-se.
+   */
   async function processCard(card, id, settings) {
     bumpVisited();
     await captureForCard(card, id);
@@ -1607,6 +1726,12 @@
       state.userBusy = true;
       return;
     }
+
+    if (state.abort) return;
+
+    // Vaga que sai do LinkedIn (site da empresa): registramos o motivo e pulamos
+    // na hora — sem clique, sem pausa de leitura e sem gastar cota de candidatura.
+    if (await skipIfOffsite(id)) return;
 
     if (state.abort) return;
 
