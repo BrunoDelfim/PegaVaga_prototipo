@@ -16,6 +16,7 @@ globalThis.PegaVagaShared = (() => {
     settings: 'pegavaga_settings', // busca + cotas de candidatura + agendador
     run: 'pegavaga_run', // fila de termos em andamento
     apps: 'pegavaga_apps', // timestamps (ms) das candidaturas enviadas
+    guard: 'pegavaga_guard', // bloqueio temporário detectado (proteção da conta)
   };
 
   /* Tipos de mensagem trocadas entre pop-up, content script e agendador. */
@@ -45,13 +46,19 @@ globalThis.PegaVagaShared = (() => {
     terms: [],
     apply: {
       enabled: false, // candidatar-se sozinho só se o usuário ligar
-      perTerm: 10, // candidaturas por termo de busca
-      perHour: 10, // janela móvel de 60 min
-      per24h: 40, // janela móvel de 24 h
+      perTerm: 8, // candidaturas por termo de busca
+      perHour: 6, // janela móvel de 60 min
+      per24h: 25, // janela móvel de 24 h
       perDay: 0, // dia corrido (00:00-23:59); 0 = sem limite
-      scanPerTerm: 60, // teto de vagas visitadas por termo (trava de segurança)
+      scanPerTerm: 40, // teto de vagas visitadas por termo (trava de segurança)
       minDelayMs: 4000, // intervalo entre candidaturas (imita digitação humana)
       maxDelayMs: 12000,
+      readMinMs: 1500, // pausa de "leitura" da vaga antes de se candidatar
+      readMaxMs: 4500,
+      respectUserActivity: true, // espera quando o usuário está mexendo na página
+      breaksEnabled: true, // pausas longas periódicas entre candidaturas
+      breakEvery: 10, // candidaturas entre uma pausa longa e outra
+      breakMs: 90000, // duração base da pausa longa
     },
     schedule: {
       enabled: false,
@@ -238,6 +245,8 @@ globalThis.PegaVagaShared = (() => {
 
     const minDelayMs = num(apply.minDelayMs, MIN_DELAY_MS, MAX_DELAY_MS, defApply.minDelayMs);
     const maxDelayMs = num(apply.maxDelayMs, MIN_DELAY_MS, MAX_DELAY_MS, defApply.maxDelayMs);
+    const readMinMs = num(apply.readMinMs, 0, 60000, defApply.readMinMs);
+    const readMaxMs = num(apply.readMaxMs, 0, 60000, defApply.readMaxMs);
 
     return {
       baseUrl: String(value.baseUrl || DEFAULT_SETTINGS.baseUrl).trim(),
@@ -252,6 +261,12 @@ globalThis.PegaVagaShared = (() => {
         scanPerTerm: num(apply.scanPerTerm, 1, 500, defApply.scanPerTerm),
         minDelayMs: Math.min(minDelayMs, maxDelayMs),
         maxDelayMs: Math.max(minDelayMs, maxDelayMs),
+        readMinMs: Math.min(readMinMs, readMaxMs),
+        readMaxMs: Math.max(readMinMs, readMaxMs),
+        respectUserActivity: apply.respectUserActivity !== false,
+        breaksEnabled: apply.breaksEnabled !== false,
+        breakEvery: num(apply.breakEvery, 1, 100, defApply.breakEvery),
+        breakMs: num(apply.breakMs, 10000, 600000, defApply.breakMs),
       },
       schedule: {
         enabled: schedule.enabled === true,
@@ -291,6 +306,7 @@ globalThis.PegaVagaShared = (() => {
       running: true,
       paused: false,
       resumeAt: null,
+      pauseReason: null,
       index: 0,
       term: runTerms[0],
       terms: runTerms,
@@ -298,6 +314,7 @@ globalThis.PegaVagaShared = (() => {
       appliedInTerm: 0,
       visitedInTerm: 0,
       appliedTotal: 0,
+      sinceBreak: 0, // candidaturas desde a última pausa longa (ritmo humano)
       startedAt: new Date().toISOString(),
     };
   }
@@ -401,6 +418,191 @@ globalThis.PegaVagaShared = (() => {
   }
 
   /* ------------------------------------------------------------------------ */
+  /* Candidatura automática: desfechos, motivos e resumo                       */
+  /* ------------------------------------------------------------------------ */
+
+  /**
+   * Desfechos possíveis de uma tentativa de candidatura. `failure: false` é só
+   * o sucesso; todo o resto entra no relatório de "não foi possível candidatar"
+   * com o motivo legível em `reason`.
+   */
+  const APPLY_OUTCOMES = {
+    enviada: {
+      label: 'Enviada',
+      failure: false,
+      reason: '',
+    },
+    externa: {
+      label: 'Externa (site da empresa)',
+      failure: true,
+      reason: 'A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa.',
+    },
+    sem_botao: {
+      label: 'Sem botão de candidatura',
+      failure: true,
+      reason: 'A página da vaga não oferece botão de candidatura.',
+    },
+    sem_modal: {
+      label: 'Formulário não abriu',
+      failure: true,
+      reason: 'O botão foi clicado, mas o formulário de candidatura não abriu.',
+    },
+    travada: {
+      label: 'Travada em campo obrigatório',
+      failure: true,
+      reason:
+        'O formulário parou em um campo ou pergunta obrigatória que a extensão não preenche.',
+    },
+    incompleta: {
+      label: 'Formulário incompleto',
+      failure: true,
+      reason:
+        'O formulário não foi concluído dentro do tempo e do número de etapas permitidos.',
+    },
+    cancelada: {
+      label: 'Interrompida (Parar)',
+      failure: true,
+      reason: 'A candidatura foi abandonada porque você pediu para parar.',
+    },
+    bloqueio: {
+      label: 'Parada por proteção do LinkedIn',
+      failure: true,
+      reason:
+        'O LinkedIn pediu verificação ou limite de uso: a automação parou para proteger a sua conta.',
+    },
+    erro: {
+      label: 'Erro na automação',
+      failure: true,
+      reason: 'Houve um erro inesperado durante a automação da candidatura.',
+    },
+  };
+
+  /** Código de quem ainda não foi candidatado por falta de cota/horário. */
+  const APPLY_PENDING = 'adiada';
+
+  const APPLY_PENDING_LABEL = 'Adiada (sem cota ou fora do horário)';
+  const APPLY_UNTOUCHED_LABEL = 'Não tentada';
+
+  /* ------------------------------------------------------------------------ */
+  /* Candidatura automática: motivos e resumo do relatório                     */
+  /* ------------------------------------------------------------------------ */
+
+  /** Variação aleatória em torno de um valor, para um ritmo menos robótico. */
+  function jitter(baseMs, ratio, random) {
+    const base = Math.max(0, Number(baseMs) || 0);
+    const spread = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0.3));
+    const raw = typeof random === 'function' ? Number(random()) : Math.random();
+    const value = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0.5;
+    return Math.max(0, Math.round(base * (1 - spread + value * spread * 2)));
+  }
+
+  function applyOutcomeLabel(code) {
+    if (!code) return '';
+    if (code === APPLY_PENDING) return APPLY_PENDING_LABEL;
+    const outcome = APPLY_OUTCOMES[code];
+    return outcome ? outcome.label : String(code);
+  }
+
+  /**
+   * Por que esta vaga não foi candidatada? Devolve null quando a candidatura foi
+   * enviada. Com `options.applyEnabled = false`, as vagas intocadas aparecem
+   * como "candidatura automática desligada".
+   */
+  function describeApplyFailure(job, options) {
+    const value = job || {};
+    const code = value.applyStatus;
+
+    if (code === 'enviada') return null;
+
+    if (code === APPLY_PENDING) {
+      return {
+        code,
+        label: APPLY_PENDING_LABEL,
+        reason: value.applyReason || 'Aguardando a cota de candidaturas liberar.',
+        pending: true,
+      };
+    }
+
+    const outcome = APPLY_OUTCOMES[code];
+
+    if (outcome) {
+      return {
+        code,
+        label: outcome.label,
+        reason: value.applyReason || outcome.reason,
+        pending: false,
+      };
+    }
+
+    const enabled = !options || options.applyEnabled !== false;
+
+    return {
+      code: 'nao_tentada',
+      label: APPLY_UNTOUCHED_LABEL,
+      reason: enabled
+        ? value.description
+          ? 'Ainda não chegou a vez desta vaga (teto de vagas por varredura).'
+          : 'Vaga capturada sem a descrição completa.'
+        : 'Candidatura automática desligada.',
+      pending: true,
+    };
+  }
+
+  /**
+   * Totais do relatório: candidatadas x não candidatadas — que se divide em
+   * definitivas (precisam de você) e adiadas (a extensão tenta depois).
+   */
+  function summarizeApply(jobs, options) {
+    const list = Array.isArray(jobs) ? jobs : Object.values(jobs || {});
+    const summary = { total: list.length, applied: 0, failed: 0, pending: 0, reasons: [] };
+    const byLabel = new Map();
+
+    for (const job of list) {
+      const failure = describeApplyFailure(job, options);
+
+      if (!failure) {
+        summary.applied += 1;
+        continue;
+      }
+
+      if (failure.pending) summary.pending += 1;
+      else summary.failed += 1;
+
+      const entry = byLabel.get(failure.label) || {
+        code: failure.code,
+        label: failure.label,
+        pending: failure.pending,
+        count: 0,
+      };
+
+      entry.count += 1;
+      byLabel.set(failure.label, entry);
+    }
+
+    summary.reasons = Array.from(byLabel.values()).sort(
+      (a, b) => b.count - a.count || a.label.localeCompare(b.label, 'pt-BR')
+    );
+
+    return summary;
+  }
+
+  /** Ex.: "12 candidatada(s) · 8 não candidatada(s): 4 travada em campo…". */
+  function describeApplySummary(summary) {
+    if (!summary || !summary.total) return 'Nenhuma vaga capturada ainda.';
+
+    let text = summary.applied + ' candidatada(s)';
+    if (summary.failed) text += ' · ' + summary.failed + ' não candidatada(s)';
+    if (summary.pending) text += ' · ' + summary.pending + ' na fila';
+
+    const top = (summary.reasons || [])
+      .filter((entry) => !entry.pending)
+      .slice(0, 3)
+      .map((entry) => entry.count + ' ' + entry.label.toLowerCase());
+
+    return text + (top.length ? ': ' + top.join(' · ') : '');
+  }
+
+  /* ------------------------------------------------------------------------ */
   /* Textos de apoio para a interface                                          */
   /* ------------------------------------------------------------------------ */
 
@@ -472,6 +674,8 @@ globalThis.PegaVagaShared = (() => {
     HISTORY_LIMIT,
     WEEKDAYS,
     LIMIT_LABELS,
+    APPLY_OUTCOMES,
+    APPLY_PENDING,
     num,
     normalizeTerms,
     isLinkedInUrl,
@@ -488,6 +692,11 @@ globalThis.PegaVagaShared = (() => {
     parseSettings,
     buildRunQueue,
     computeQuota,
+    jitter,
+    applyOutcomeLabel,
+    describeApplyFailure,
+    summarizeApply,
+    describeApplySummary,
     describeQuota,
     describeSchedule,
     formatClock,

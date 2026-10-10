@@ -1,8 +1,10 @@
 /* =============================================================================
  * PegaVaga - popup.js
  * Interface do usuário: cadastra a busca (URL/perfil + termos), configura as
- * cotas de candidatura e o agendador, abre a aba do LinkedIn quando necessário,
- * dispara a varredura no content.js, mostra contador/cotas e gera o .csv.
+ * cotas de candidatura, o ritmo humano (furtividade) e o agendador, abre a aba
+ * do LinkedIn quando necessário, dispara a varredura no content.js, mostra
+ * contador/cotas e gera o .csv — inclusive o das vagas que não deu para
+ * candidatar, com o motivo de cada uma.
  * ===========================================================================*/
 
 'use strict';
@@ -19,6 +21,7 @@ const STORAGE_META_KEY = SHARED.STORAGE.meta;
 const STORAGE_SETTINGS_KEY = SHARED.STORAGE.settings;
 const STORAGE_RUN_KEY = SHARED.STORAGE.run;
 const STORAGE_APPS_KEY = SHARED.STORAGE.apps;
+const STORAGE_GUARD_KEY = SHARED.STORAGE.guard;
 
 const CSV_HEADERS = [
   'ID',
@@ -29,18 +32,31 @@ const CSV_HEADERS = [
   'Capturado em',
   'Termo',
   'Status da candidatura',
+  'Motivo da nao candidatura',
+  'Tentativas',
   'Candidatado em',
 ];
+
+/* CSV enxuto, só com o que não deu para candidatar (e o porquê). */
+const FAILURE_CSV_HEADERS = [
+  'ID',
+  'Titulo',
+  'Empresa',
+  'Link',
+  'Termo',
+  'Status',
+  'Motivo',
+  'Ultima tentativa',
+];
+
 const CSV_SEPARATOR = ';'; // Excel pt-BR usa ponto e vírgula como separador padrão
 
-const APPLY_STATUS_LABELS = {
-  enviada: 'Enviada',
-  externa: 'Externa (site da empresa)',
-  sem_botao: 'Sem botão de candidatura',
-  sem_modal: 'Formulário não abriu',
-  travada: 'Travada em campo obrigatório',
-  incompleta: 'Formulário incompleto',
-  cancelada: 'Cancelada',
+/** Como cada motivo de pausa aparece para o usuário. */
+const PAUSE_LABELS = {
+  cota: 'cota de candidaturas',
+  guard: 'proteção da conta (limite do LinkedIn)',
+  usuario: 'você estava usando o navegador',
+  schedule: 'janela do agendador',
 };
 
 const SAVE_DELAY_MS = 400; // debounce do salvamento automático da configuração
@@ -55,6 +71,7 @@ let saveTimer = null;
 let settings = SHARED.parseSettings(null);
 let appsCache = [];
 let runCache = null;
+let breakCache = null;
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -65,6 +82,7 @@ async function init() {
 
   await loadSettingsToForm();
   await refresh();
+  await loadGuard();
   await syncScanningState();
 
   chrome.runtime.onMessage.addListener(onRuntimeMessage);
@@ -93,6 +111,15 @@ function cacheElements() {
   els.apply24h = document.getElementById('apply-24h');
   els.applyDay = document.getElementById('apply-day');
   els.applyScan = document.getElementById('apply-scan');
+  els.applyRespectUser = document.getElementById('apply-respect-user');
+  els.applyBreaks = document.getElementById('apply-breaks');
+  els.applyDelayMin = document.getElementById('apply-delay-min');
+  els.applyDelayMax = document.getElementById('apply-delay-max');
+  els.applyBreakEvery = document.getElementById('apply-break-every');
+  els.applyBreakSeconds = document.getElementById('apply-break-seconds');
+  els.applySummary = document.getElementById('apply-summary');
+  els.guardInfo = document.getElementById('guard-info');
+  els.btnExportFailures = document.getElementById('btn-export-failures');
   els.scheduleEnabled = document.getElementById('schedule-enabled');
   els.scheduleStart = document.getElementById('schedule-start');
   els.scheduleStop = document.getElementById('schedule-stop');
@@ -125,6 +152,7 @@ function bindEvents() {
   els.btnStart.addEventListener('click', onStartClick);
   els.btnStop.addEventListener('click', onStopClick);
   els.btnExport.addEventListener('click', onExportClick);
+  els.btnExportFailures.addEventListener('click', onExportFailuresClick);
   els.btnClear.addEventListener('click', onClearClick);
 
   // A configuração é salva sozinha alguns instantes após a digitação parar.
@@ -135,6 +163,10 @@ function bindEvents() {
     els.apply24h,
     els.applyDay,
     els.applyScan,
+    els.applyDelayMin,
+    els.applyDelayMax,
+    els.applyBreakEvery,
+    els.applyBreakSeconds,
     els.scheduleStart,
     els.scheduleStop,
   ];
@@ -142,9 +174,14 @@ function bindEvents() {
   textInputs.forEach((input) => input.addEventListener('input', onSettingsInput));
   fieldInputs.forEach((input) => input.addEventListener('input', onSettingsInput));
 
-  [els.applyEnabled, els.scheduleEnabled, els.scheduleAutoStart, els.scheduleFocus].forEach(
-    (input) => input.addEventListener('change', onSettingsInput)
-  );
+  [
+    els.applyEnabled,
+    els.applyRespectUser,
+    els.applyBreaks,
+    els.scheduleEnabled,
+    els.scheduleAutoStart,
+    els.scheduleFocus,
+  ].forEach((input) => input.addEventListener('change', onSettingsInput));
 
   els.dayInputs.forEach((input) => input.addEventListener('change', onSettingsInput));
 
@@ -188,8 +225,9 @@ async function onStartClick() {
     run.term = '';
   }
 
-  // Se o agendador estiver ligado, fora da janela a execução vai esperar.
-  const warn = buildWindowWarning(parsed);
+  // Se o agendador estiver ligado (ou a proteção da conta ativa), a execução
+  // vai esperar: avisamos no mesmo lugar.
+  const warn = buildWindowWarning(parsed) || buildGuardWarning(await getGuard());
 
   /** Fala na barra de status, avisando do agendador quando for o caso. */
   const say = (message, type) =>
@@ -333,6 +371,12 @@ async function loadSettingsToForm() {
   els.apply24h.value = String(settings.apply.per24h);
   els.applyDay.value = String(settings.apply.perDay);
   els.applyScan.value = String(settings.apply.scanPerTerm);
+  els.applyRespectUser.checked = settings.apply.respectUserActivity;
+  els.applyBreaks.checked = settings.apply.breaksEnabled;
+  els.applyDelayMin.value = String(secondsFromMs(settings.apply.minDelayMs));
+  els.applyDelayMax.value = String(secondsFromMs(settings.apply.maxDelayMs));
+  els.applyBreakEvery.value = String(settings.apply.breakEvery);
+  els.applyBreakSeconds.value = String(secondsFromMs(settings.apply.breakMs));
 
   els.scheduleEnabled.checked = settings.schedule.enabled;
   els.scheduleStart.value = settings.schedule.startTime;
@@ -351,6 +395,17 @@ async function loadSettingsToForm() {
 async function getSettings() {
   const data = await chrome.storage.local.get(STORAGE_SETTINGS_KEY);
   return SHARED.parseSettings(data[STORAGE_SETTINGS_KEY]);
+}
+
+/** O formulário mostra segundos; o storage guarda milissegundos. */
+function secondsFromMs(value) {
+  return Math.max(1, Math.round((Number(value) || 0) / 1000));
+}
+
+function msFromSeconds(value, fallbackMs) {
+  const seconds = Number(String(value == null ? '' : value).trim());
+  if (!Number.isFinite(seconds) || seconds <= 0) return fallbackMs;
+  return Math.round(seconds * 1000);
 }
 
 function onSettingsInput() {
@@ -376,6 +431,12 @@ async function saveSettingsFromForm(options) {
       per24h: els.apply24h.value,
       perDay: els.applyDay.value,
       scanPerTerm: els.applyScan.value,
+      minDelayMs: msFromSeconds(els.applyDelayMin.value, settings.apply.minDelayMs),
+      maxDelayMs: msFromSeconds(els.applyDelayMax.value, settings.apply.maxDelayMs),
+      respectUserActivity: els.applyRespectUser.checked,
+      breaksEnabled: els.applyBreaks.checked,
+      breakEvery: els.applyBreakEvery.value,
+      breakMs: msFromSeconds(els.applyBreakSeconds.value, settings.apply.breakMs),
     },
     schedule: {
       enabled: els.scheduleEnabled.checked,
@@ -397,6 +458,7 @@ async function saveSettingsFromForm(options) {
     els.apply24h.value = String(parsed.apply.per24h);
     els.applyDay.value = String(parsed.apply.perDay);
     els.applyScan.value = String(parsed.apply.scanPerTerm);
+    els.applyBreakEvery.value = String(parsed.apply.breakEvery);
   }
 
   settings = parsed;
@@ -477,7 +539,76 @@ async function refresh() {
   }
 
   els.btnExport.disabled = jobs.length === 0;
+  renderApplySummary(jobs);
   renderQuota();
+}
+
+/**
+ * Resumo do relatório: quantas vagas foram candidatadas, quantas não foram e,
+ * no fim, o motivo mais frequente. Também liga/desliga o botão de exportar só
+ * as não candidatadas.
+ */
+function renderApplySummary(jobs) {
+  if (!els.applySummary) return;
+
+  const summary = SHARED.summarizeApply(jobs, { applyEnabled: settings.apply.enabled });
+
+  els.applySummary.textContent = SHARED.describeApplySummary(summary);
+
+  if (els.btnExportFailures) {
+    els.btnExportFailures.disabled = summary.failed + summary.pending === 0;
+    els.btnExportFailures.title = summary.failed
+      ? summary.failed + ' vaga(s) definitivamente não candidatada(s)'
+      : 'Vagas que ainda não foram candidatadas';
+  }
+}
+
+/** Faixa de aviso quando a proteção da conta (limite do LinkedIn) está ligada. */
+function renderGuard(guard) {
+  if (!els.guardInfo) return;
+
+  const active = guard && guard.blockedUntil > Date.now();
+
+  if (!active) {
+    els.guardInfo.hidden = true;
+    els.guardInfo.textContent = '';
+    return;
+  }
+
+  els.guardInfo.hidden = false;
+  els.guardInfo.textContent =
+    '⛔ LinkedIn sinalizou limite de uso' +
+    (guard.reason ? ' (' + guard.reason + ')' : '') +
+    ': a automação está descansando até ' +
+    SHARED.formatClock(guard.blockedUntil) +
+    '. Aproveite para revisar as vagas já capturadas.';
+}
+
+/** Reativa o aviso de proteção gravado no storage. */
+async function loadGuard() {
+  renderGuard(await getGuard());
+}
+
+/** Proteção da conta ativa (ou null), lida do storage. */
+async function getGuard() {
+  try {
+    const data = await chrome.storage.local.get(STORAGE_GUARD_KEY);
+    const guard = data[STORAGE_GUARD_KEY] || null;
+    return guard && guard.blockedUntil > Date.now() ? guard : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+/** Aviso quando o LinkedIn sinalizou limite de uso e a extensão está descansando. */
+function buildGuardWarning(guard) {
+  if (!guard) return '';
+
+  return (
+    'O LinkedIn sinalizou limite de uso: a automação fica parada até ' +
+    SHARED.formatClock(guard.blockedUntil) +
+    '.'
+  );
 }
 
 /** Linha de cotas: quantas candidaturas cabem agora em cada janela. */
@@ -502,9 +633,12 @@ function renderScheduleHint() {
   const paused = runCache && runCache.paused && runCache.resumeAt;
 
   if (paused) {
+    const why = PAUSE_LABELS[runCache.pauseReason] || 'cota de candidaturas';
     els.scheduleHint.className = 'hint';
     els.scheduleHint.textContent =
-      'Pausado por cota até ' +
+      'Pausado por ' +
+      why +
+      ' até ' +
       SHARED.formatClock(runCache.resumeAt) +
       '. ' +
       SHARED.describeSchedule(settings.schedule, now);
@@ -516,8 +650,10 @@ function renderScheduleHint() {
 }
 
 /** Mostra na interface em qual termo da fila a varredura está. */
-function renderRun(run, totalFallback) {
+function renderRun(run, totalFallback, breakUntil) {
   runCache = run || null;
+  if (breakUntil) breakCache = breakUntil;
+  if (!breakUntil && !(run && run.running)) breakCache = null;
 
   renderQuota();
   renderScheduleHint();
@@ -537,7 +673,12 @@ function renderRun(run, totalFallback) {
     }
 
     if (run.paused && run.resumeAt) {
-      info += ` · pausado até ${SHARED.formatClock(run.resumeAt)}`;
+      const why = PAUSE_LABELS[run.pauseReason] || 'cota de candidaturas';
+      info += ` · pausado por ${why} até ${SHARED.formatClock(run.resumeAt)}`;
+    }
+
+    if (breakCache) {
+      info += ` · descansando até ${SHARED.formatClock(breakCache)}`;
     }
 
     els.runInfo.textContent = info;
@@ -584,9 +725,12 @@ function setStatus(message, type) {
 /* -------------------------------------------------------------------------- */
 
 function buildCSV(jobs) {
+  const options = { applyEnabled: settings.apply.enabled };
   const rows = [CSV_HEADERS];
 
   for (const job of jobs) {
+    const failure = SHARED.describeApplyFailure(job, options);
+
     rows.push([
       job.id || '',
       job.title || '',
@@ -595,7 +739,9 @@ function buildCSV(jobs) {
       job.description || '',
       formatDate(job.capturedAt),
       job.term || '',
-      APPLY_STATUS_LABELS[job.applyStatus] || job.applyStatus || '',
+      failure ? failure.label : SHARED.applyOutcomeLabel(job.applyStatus),
+      failure ? failure.reason : '', // em branco quando a candidatura foi enviada
+      job.applyStatus ? String(job.applyAttempts || 0) : '',
       formatDate(job.appliedAt),
     ]);
   }
@@ -603,6 +749,39 @@ function buildCSV(jobs) {
   const body = rows.map((row) => row.map(escapeCSVField).join(CSV_SEPARATOR));
 
   // \uFEFF (BOM) garante que o Excel reconheça o arquivo como UTF-8.
+  return '\uFEFF' + body.join('\r\n');
+}
+
+/**
+ * CSV só com as vagas que não foi possível candidatar, cada uma com o motivo.
+ * Devolve null quando todas as vagas capturadas foram candidatadas.
+ */
+function buildFailuresCSV(jobs) {
+  const options = { applyEnabled: settings.apply.enabled };
+  const rows = [];
+
+  for (const job of jobs) {
+    const failure = SHARED.describeApplyFailure(job, options);
+    if (!failure) continue;
+
+    rows.push([
+      job.id || '',
+      job.title || '',
+      job.company || '',
+      job.link || '',
+      job.term || '',
+      failure.label,
+      failure.reason,
+      formatDate(job.applyTriedAt || job.appliedAt),
+    ]);
+  }
+
+  if (!rows.length) return null;
+
+  const body = [FAILURE_CSV_HEADERS]
+    .concat(rows)
+    .map((row) => row.map(escapeCSVField).join(CSV_SEPARATOR));
+
   return '\uFEFF' + body.join('\r\n');
 }
 
@@ -676,7 +855,8 @@ function onRuntimeMessage(message) {
   if (!message || message.type !== MSG.PROGRESS) return;
 
   els.count.textContent = String(message.count || 0);
-  renderRun(message.run);
+  renderRun(message.run, null, message.breakUntil);
+  renderGuard(message.guard || null);
   setScanning(
     Boolean(message.scanning) || Boolean(message.run && message.run.running)
   );
@@ -686,6 +866,8 @@ function onStorageChanged(changes, areaName) {
   if (areaName !== 'local') return;
 
   if (changes[STORAGE_JOBS_KEY]) refresh();
+
+  if (changes[STORAGE_GUARD_KEY]) renderGuard(changes[STORAGE_GUARD_KEY].newValue || null);
 
   if (changes[STORAGE_SETTINGS_KEY] && changes[STORAGE_SETTINGS_KEY].newValue) {
     settings = SHARED.parseSettings(changes[STORAGE_SETTINGS_KEY].newValue);
@@ -723,7 +905,47 @@ async function onExportClick() {
   try {
     const csv = buildCSV(jobs);
     downloadFile(csv, `pegavaga_${timestampForFilename()}.csv`);
-    setStatus(`${jobs.length} vaga(s) exportada(s) com sucesso.`, 'ok');
+
+    const summary = SHARED.summarizeApply(jobs, { applyEnabled: settings.apply.enabled });
+
+    setStatus(
+      `${jobs.length} vaga(s) exportada(s) — ` + SHARED.describeApplySummary(summary) + '.',
+      'ok'
+    );
+  } catch (error) {
+    setStatus('Falha ao gerar o arquivo: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Exporta apenas as vagas que não foi possível candidatar, uma por linha, com o
+ * motivo (site externo, campo obrigatório, cota estourada…).
+ */
+async function onExportFailuresClick() {
+  const jobs = await getJobsArray();
+
+  try {
+    const csv = buildFailuresCSV(jobs);
+
+    if (!csv) {
+      setStatus('Todas as vagas capturadas foram candidatadas. Nada a relatar.', 'ok');
+      return;
+    }
+
+    const summary = SHARED.summarizeApply(jobs, { applyEnabled: settings.apply.enabled });
+    const semCandidatura = summary.failed + summary.pending;
+
+    downloadFile(csv, `pegavaga_nao_candidatadas_${timestampForFilename()}.csv`);
+
+    setStatus(
+      semCandidatura +
+        ' vaga(s) sem candidatura exportada(s) com o motivo (' +
+        summary.failed +
+        ' definitiva(s) e ' +
+        summary.pending +
+        ' na fila).',
+      summary.failed ? 'warn' : 'ok'
+    );
   } catch (error) {
     setStatus('Falha ao gerar o arquivo: ' + error.message, 'error');
   }

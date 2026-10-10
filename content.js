@@ -14,6 +14,13 @@
  *      sobrando no termo, na hora, nas últimas 24 h e no dia.
  *   5. Varrer termo por termo: ao atingir a cota do termo, avança para o
  *      próximo da fila; quando acaba a cota, pausa e retoma mais tarde.
+ *   6. Imitar o ritmo humano (intervalos variáveis, leitura da vaga, pausas
+ *      longas periódicas) e ceder a vez para o usuário: enquanto você mexe na
+ *      página, a automação espera em vez de roubar o seu clique/rolagem.
+ *   7. Anotar, por vaga, o motivo de não ter sido possível candidatar (site
+ *      externo, campo obrigatório, formulário fora do prazo…), para o relatório.
+ *   8. Parar tudo quando o LinkedIn sinaliza limite de uso/verificação, com um
+ *      período de descanso — é melhor perder horas do que a conta.
  *
  * A fila de termos (chrome.storage.local) é a fonte da verdade: como cada termo
  * é uma navegação nova, a página recém-carregada relê a fila e continua sozinha.
@@ -34,6 +41,7 @@
   const STORAGE_RUN_KEY = STORAGE.run || 'pegavaga_run';
   const STORAGE_APPS_KEY = STORAGE.apps || 'pegavaga_apps';
   const STORAGE_SETTINGS_KEY = STORAGE.settings || 'pegavaga_settings';
+  const STORAGE_GUARD_KEY = STORAGE.guard || 'pegavaga_guard';
 
   const MSG = SHARED.MSG || {
     START: 'PEGAVAGA_START',
@@ -58,6 +66,12 @@
   const parseSettings = SHARED.parseSettings || ((raw) => raw || {});
 
   const HISTORY_LIMIT = SHARED.HISTORY_LIMIT || 500;
+
+  /** Variação aleatória em torno de um intervalo (ritmo humano). */
+  const jitter = SHARED.jitter || ((ms) => ms);
+
+  const APPLY_PENDING = SHARED.APPLY_PENDING || 'adiada';
+  const APPLY_OUTCOMES = SHARED.APPLY_OUTCOMES || {};
 
   const isWithinSchedule = SHARED.isWithinSchedule || (() => true);
   const nextScheduleStart = SHARED.nextScheduleStart || (() => null);
@@ -84,6 +98,18 @@
     applyMaxAttempts: 2, // tentativas por vaga antes de desistir
     applyFlowTimeoutMs: 120000, // tempo máximo dentro do formulário de uma vaga
     resumeTimerCapMs: 1800000, // teto do timer local de retomada (30 min)
+
+    /* Ritmo humano / furtividade */
+    humanRatio: 0.3, // variação padrão aplicada aos intervalos
+    applyPreClickMs: 700, // respiração antes de abrir o formulário
+    longReadChance: 0.12, // chance de "reler" a vaga inteira antes de se candidatar
+    longReadMs: 12000,
+    userIdleMs: 4000, // tempo sem interação sua para considerar a página livre
+    userWaitMaxMs: 300000, // teto da espera pela sua ociosidade (5 min)
+    userBusyPauseMs: 180000, // descanso da varredura quando você está usando a página
+    breakPollMs: 500, // intervalo de checagem durante pausas longas
+    guardCooldownMs: 3600000, // descanso após sinal de limite do LinkedIn (1 h)
+    guardTextLimit: 20000, // quanto do texto da página lemos procurando avisos
   };
 
   /* ------------------------------------------------------------------------ */
@@ -205,6 +231,13 @@
     settings: null, // configuração carregada do storage
     apps: [], // timestamps (ms) das candidaturas enviadas
     resumeTimer: null, // retomada agendada após estourar uma cota
+    lastUserActivity: 0, // última interação do usuário (clique, mouse, teclado)
+    watchingUser: false, // listeners de atividade já instalados?
+    userBusy: false, // o usuário mexeu na página durante a varredura
+    sinceBreak: 0, // candidaturas desde a última pausa longa
+    breakUntil: null, // fim da pausa longa em andamento (para a interface)
+    guard: null, // bloqueio temporário detectado (proteção da conta)
+    guardStopped: false, // a varredura parou por causa do bloqueio?
   };
 
   /* ------------------------------------------------------------------------ */
@@ -360,8 +393,8 @@
       card.querySelector('a[href*="/jobs/view/"]') ||
       card;
 
-    target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    target.click();
+    // Clique humanizado: o card do LinkedIn só abre com uma "passada de mouse".
+    humanClick(target);
   }
 
   /** Clica no card e espera a descrição correspondente aparecer no painel. */
@@ -372,7 +405,7 @@
     const deadline = Date.now() + CONFIG.descriptionTimeoutMs;
 
     while (Date.now() < deadline) {
-      await wait(CONFIG.descriptionPollMs);
+      await humanPause(CONFIG.descriptionPollMs, 0.4);
 
       const details = readDetails();
       const looksRight =
@@ -485,6 +518,7 @@
             running: run.running === true,
             paused: run.paused === true,
             resumeAt: run.resumeAt || null,
+            pauseReason: run.pauseReason || null,
             index: run.index || 0,
             total: Array.isArray(run.urls) ? run.urls.length : 1,
             term: run.term || '',
@@ -492,6 +526,10 @@
             visitedInTerm: run.visitedInTerm || 0,
             appliedTotal: run.appliedTotal || 0,
           }
+        : null,
+      breakUntil: state.breakUntil || null,
+      guard: state.guard
+        ? { blockedUntil: state.guard.blockedUntil, reason: state.guard.reason || '' }
         : null,
     };
 
@@ -533,20 +571,22 @@
   async function scrollList() {
     const before = getCards().length;
 
+    // Rolagem de 60% a 95% da tela: nunca o mesmo passo, nunca "pulo" seco.
+    const ratio = 0.6 + Math.random() * 0.35;
     const container = findScrollContainer();
+
     if (!container) {
-      window.scrollBy(0, Math.round(window.innerHeight * 0.9));
-      await wait(CONFIG.scrollDelayMs);
+      window.scrollBy(0, Math.round(window.innerHeight * ratio));
+      await humanPause(CONFIG.scrollDelayMs);
       return getCards().length > before;
     }
 
     const previousTop = container.scrollTop;
-    container.scrollTop = Math.min(
-      container.scrollHeight,
-      container.scrollTop + Math.round(container.clientHeight * 0.9)
-    );
+    const step = Math.max(120, Math.round(container.clientHeight * ratio));
 
-    await wait(CONFIG.scrollDelayMs);
+    container.scrollTop = Math.min(container.scrollHeight, container.scrollTop + step);
+
+    await humanPause(CONFIG.scrollDelayMs);
 
     const grew = getCards().length > before;
     const moved = container.scrollTop > previousTop;
@@ -597,6 +637,278 @@
     const lo = Math.max(0, Number(min) || 0);
     const hi = Math.max(lo, Number(max) || lo);
     return Math.round(lo + Math.random() * (hi - lo));
+  }
+
+  /* ------------------------------------------------------------------------ */
+  /* Furtividade: ritmo humano, vez para o usuário e proteção da conta         */
+  /* ------------------------------------------------------------------------ */
+
+  /**
+   * Avisos que o LinkedIn mostra quando desconfia de automação ou de excesso de
+   * candidaturas. O texto é comparado sem acentos e em minúsculas.
+   */
+  const RATE_LIMIT_RE = new RegExp(
+    [
+      'checkpoint',
+      'verificacao de seguranca',
+      'security verification',
+      'unusual activity',
+      'atividade suspeita',
+      'atividade incomum',
+      'muitas solicitacoes',
+      'too many requests',
+      'rate limit',
+      'limite de uso',
+      'temporarily restricted',
+      'restricao temporaria',
+      'tente novamente mais tarde',
+      'prove que voce',
+      'voce atingiu o limite',
+    ].join('|')
+  );
+
+  /** Marca que o usuário acabou de interagir com a página. */
+  function noteUserActivity() {
+    state.lastUserActivity = Date.now();
+  }
+
+  /** Escuta mouse/teclado/rolagem para ceder a vez a quem está usando a página. */
+  function watchUserActivity() {
+    if (state.watchingUser) return;
+    if (typeof document.addEventListener !== 'function') return;
+
+    state.watchingUser = true;
+
+    for (const type of ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll']) {
+      try {
+        document.addEventListener(type, noteUserActivity, { passive: true, capture: true });
+      } catch (error) {
+        /* navegador sem captura passiva: seguimos sem este listener */
+      }
+    }
+  }
+
+  /** A página está livre (o usuário não mexe nela há alguns segundos)? */
+  function userIsIdle(settings) {
+    const cfg = (settings && settings.apply) || DEFAULT_APPLY;
+    if (cfg.respectUserActivity !== true) return true;
+    if (!state.lastUserActivity) return true;
+
+    return Date.now() - state.lastUserActivity >= CONFIG.userIdleMs;
+  }
+
+  /**
+   * Espera o usuário parar de mexer na página. Nunca roubamos o clique nem a
+   * rolagem de quem está usando o LinkedIn naquele momento; se a pessoa não
+   * parar, devolvemos false e a varredura descansa um pouco (ver `userBusy`).
+   */
+  async function waitForUserIdle(settings) {
+    if (userIsIdle(settings)) return true;
+
+    const deadline = Date.now() + CONFIG.userWaitMaxMs;
+
+    while (!state.abort && Date.now() < deadline && !userIsIdle(settings)) {
+      await wait(CONFIG.breakPollMs);
+    }
+
+    return userIsIdle(settings);
+  }
+
+  /** Pausa curta com variação humana (nada de intervalos sempre iguais). */
+  function humanPause(baseMs, ratio) {
+    return wait(jitter(baseMs, ratio == null ? CONFIG.humanRatio : ratio));
+  }
+
+  /** Canto aleatório do elemento, para o clique não cair sempre no pixel exato. */
+  function elementPoint(el) {
+    let box = null;
+
+    try {
+      box = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+    } catch (error) {
+      box = null;
+    }
+
+    if (!box || !box.width || !box.height) return null;
+
+    return {
+      x: box.left + box.width * (0.3 + Math.random() * 0.4),
+      y: box.top + box.height * (0.35 + Math.random() * 0.3),
+    };
+  }
+
+  /** Dispara um evento de mouse "de verdade" (quando o navegador permite). */
+  function dispatchMouse(target, type, point) {
+    if (!target || typeof target.dispatchEvent !== 'function') return false;
+
+    try {
+      let event = null;
+
+      if (typeof MouseEvent === 'function') {
+        event = new MouseEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          view: typeof window !== 'undefined' ? window : undefined,
+          clientX: point ? Math.round(point.x) : 0,
+          clientY: point ? Math.round(point.y) : 0,
+        });
+      } else if (typeof Event === 'function') {
+        event = new Event(type, { bubbles: true, cancelable: true });
+      }
+
+      if (!event) return false;
+
+      target.dispatchEvent(event);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /** Passa o mouse pelo elemento: é isso que revela botões escondidos no hover. */
+  function hoverElement(el) {
+    if (!el) return null;
+
+    const point = elementPoint(el);
+
+    dispatchMouse(el, 'mouseover', point);
+    dispatchMouse(el, 'mouseenter', point);
+    dispatchMouse(el, 'mousemove', point);
+
+    if (point && typeof document.elementFromPoint === 'function') {
+      const under = document.elementFromPoint(point.x, point.y);
+
+      // O LinkedIn às vezes cobre o card com uma camada transparente.
+      if (under && under !== el) dispatchMouse(under, 'mousemove', point);
+    }
+
+    return point;
+  }
+
+  /**
+   * Clique humanizado: rola até o alvo, passa o mouse por cima e só então clica.
+   * A página reage como se uma pessoa estivesse usando o site — e a lista de
+   * vagas não denuncia a automação por cliques "secos".
+   */
+  function humanClick(el) {
+    if (!el) return false;
+
+    try {
+      if (typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    } catch (error) {
+      /* elemento sem scrollIntoView: segue o jogo */
+    }
+
+    const point = hoverElement(el);
+
+    dispatchMouse(el, 'pointerdown', point);
+    dispatchMouse(el, 'mousedown', point);
+    dispatchMouse(el, 'pointerup', point);
+    dispatchMouse(el, 'mouseup', point);
+    dispatchMouse(el, 'click', point);
+
+    try {
+      el.click();
+    } catch (error) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /** Texto visível da página (usado só para farejar avisos do LinkedIn). */
+  function pageText() {
+    const body = document.body;
+    if (!body) return '';
+    return String(body.innerText || body.textContent || '').slice(0, CONFIG.guardTextLimit);
+  }
+
+  /** O LinkedIn está pedindo verificação / avisando de limite de uso? */
+  function detectRateLimit() {
+    try {
+      if (/\/(checkpoint|authwall|uas)\b/i.test(location.pathname)) {
+        return 'Redirecionado para verificação';
+      }
+
+      const text = normalize(pageText());
+      if (RATE_LIMIT_RE.test(text)) return 'Aviso de limite de uso na página do LinkedIn';
+    } catch (error) {
+      return null;
+    }
+
+    return null;
+  }
+
+  /** Fim do período de descanso imposto pela proteção da conta (ou null). */
+  function guardUntil() {
+    if (!state.guard) return null;
+    return state.guard.blockedUntil > Date.now() ? state.guard.blockedUntil : null;
+  }
+
+  /** Reativa a proteção gravada em uma execução anterior. */
+  async function loadGuard() {
+    try {
+      const data = await chrome.storage.local.get(STORAGE_GUARD_KEY);
+      const guard = data[STORAGE_GUARD_KEY] || null;
+      state.guard = guard && guard.blockedUntil > Date.now() ? guard : null;
+    } catch (error) {
+      state.guard = null;
+    }
+
+    return state.guard;
+  }
+
+  /**
+   * O LinkedIn (ou a nossa checagem) indicou abuso: paramos tudo por um tempo.
+   * O estado vai para o storage, para o agendador respeitar o mesmo descanso, e
+   * a fila fica pausada (não é apagada): ao fim do descanso ela volta sozinha.
+   */
+  async function tripGuard(reason) {
+    state.abort = true;
+    state.guardStopped = true;
+    state.guard = {
+      blockedUntil: Date.now() + CONFIG.guardCooldownMs,
+      reason: reason || 'Limite de uso detectado',
+      at: new Date().toISOString(),
+    };
+
+    await chrome.storage.local.set({ [STORAGE_GUARD_KEY]: state.guard }).catch(() => {});
+    broadcastProgress();
+  }
+
+  /** Pausa longa periódica: ninguém se candidata a dezenas de vagas sem parar. */
+  async function longBreak(settings) {
+    const cfg = (settings && settings.apply) || DEFAULT_APPLY;
+
+    if (cfg.breaksEnabled !== true) return;
+    if (!cfg.breakEvery || state.sinceBreak < cfg.breakEvery) return;
+
+    const duration = jitter(cfg.breakMs, 0.4);
+    const deadline = Date.now() + duration;
+
+    setSinceBreak(0);
+    state.breakUntil = deadline;
+    broadcastProgress(); // a interface mostra "descansando até…"
+
+    while (!state.abort && Date.now() < deadline) {
+      await wait(Math.min(CONFIG.breakPollMs, Math.max(0, deadline - Date.now())));
+    }
+
+    state.breakUntil = null;
+    broadcastProgress();
+  }
+
+  /** Finge que leu a vaga antes de se candidatar (e às vezes relê tudo). */
+  async function readingPause(settings) {
+    const cfg = (settings && settings.apply) || DEFAULT_APPLY;
+
+    await humanPause(randomDelay(cfg.readMinMs, cfg.readMaxMs), 0.25);
+
+    if (Math.random() < CONFIG.longReadChance) {
+      await humanPause(CONFIG.longReadMs, 0.5);
+    }
   }
 
   /* ------------------------------------------------------------------------ */
@@ -694,6 +1006,88 @@
     );
   }
 
+  /** Rótulo visível de um campo do formulário (para o relatório de motivos). */
+  function fieldLabel(field) {
+    let direct = '';
+
+    try {
+      direct = clean(
+        (field.getAttribute && field.getAttribute('aria-label')) ||
+          (field.getAttribute && field.getAttribute('placeholder'))
+      );
+    } catch (error) {
+      direct = '';
+    }
+
+    if (direct) return direct.slice(0, 60);
+
+    try {
+      if (field.labels && field.labels.length) return clean(field.labels[0].textContent).slice(0, 60);
+    } catch (error) {
+      /* sem labels: tentamos o container abaixo */
+    }
+
+    try {
+      const container =
+        field.closest &&
+        field.closest(
+          '.fb-dash-form-element, .jobs-easy-apply-form-element, .artdeco-text-input--container, label, fieldset'
+        );
+
+      if (container) return clean(container.textContent).slice(0, 60);
+    } catch (error) {
+      /* sem closest: desistimos do rótulo */
+    }
+
+    return '';
+  }
+
+  /**
+   * Rótulos dos campos/perguntas que ficaram pendentes no formulário. É isso que
+   * o relatório mostra quando uma candidatura para em campo obrigatório.
+   */
+  function describeBlocker(modal) {
+    const labels = [];
+    const seen = new Set();
+
+    let fields = [];
+
+    try {
+      fields = Array.from(
+        modal.querySelectorAll('input, select, textarea, fieldset legend, [role="combobox"]')
+      );
+    } catch (error) {
+      return labels;
+    }
+
+    for (const field of fields) {
+      const tag = String(field.tagName || '').toLowerCase();
+
+      if (tag === 'legend') {
+        const text = clean(field.textContent).slice(0, 60);
+        if (text && !seen.has(text)) {
+          seen.add(text);
+          labels.push(text);
+        }
+        continue;
+      }
+
+      const type = String(field.type || '').toLowerCase();
+      if (type === 'hidden' || type === 'checkbox' || type === 'radio') continue;
+      if (field.value && String(field.value).trim()) continue;
+
+      const label = fieldLabel(field);
+      if (label && !seen.has(label)) {
+        seen.add(label);
+        labels.push(label);
+      }
+
+      if (labels.length >= 3) break;
+    }
+
+    return labels;
+  }
+
   /** Fecha o modal (descartando o formulário) para não deixar lixo na tela. */
   async function closeModal(modal, discard) {
     if (!modal || !document.contains(modal)) return;
@@ -704,22 +1098,22 @@
       queryFirst(APPLY_SEL.dismiss, modal);
 
     if (button) {
-      button.click();
-      await wait(CONFIG.applyStepDelayMs);
+      humanClick(button);
+      await humanPause(CONFIG.applyStepDelayMs);
 
       // O LinkedIn pede confirmação antes de descartar.
       const confirm = queryFirst(APPLY_SEL.discard);
       if (confirm && confirm !== button && isVisible(confirm)) {
-        confirm.click();
-        await wait(CONFIG.applyStepDelayMs);
+        humanClick(confirm);
+        await humanPause(CONFIG.applyStepDelayMs);
       }
     }
 
     if (document.contains(modal)) {
       const dismiss = queryFirst(APPLY_SEL.dismiss, modal) || queryFirst(APPLY_SEL.dismiss);
       if (dismiss) {
-        dismiss.click();
-        await wait(CONFIG.applyStepDelayMs);
+        humanClick(dismiss);
+        await humanPause(CONFIG.applyStepDelayMs);
       }
     }
   }
@@ -729,8 +1123,8 @@
     if (document.contains(modal) && looksSubmitted(modal)) {
       const done = queryFirst(APPLY_SEL.dismiss, modal) || queryFirst(APPLY_SEL.dismiss);
       if (done && isVisible(done)) {
-        done.click();
-        await wait(CONFIG.applyStepDelayMs);
+        humanClick(done);
+        await humanPause(CONFIG.applyStepDelayMs);
       }
     }
 
@@ -738,30 +1132,37 @@
     if (leftover) {
       const dismiss = queryFirst(APPLY_SEL.dismiss, leftover);
       if (dismiss && isVisible(dismiss)) {
-        dismiss.click();
-        await wait(CONFIG.applyStepDelayMs);
+        humanClick(dismiss);
+        await humanPause(CONFIG.applyStepDelayMs);
       }
     }
   }
 
   /**
    * Preenche e envia a candidatura simplificada da vaga aberta no painel.
-   * Devolve { status }, um destes:
+   * Devolve { status, missing?, steps?, error? }, com estes status:
    *   enviada   → candidatura confirmada pelo LinkedIn;
    *   externa   → botão manda para um site de fora (não automatizamos);
    *   sem_botao → a vaga não tem botão de candidatura;
    *   sem_modal → clicou e o formulário não abriu;
-   *   travada   → parou em um campo obrigatório que não sabemos preencher;
-   *   incompleta→ estourou o tempo/etapas do formulário;
-   *   cancelada → o usuário pediu para parar no meio.
+   *   travada   → parou em um campo obrigatório que não sabemos preencher
+   *               (`missing` traz os rótulos dos campos pendentes);
+   *   incompleta→ estourou o tempo/etapas do formulário (`steps` diz onde parou);
+   *   cancelada → o usuário pediu para parar no meio;
+   *   bloqueio  → o LinkedIn sinalizou limite de uso/verificação (`error`).
    */
   async function applyToJob() {
+    // Antes de qualquer coisa: será que a página está avisando de limite?
+    const blockedBefore = detectRateLimit();
+    if (blockedBefore) return { status: 'bloqueio', error: blockedBefore };
+
     const button = findApplyButton();
 
     if (!button) return { status: 'sem_botao' };
     if (!isEasyApply(button)) return { status: 'externa' };
 
-    button.click();
+    await humanPause(CONFIG.applyPreClickMs); // respira antes de abrir o formulário
+    humanClick(button);
 
     const modal = await waitForModal(CONFIG.applyModalTimeoutMs);
     if (!modal) return { status: 'sem_modal' };
@@ -772,38 +1173,47 @@
     while (Date.now() < deadline && steps < CONFIG.applyMaxSteps) {
       if (state.abort) {
         await closeModal(modal, true);
-        return { status: 'cancelada' };
+        return { status: 'cancelada', steps };
       }
 
-      await wait(CONFIG.applyStepDelayMs);
+      await humanPause(CONFIG.applyStepDelayMs);
+
+      const blocked = detectRateLimit();
+      if (blocked) {
+        await closeModal(modal, true);
+        return { status: 'bloqueio', error: blocked, steps };
+      }
 
       if (!document.contains(modal) || looksSubmitted(modal)) {
         await finishApply(modal);
-        return { status: 'enviada' };
+        return { status: 'enviada', steps };
       }
 
       const action = getModalAction(modal);
 
       // Sem botão principal: campo obrigatório pendente (telefone, pergunta…).
       if (!action) {
+        const missing = describeBlocker(modal);
         await closeModal(modal, true);
-        return { status: 'travada' };
+        return { status: 'travada', missing, steps };
       }
 
-      action.button.click();
+      humanClick(action.button);
       steps += 1;
 
       if (action.kind === 'submit') {
-        await wait(CONFIG.applyStepDelayMs * 2);
+        await humanPause(CONFIG.applyStepDelayMs * 2);
+
         if (!document.contains(modal) || looksSubmitted(modal)) {
           await finishApply(modal);
-          return { status: 'enviada' };
+          return { status: 'enviada', steps };
         }
       }
     }
 
+    const missing = describeBlocker(modal);
     await closeModal(modal, true);
-    return { status: 'incompleta' };
+    return { status: 'incompleta', missing, steps };
   }
 
   /** Conta a candidatura no termo e grava a fila (sobrevive a reloads). */
@@ -819,15 +1229,83 @@
     await saveRun(next);
   }
 
+  /**
+   * Contador da pausa longa. Vive na fila (e não só na memória) porque cada
+   * termo é uma navegação nova: sem isso o ritmo humano nunca "cansaria".
+   */
+  function setSinceBreak(value) {
+    state.sinceBreak = Math.max(0, Number(value) || 0);
+
+    if (state.run && state.run.running) {
+      state.run = Object.assign({}, state.run, { sinceBreak: state.sinceBreak });
+      scheduleRunPersist();
+    }
+
+    return state.sinceBreak;
+  }
+
+  /**
+   * Motivo legível da não candidatura — é o texto que vai para o relatório.
+   * Junta o motivo padrão do desfecho com os detalhes que só a página sabe
+   * (campos que faltaram, etapa em que travou…).
+   */
+  function applyReasonText(result) {
+    const outcome = APPLY_OUTCOMES[result.status] || {};
+    const parts = [];
+
+    if (outcome.reason) parts.push(outcome.reason);
+
+    if (result.status === 'incompleta' && result.steps) {
+      parts.push('Parou na etapa ' + result.steps + ' de ' + CONFIG.applyMaxSteps + '.');
+    }
+
+    if (result.missing && result.missing.length) {
+      parts.push('Campos não preenchidos: ' + result.missing.slice(0, 3).join(', ') + '.');
+    }
+
+    if (result.error) parts.push('Detalhe: ' + String(result.error).slice(0, 160) + '.');
+
+    return parts.join(' ').trim();
+  }
+
+  /**
+   * Marca a vaga como "não candidatada (ainda)", com o motivo, sem gastar
+   * tentativa: a próxima passada tenta de novo. Os dados do card (título,
+   * empresa, link) entram junto, para a linha do relatório fazer sentido.
+   */
+  function markPending(id, reason, card) {
+    const job = state.jobs[id] || {};
+    if (job.appliedAt) return;
+
+    const meta = card ? readCardMeta(card) : {};
+
+    upsertJob(
+      id,
+      Object.assign(meta, {
+        applyStatus: APPLY_PENDING,
+        applyReason: reason || '',
+        applyAttempts: job.applyAttempts || 0,
+      })
+    );
+  }
+
   /** Guarda o resultado na vaga e, se enviou, lança na cota. */
   async function recordApplyResult(id, result) {
     const current = state.jobs[id] || {};
     const attempts = Math.min(CONFIG.applyMaxAttempts, (current.applyAttempts || 0) + 1);
-    const patch = { applyStatus: result.status, applyAttempts: attempts };
+    const now = new Date().toISOString();
+
+    const patch = {
+      applyStatus: result.status,
+      applyAttempts: attempts,
+      applyReason: applyReasonText(result),
+      applyTriedAt: now,
+    };
 
     if (result.status === 'enviada') {
-      patch.appliedAt = new Date().toISOString();
+      patch.appliedAt = now;
       state.apps.push(Date.now());
+      setSinceBreak(state.sinceBreak + 1);
       await persistApps();
       await bumpApplied();
     } else if (result.status === 'externa') {
@@ -836,6 +1314,13 @@
     }
 
     upsertJob(id, patch);
+
+    // Quem foi candidatado não guarda motivo antigo (de uma tentativa anterior).
+    if (result.status === 'enviada' && state.jobs[id]) {
+      state.jobs[id].applyReason = '';
+      schedulePersist();
+    }
+
     broadcastProgress();
   }
 
@@ -904,6 +1389,7 @@
     }
 
     state.run = run;
+    state.sinceBreak = Math.max(0, Number(run.sinceBreak) || 0);
     broadcastProgress();
     return true;
   }
@@ -960,19 +1446,31 @@
   function windowState() {
     const schedule = (state.settings || parseSettings(null)).schedule;
 
-    if (!schedule.enabled) return { open: true, resumeAt: null };
-    if (isWithinSchedule(new Date(), schedule)) return { open: true, resumeAt: null };
+    if (!schedule.enabled) return { open: true, resumeAt: null, reason: 'schedule' };
+    if (isWithinSchedule(new Date(), schedule)) return { open: true, resumeAt: null, reason: 'schedule' };
 
     const next = nextScheduleStart(new Date(), schedule);
-    return { open: false, resumeAt: next ? next.getTime() : null };
+    return { open: false, resumeAt: next ? next.getTime() : null, reason: 'schedule' };
   }
 
   /**
-   * Mantém a fila viva, porém pausada, até o horário liberar (cota estourada ou
-   * janela do agendador fechada). O service worker também cutuca a aba nesse
-   * horário, então a retomada acontece mesmo se esta página for recarregada.
+   * Podemos rodar agora? Considera a janela do agendador e o período de descanso
+   * imposto pela proteção da conta (quando o LinkedIn sinaliza limite de uso).
    */
-  async function pauseRunUntil(resumeAt) {
+  function gateState() {
+    const guard = guardUntil();
+    if (guard) return { open: false, resumeAt: guard, reason: 'guard' };
+
+    return windowState();
+  }
+
+  /**
+   * Mantém a fila viva, porém pausada, até o horário liberar (cota estourada,
+   * janela do agendador fechada, descanso de proteção ou vez do usuário). O
+   * service worker também cutuca a aba nesse horário, então a retomada acontece
+   * mesmo se esta página for recarregada.
+   */
+  async function pauseRunUntil(resumeAt, reason) {
     const run = await getRun();
     const when =
       Number.isFinite(resumeAt) && resumeAt > Date.now() ? resumeAt : Date.now() + 60000;
@@ -983,7 +1481,12 @@
       return;
     }
 
-    const next = Object.assign({}, run, { paused: true, resumeAt: when });
+    const next = Object.assign({}, run, {
+      paused: true,
+      resumeAt: when,
+      pauseReason: reason || 'cota',
+    });
+
     state.run = next;
     await saveRun(next);
     broadcastProgress();
@@ -1012,7 +1515,12 @@
       return;
     }
 
-    const next = Object.assign({}, run, { paused: false, resumeAt: null });
+    const next = Object.assign({}, run, {
+      paused: false,
+      resumeAt: null,
+      pauseReason: null,
+    });
+
     state.run = next;
     await saveRun(next);
     broadcastProgress();
@@ -1052,6 +1560,17 @@
     return (job.applyAttempts || 0) < CONFIG.applyMaxAttempts;
   }
 
+  /**
+   * Motivos usados no relatório quando a vaga fica sem candidatura porque a
+   * varredura parou antes de chegar nela.
+   */
+  const STOP_REASONS = {
+    quota: 'A cota de candidaturas estourou; esta vaga ficou para a próxima passada.',
+    term_done: 'A cota de candidaturas deste termo acabou; esta vaga ficou para a próxima passada.',
+    scan_cap: 'A varredura deste termo atingiu o teto de vagas; esta vaga ficou para a próxima passada.',
+    usuario: 'Você estava usando o navegador; a vaga ficou para a próxima passada.',
+  };
+
   /** Por que paramos o termo atual (ou null para continuar varrendo). */
   function stopReason(settings) {
     const run = state.run || {};
@@ -1073,7 +1592,7 @@
   async function processCard(card, id, settings) {
     bumpVisited();
     await captureForCard(card, id);
-    await wait(CONFIG.clickDelayMs);
+    await humanPause(CONFIG.clickDelayMs);
 
     if (state.abort || !settings.apply.enabled) return;
 
@@ -1082,20 +1601,58 @@
     if ((job.applyAttempts || 0) >= CONFIG.applyMaxAttempts) return;
     if (!quotaNow().ok) return;
 
-    // Intervalo variável entre candidaturas (evita rajada robotizada).
-    await wait(randomDelay(settings.apply.minDelayMs, settings.apply.maxDelayMs));
+    // Você está usando a página agora? Então esperamos (sem roubar o seu clique).
+    if (!(await waitForUserIdle(settings))) {
+      markPending(id, STOP_REASONS.usuario, card);
+      state.userBusy = true;
+      return;
+    }
+
     if (state.abort) return;
 
-    await recordApplyResult(id, await applyToJob());
+    // Finge que leu a vaga antes de decidir se candidatar.
+    await readingPause(settings);
+    if (state.abort) return;
+
+    // Intervalo variável entre candidaturas (evita rajada robotizada).
+    await humanPause(randomDelay(settings.apply.minDelayMs, settings.apply.maxDelayMs), 0.25);
+    if (state.abort) return;
+
+    // A cada N candidaturas, uma pausa longa de verdade.
+    await longBreak(settings);
+    if (state.abort) return;
+
+    // Antes de mexer em qualquer coisa: será que o LinkedIn já está barrando?
+    const blocked = detectRateLimit();
+
+    if (blocked) {
+      await recordApplyResult(id, { status: 'bloqueio', error: blocked });
+      await tripGuard(blocked);
+      return;
+    }
+
+    const result = await applyToJob();
+    await recordApplyResult(id, result);
+
+    if (result.status === 'bloqueio') {
+      await tripGuard(result.error);
+      return;
+    }
+
+    // Candidatura enviada e, mesmo assim, aviso de limite: descansamos.
+    const afterBlock = result.status === 'enviada' ? detectRateLimit() : null;
+
+    if (afterBlock) await tripGuard(afterBlock);
   }
 
   async function startScan() {
     if (state.scanning) return;
 
-    // Fora da janela do agendador não varremos: a fila espera o horário abrir.
-    const gate = windowState();
+    // Fora da janela do agendador (ou no descanso de proteção) não varremos: a
+    // fila fica parada e volta sozinha quando o horário abrir.
+    const gate = gateState();
     if (!gate.open) {
-      await pauseRunUntil(gate.resumeAt);
+      await pauseRunUntil(gate.resumeAt, gate.reason);
       return;
     }
 
@@ -1107,7 +1664,7 @@
     const settings = state.settings || (await getSettings());
     state.settings = settings;
 
-    let stop = null; // 'quota' | 'term_done' | 'scan_cap'
+    let stop = null; // 'quota' | 'term_done' | 'scan_cap' | 'usuario'
     let round = 0;
 
     try {
@@ -1117,16 +1674,40 @@
         for (const card of getCards()) {
           if (state.abort) break;
 
+          // Antes de mexer na página: sinal de bloqueio do LinkedIn?
+          const blocked = detectRateLimit();
+
+          if (blocked) {
+            await tripGuard(blocked);
+            break;
+          }
+
           const id = getJobId(card);
           if (!id || !needsWork(id, settings)) continue;
 
           stop = stopReason(settings);
-          if (stop) break;
+          if (stop) {
+            if (settings.apply.enabled) markPending(id, STOP_REASONS[stop], card);
+            break;
+          }
 
           await processCard(card, id, settings);
+
+          // Você assumiu a página: paramos de mexer nela e descansamos um pouco.
+          if (state.userBusy) {
+            state.userBusy = false;
+            stop = 'usuario';
+            break;
+          }
         }
 
         if (state.abort || stop) break;
+
+        // Se você está mexendo na página agora, deixamos a rolagem em paz.
+        if (!(await waitForUserIdle(settings))) {
+          stop = 'usuario';
+          break;
+        }
 
         const progressed = await scrollList();
         if (!progressed) break; // nada novo carregou: fim da lista
@@ -1141,12 +1722,20 @@
       broadcastProgress();
 
       if (!aborted) {
-        // Cota estourada: pausa e volta sozinho. Caso contrário: próximo termo.
+        // Cota estourada (ou vez do usuário): pausa e volta sozinho. Nos demais
+        // casos, segue para o próximo termo da fila.
         if (stop === 'quota') {
-          await pauseRunUntil(quotaNow().resumeAt);
+          await pauseRunUntil(quotaNow().resumeAt, 'cota');
+        } else if (stop === 'usuario') {
+          await pauseRunUntil(Date.now() + CONFIG.userBusyPauseMs, 'usuario');
         } else {
           await advanceRun();
         }
+      } else if (state.guardStopped) {
+        // O LinkedIn sinalizou limite de uso: a fila fica pausada e volta só
+        // depois do descanso (a proteção também vale para o agendador).
+        state.guardStopped = false;
+        await pauseRunUntil(guardUntil(), 'guard');
       }
     }
   }
@@ -1197,6 +1786,7 @@
         }
         if (message.run) {
           state.run = message.run;
+          state.sinceBreak = Math.max(0, Number(message.run.sinceBreak) || 0);
           clearResumeTimer();
         }
         sendResponse({ ok: true, started: true });
@@ -1242,6 +1832,8 @@
     await loadState();
     state.settings = await getSettings();
     await loadApps();
+    await loadGuard();
+    watchUserActivity();
     startObserver();
     broadcastProgress();
 

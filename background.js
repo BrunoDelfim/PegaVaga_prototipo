@@ -8,6 +8,8 @@
  *   - dentro da janela de horário configurada, abre a busca do LinkedIn e
  *     deixa o content.js varrer termo por termo;
  *   - fora da janela, encerra a execução que estiver rodando;
+ *   - respeita o período de descanso (proteção da conta) quando o LinkedIn
+ *     sinaliza limite de uso: nem inicia, nem retoma nada enquanto ele durar;
  *   - quando uma cota (hora/24h/dia) libera espaço, cutuca a aba para o
  *     content.js retomar a varredura sozinho.
  *
@@ -58,12 +60,21 @@ syncAlarm();
 /* -------------------------------------------------------------------------- */
 
 async function readState() {
-  const data = await chrome.storage.local.get([STORAGE.settings, STORAGE.run, STORAGE.apps]);
+  const data = await chrome.storage.local.get([
+    STORAGE.settings,
+    STORAGE.run,
+    STORAGE.apps,
+    STORAGE.guard,
+  ]);
+
+  const guard = data[STORAGE.guard] || null;
 
   return {
     settings: SHARED.parseSettings(data[STORAGE.settings]),
     run: data[STORAGE.run] || null,
     apps: Array.isArray(data[STORAGE.apps]) ? data[STORAGE.apps] : [],
+    // Proteção da conta: enquanto durar, não automatizamos nada.
+    guard: guard && guard.blockedUntil > Date.now() ? guard : null,
   };
 }
 
@@ -85,7 +96,8 @@ async function syncAlarm() {
     return;
   }
 
-  const needed = state.settings.schedule.enabled || Boolean(state.run && state.run.paused);
+  const needed =
+    state.settings.schedule.enabled || Boolean(state.run && state.run.paused) || Boolean(state.guard);
   const existing = await chrome.alarms.get(ALARM_NAME).catch(() => null);
 
   if (needed && !existing) {
@@ -114,9 +126,20 @@ async function tick() {
     return;
   }
 
-  const { settings, run } = state;
+  const { settings, run, guard } = state;
   const now = Date.now();
   const inWindow = SHARED.isWithinSchedule(new Date(now), settings.schedule);
+
+  // 0) Proteção da conta ligada (o LinkedIn sinalizou limite de uso): nada de
+  //    automação enquanto durar o descanso, nem retomada por cota.
+  if (guard) {
+    if (run && run.running && !run.paused) {
+      await pauseRun(run, guard.blockedUntil, 'guard');
+    }
+
+    await syncAlarm();
+    return;
+  }
 
   // 1) Passou do horário: encerra a execução em andamento (a pausada espera).
   if (run && run.running && !run.paused && settings.schedule.enabled && !inWindow) {
@@ -140,11 +163,22 @@ async function tick() {
     if (quota.ok) {
       await nudge(run);
     } else if (quota.resumeAt && quota.resumeAt !== run.resumeAt) {
-      await writeRun(Object.assign({}, run, { resumeAt: quota.resumeAt }));
+      await writeRun(Object.assign({}, run, { resumeAt: quota.resumeAt, pauseReason: 'cota' }));
     }
   }
 
   await syncAlarm();
+}
+
+/** Guarda a fila pausada até `resumeAt`, explicando o motivo. */
+function pauseRun(run, resumeAt, reason) {
+  return writeRun(
+    Object.assign({}, run, {
+      paused: true,
+      resumeAt: Number.isFinite(resumeAt) ? resumeAt : Date.now() + 60000,
+      pauseReason: reason || 'cota',
+    })
+  );
 }
 
 function canAutoStart(settings, now) {

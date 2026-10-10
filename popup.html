@@ -248,6 +248,17 @@
         color: var(--muted);
       }
 
+      .counter .summary {
+        display: block;
+        margin-top: 4px;
+        font-size: 10px;
+        color: var(--warn);
+      }
+
+      #guard-info {
+        margin: 0 0 12px;
+      }
+
       .group {
         margin-top: 12px;
         padding-top: 10px;
@@ -340,9 +351,12 @@
           <span class="label">&nbsp;vagas capturadas</span>
           <span class="lastrun" id="last-run">Nenhuma varredura realizada</span>
           <span class="runinfo" id="run-info" hidden></span>
+          <span class="summary" id="apply-summary"></span>
           <span class="quota" id="quota-info"></span>
         </div>
       </div>
+
+      <div class="status warn" id="guard-info" hidden></div>
 
       <details class="settings" id="settings">
         <summary>⚙ Busca, candidaturas e agendador</summary>
@@ -407,6 +421,51 @@
         </div>
 
         <div class="group">
+          <strong>Furtividade e segurança</strong>
+
+          <label class="inline">
+            <input type="checkbox" id="apply-respect-user" />
+            <span>
+              Ceder a vez para mim: enquanto eu mexo na página, a automação espera em
+              vez de clicar ou rolar por cima
+            </span>
+          </label>
+
+          <label class="inline">
+            <input type="checkbox" id="apply-breaks" />
+            <span>Fazer pausas longas de tempos em tempos (ritmo de gente)</span>
+          </label>
+
+          <div class="grid2">
+            <div>
+              <label for="apply-delay-min">Intervalo mínimo (s)</label>
+              <input id="apply-delay-min" type="number" min="1" max="600" step="1" />
+            </div>
+            <div>
+              <label for="apply-delay-max">Intervalo máximo (s)</label>
+              <input id="apply-delay-max" type="number" min="1" max="600" step="1" />
+            </div>
+          </div>
+
+          <div class="grid2">
+            <div>
+              <label for="apply-break-every">Vagas entre pausas</label>
+              <input id="apply-break-every" type="number" min="1" max="100" step="1" />
+            </div>
+            <div>
+              <label for="apply-break-seconds">Duração da pausa (s)</label>
+              <input id="apply-break-seconds" type="number" min="10" max="600" step="5" />
+            </div>
+          </div>
+
+          <p class="hint">
+            Os intervalos variam sozinhos (±30%), há pausas de "leitura" da vaga e, se
+            o LinkedIn pedir verificação ou avisar de limite de uso, o PegaVaga para
+            tudo por 1 h para proteger a sua conta.
+          </p>
+        </div>
+
+        <div class="group">
           <strong>Agendador</strong>
 
           <label class="inline">
@@ -450,12 +509,16 @@
       <button id="btn-start" type="button">▶ Iniciar Busca e Varredura</button>
       <button id="btn-stop" type="button" disabled>■ Parar Varredura</button>
       <button id="btn-export" type="button">⬇ Exportar para Excel (CSV)</button>
+      <button id="btn-export-failures" type="button">
+        ⚠ Exportar não candidatadas (CSV)
+      </button>
       <button id="btn-clear" type="button">🗑 Limpar vagas capturadas</button>
 
       <div class="status" id="status">
         Clique em iniciar: o PegaVaga abre a busca do LinkedIn com os seus termos,
         varre cada um e, se a candidatura automática estiver ligada, candidata-se
-        respeitando as cotas de hora/24 h/dia e o agendador.
+        respeitando as cotas de hora/24 h/dia, o agendador e o ritmo humano. No CSV
+        sai também o motivo de cada vaga que não deu para candidatar.
       </div>
     </main>
 

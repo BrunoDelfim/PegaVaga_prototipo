@@ -4,16 +4,17 @@ Extensão para automatizar o rastreamento **e as candidaturas** no LinkedIn:
 cadastra uma **URL de busca (ou perfil)** e uma lista de **termos**, varre cada
 termo automaticamente, captura **título, empresa, link e descrição completa** de
 cada vaga, **candidata-se sozinho** pela Candidatura Simplificada respeitando
-**cotas por hora, 24 h e dia**, e ainda pode **começar e parar nos horários que
-você escolher** (agendador). No fim, exporta tudo em um arquivo **CSV** (abre
-direto no Excel).
+**cotas por hora, 24 h e dia**, pode **começar e parar nos horários que você
+escolher** (agendador), **imita o ritmo humano** (e cede a vez para você quando
+está usando o navegador) e exporta tudo em **CSV** — incluindo um relatório das
+vagas que **não** foi possível candidatar, com o **motivo** de cada uma.
 
 ## Estrutura
 
 ```
 pegavaga_chrome/
 ├── manifest.json   # Manifest V3: permissões, service worker e content script
-├── shared.js       # Constantes e utilitários puros (cotas e janelas de horário)
+├── shared.js       # Constantes e utilitários puros (cotas, janelas, ritmo e motivos)
 ├── background.js   # Service worker: agendador (chrome.alarms)
 ├── popup.html      # Interface (configuração, cotas, agendador + contador)
 ├── popup.js        # Fila de termos, orquestração da aba e geração do CSV
@@ -56,7 +57,23 @@ pegavaga_chrome/
    As cotas são **dinâmicas**: quando uma delas estoura, a execução **pausa** e
    **volta sozinha** no instante em que a próxima vaga “libera” (a candidatura
    mais antiga sair da janela, ou a virada do dia).
-4. Em **Agendador** (opcional), ligue
+4. Em **Furtividade e segurança** (recomendado deixar ligado):
+   - **Ceder a vez para mim** — enquanto você mexe na página (mouse, teclado,
+     rolagem), a automação **espera**; se você continuar usando, ela descansa
+     alguns minutos e volta sozinha depois. Ela nunca rouba o seu clique nem
+     empurra a rolagem por cima da sua.
+   - **Pausas longas de tempos em tempos** — a cada *N* candidaturas a extensão
+     descansa (padrão: 10 vagas → ~90 s), como uma pessoa faria.
+   - **Intervalo mínimo/máximo (s)** — espera entre uma candidatura e outra
+     (padrão 4–12 s). Todo intervalo recebe uma variação de ±30%, e antes de
+     cada candidatura há uma pausa de “leitura” da vaga (1,5–4,5 s, às vezes
+     mais).
+   - **Vagas entre pausas / Duração da pausa (s)** — o tamanho do descanso.
+   - Se o LinkedIn mostrar **checkpoint, verificação de segurança ou aviso de
+     limite de uso**, a extensão **para tudo por 1 hora** (nenhuma candidatura,
+     nenhuma varredura, nem pelo agendador) e retoma sozinha depois. O aviso
+     aparece no topo do pop-up em laranja.
+5. Em **Agendador** (opcional), ligue
    **“Iniciar e parar sozinho nos horários abaixo”** e escolha:
    - **Começa às / Para às** — aceita janelas que cruzam a meia-noite
      (ex.: `22:00 → 06:00`);
@@ -68,7 +85,7 @@ pegavaga_chrome/
    Aqui a extensão **para de verdade** quando a janela fecha (a fila é
    descartada) e **recomeça do primeiro termo** quando a janela abre de novo.
    Vagas já candidatadas são puladas, então recomeçar não repete candidaturas.
-5. Clique em **▶ Iniciar Busca e Varredura**:
+6. Clique em **▶ Iniciar Busca e Varredura**:
    - Se a aba ativa **não** for uma página de vagas do LinkedIn, a extensão
      **abre uma nova aba** (ou navega a aba atual do LinkedIn) já na busca do
      primeiro termo;
@@ -77,15 +94,22 @@ pegavaga_chrome/
      **Candidatura Simplificada**, preenche/avança o formulário e **envia**;
    - Ao terminar um termo (lista no fim, teto de vagas ou cota do termo), ele
      **navega sozinho para o próximo** termo da fila, até acabarem os termos.
-6. Acompanhe no pop-up:
-   - `N vagas capturadas`;
+7. Acompanhe no pop-up:
+   - `N vagas capturadas` e o resumo das candidaturas, ex.:
+     `12 candidatada(s) · 8 não candidatada(s) · 3 na fila: 4 travada em campo obrigatório · 2 externa (site da empresa)`;
    - a linha `Termo X de N: "…" · K candidatura(s) neste termo`;
    - a linha de cotas, ex.:
-     `Candidaturas — 2/10 na hora · 5/40 em 24 h · 8 hoje · 3/10 neste termo`;
+     `Candidaturas — 2/6 na hora · 5/25 em 24 h · 8 hoje · 3/8 neste termo`;
    - a linha do agendador, ex.:
      `Janela: Seg, Ter, Qua, Qui, Sex, 08:00 → 18:00 · próxima: seg. 08:00.`
-7. Ao terminar (ou quando quiser), clique em **⬇ Exportar para Excel (CSV)**.
-8. **■ Parar Varredura** interrompe tudo na hora: encerra a fila atual, cancela
+     (quando a fila está pausada, ela também diz **por quê**: cota, janela,
+     proteção do LinkedIn ou “você estava usando o navegador”).
+8. Ao terminar (ou quando quiser), exporte:
+   - **⬇ Exportar para Excel (CSV)** — todas as vagas capturadas, com o status e
+     o **motivo** das que não foram candidatadas;
+   - **⚠ Exportar não candidatadas (CSV)** — um relatório enxuto, só com as vagas
+     que **não** foi possível candidatar (e o porquê de cada uma).
+9. **■ Parar Varredura** interrompe tudo na hora: encerra a fila atual, cancela
    qualquer retomada agendada e fecha o formulário de candidatura aberto.
 
 > Sem termos cadastrados, o comportamento é o antigo: a extensão varre a lista
@@ -101,32 +125,67 @@ pegavaga_chrome/
 - **Ele não inventa respostas**: se parar em um campo obrigatório que não está
   preenchido no seu perfil (telefone, perguntas de triagem, currículo), o
   formulário é **descartado** e a vaga fica marcada como
-  `Travada em campo obrigatório` — resolva esses casos na mão.
-- Entre uma candidatura e outra há uma espera aleatória de 4 a 12 s.
+  `Travada em campo obrigatório` — e o motivo no relatório diz **qual campo**
+  ficou pendente (ex.: “Campos não preenchidos: Telefone”). Resolva esses casos
+  na mão.
+- **Ritmo humano**: todo intervalo tem variação aleatória, o clique é precedido
+  de rolagem + passagem de mouse pelo elemento, há pausas de “leitura” da vaga,
+  pausas longas periódicas e a extensão **cede a vez** para você quando está
+  usando a página (mouse, teclado, rolagem).
+- **Proteção da conta**: se aparecer aviso de limite de uso, verificação de
+  segurança ou redirecionamento para `checkpoint`, a automação **para na hora**
+  (a fila fica pausada, não é descartada) e só volta depois de ~1 h de descanso.
 - Uma vaga **nunca** é candidatada duas vezes: o resultado fica gravado na vaga
-  (`Candidatado em` e `Status da candidatura`, que vão para o CSV).
+  (`Candidatado em`, `Status da candidatura` e `Motivo da não candidatura`, que
+  vão para o CSV).
 - Se o **Parar Varredura** for clicado no meio de um formulário, ele é
   descartado (`Cancelada`).
+- Vagas que a varredura **não chegou a tentar** (cota estourada, teto de vagas,
+  janela fechada, você usando a página) ficam com o status
+  `Adiada (sem cota ou fora do horário)` e o motivo — a próxima passada tenta de
+  novo, sem gastar tentativa.
 
 > **Use por sua conta e risco.** Automação de candidaturas é uma área cinzenta
 > do LinkedIn: a extensão age na sua sessão, com os seus dados, e o envio é
 > definitivo. Comece com cotas baixas (por exemplo 5/h, 20/dia) e acompanhe as
 > primeiras execuções antes de deixar rodando sozinho.
 
-### Arquivo gerado
+### Arquivos gerados
 
-- Nome: `pegavaga_AAAA-MM-DD_HH-MM-SS.csv`
+**CSV completo** — nome `pegavaga_AAAA-MM-DD_HH-MM-SS.csv`:
+
 - Colunas: `ID`, `Titulo`, `Empresa`, `Link`, `Descricao`, `Capturado em`,
-  `Termo`, `Status da candidatura`, `Candidatado em`
+  `Termo`, `Status da candidatura`, `Motivo da nao candidatura`, `Tentativas`,
+  `Candidatado em`
 - Separador: `;` (padrão do Excel pt-BR)
 - Codificação: UTF-8 com BOM (acentos corretos no Excel)
 - Campos sempre entre aspas, com aspas internas duplicadas e quebras de linha
   preservadas dentro do campo `Descricao`.
+- `Motivo da nao candidatura` fica **vazio** quando a candidatura foi enviada.
 
 Valores possíveis de `Status da candidatura`: `Enviada`,
 `Externa (site da empresa)`, `Sem botão de candidatura`, `Formulário não abriu`,
-`Travada em campo obrigatório`, `Formulário incompleto`, `Cancelada`
-(vazio = a vaga ainda não foi tentada).
+`Travada em campo obrigatório`, `Formulário incompleto`, `Interrompida (Parar)`,
+`Parada por proteção do LinkedIn`, `Erro na automação`,
+`Adiada (sem cota ou fora do horário)` e `Não tentada`.
+
+Exemplos de motivo gravado:
+
+| Status                             | Motivo (resumo)                                                                 |
+| ---------------------------------- | ------------------------------------------------------------------------------- |
+| `Externa (site da empresa)`        | A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa.      |
+| `Sem botão de candidatura`         | A página da vaga não oferece botão de candidatura.                               |
+| `Travada em campo obrigatório`     | …+ `Campos não preenchidos: Telefone, Pergunta: você autoriza…`                  |
+| `Formulário incompleto`            | …+ `Parou na etapa 3 de 15.`                                                     |
+| `Parada por proteção do LinkedIn`  | O LinkedIn pediu verificação ou limite de uso (a automação descansou 1 h).        |
+| `Adiada (sem cota ou fora do…)`    | A cota de candidaturas estourou; esta vaga ficou para a próxima passada.          |
+| `Não tentada`                      | Ainda não chegou a vez desta vaga (teto de vagas por varredura).                 |
+
+**CSV das não candidatadas** — nome
+`pegavaga_nao_candidatadas_AAAA-MM-DD_HH-MM-SS.csv`, com colunas
+`ID`, `Titulo`, `Empresa`, `Link`, `Termo`, `Status`, `Motivo`,
+`Ultima tentativa`. Só entram as vagas que **não** foram candidatadas (as
+definitivas e as que ficaram na fila).
 
 ## Permissões utilizadas
 
@@ -147,17 +206,24 @@ via `Blob` + `<a download>` gerados no próprio pop-up.
 
 | Chave                  | Conteúdo                                                        |
 | ---------------------- | -------------------------------------------------------------- |
-| `pegavaga_settings`    | `{ baseUrl, location, terms[], apply{…}, schedule{…} }`.         |
-| `pegavaga_run`         | Fila atual: `{ running, paused, resumeAt, index, term, terms[], urls[], appliedInTerm, visitedInTerm, appliedTotal, tabId, source }`. |
-| `pegavaga_jobs`        | `{ [jobId]: { id, title, company, link, term, description, applyStatus, applyAttempts, appliedAt, capturedAt } }`. |
+| `pegavaga_settings`    | `{ baseUrl, location, terms[], apply{…}, schedule{…} }` — inclui as cotas, o ritmo humano (`minDelayMs`, `maxDelayMs`, `readMinMs`, `readMaxMs`, `respectUserActivity`, `breaksEnabled`, `breakEvery`, `breakMs`) e o agendador. |
+| `pegavaga_run`         | Fila atual: `{ running, paused, resumeAt, pauseReason, index, term, terms[], urls[], appliedInTerm, visitedInTerm, appliedTotal, sinceBreak, tabId, source }`. |
+| `pegavaga_jobs`        | `{ [jobId]: { id, title, company, link, term, description, applyStatus, applyReason, applyAttempts, applyTriedAt, appliedAt, capturedAt } }`. |
 | `pegavaga_meta`        | `{ lastRun, count, pageUrl }`.                                  |
 | `pegavaga_apps`        | `[timestamp, …]` das candidaturas enviadas (base das cotas por hora/24 h/dia). |
+| `pegavaga_guard`       | `{ blockedUntil, reason, at }` — descanso imposto quando o LinkedIn sinaliza limite de uso/verificação. Enquanto vale, **nada** roda (nem o agendador). |
+
+`pauseReason` da fila diz por que ela está parada: `cota`, `guard`, `usuario`
+(vez para você) ou `schedule` (fora da janela do agendador).
 
 ## Agendador (background.js)
 
 - O service worker mantém **um alarme de 1 minuto** só quando faz sentido: com o
-  agendador ligado ou com alguma execução pausada. Fora disso, ele fica dormindo.
+  agendador ligado, com alguma execução pausada ou com a proteção da conta ativa.
+  Fora disso, ele fica dormindo.
 - A cada tick ele decide:
+  0. **proteção da conta ativa** → não inicia nada, não retoma nada e pausa
+     qualquer execução em andamento até o fim do descanso (`pauseReason: guard`);
   1. **janela fechada + execução rodando** → encerra a execução (remove a fila e
      manda `PEGAVAGA_STOP` para a aba);
   2. **janela aberta + nenhuma execução** (e “começar sozinho” ligado) → monta a
@@ -178,7 +244,7 @@ via `Blob` + `<a download>` gerados no próprio pop-up.
 | `PEGAVAGA_RESUME`       | worker → content | Sai da pausa por cota e retoma a fila.  |
 | `PEGAVAGA_PING`         | popup → content| Consulta se está varrendo.               |
 | `PEGAVAGA_CLEAR`        | popup → content| Zera o estado em memória e no storage.   |
-| `PEGAVAGA_PROGRESS`     | content → popup| Contador, cotas, pausa e o termo atual.  |
+| `PEGAVAGA_PROGRESS`     | content → popup| Contador, cotas, pausa (+ motivo), pausa longa e proteção da conta. |
 
 ## Observações importantes
 
@@ -192,13 +258,21 @@ via `Blob` + `<a download>` gerados no próprio pop-up.
   página a cada troca de termo. Fechar a aba ou usar **Parar Varredura** encerra
   a fila; uma pausa por cota sobrevive e volta no horário marcado.
 - Se cair em uma tela de login/checkpoint do LinkedIn, a fila é encerrada
-  automaticamente.
+  automaticamente (e, se o checkpoint for por excesso de uso, também entra em
+  descanso de 1 h antes de qualquer nova tentativa).
+- **Abas em segundo plano**: o Chrome estrangula timers de abas escondidas
+  (depois de ~5 min, para 1 execução por minuto). O PegaVaga continua
+  funcionando, mas devagar; por isso o agendador tem a opção **“Trazer a aba
+  para frente”**, e o alarme de 1 min do service worker serve de rede de
+  segurança para retomar sozinho.
 - **Limpar vagas capturadas** apaga o histórico de vagas, mas **não** apaga as
-  cotas (`pegavaga_apps`): elas existem para proteger a sua conta de uma rajada
-  de candidaturas.
+  cotas (`pegavaga_apps`) nem o descanso de proteção (`pegavaga_guard`): eles
+  existem para proteger a sua conta.
 - Se a extensão foi instalada com uma aba do LinkedIn já aberta, recarregue a
   página (F5) para o `content.js` ser injetado.
-- Use de forma responsável, respeitando os Termos de Uso do LinkedIn.
+- Comece com cotas baixas (por exemplo 6/h, 25/dia) e com as opções de
+  furtividade ligadas. Use de forma responsável, respeitando os Termos de Uso do
+  LinkedIn.
 
 
 
