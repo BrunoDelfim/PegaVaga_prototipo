@@ -4,7 +4,9 @@ Extensão para automatizar o rastreamento **e as candidaturas** no LinkedIn:
 cadastra uma **URL de busca (ou perfil)** e uma lista de **termos**, varre cada
 termo automaticamente, captura **título, empresa, link e descrição completa** de
 cada vaga, **candidata-se sozinho** pela Candidatura Simplificada respeitando
-**cotas por hora, 24 h e dia**, pode **começar e parar nos horários que você
+**cotas por hora, 24 h e dia** — respondendo as perguntas obrigatórias do
+formulário e fechando os popups de avaliação/pesquisa que o LinkedIn abre depois
+— pode **começar e parar nos horários que você
 escolher** (agendador), **imita o ritmo humano** (e cede a vez para você quando
 está usando o navegador) e exporta tudo em **CSV** — incluindo um relatório das
 vagas que **não** foi possível candidatar, com o **motivo** de cada uma.
@@ -57,6 +59,16 @@ pegavaga_chrome/
    - **Por dia (0 = sem limite)** — dia corrido, zera à meia-noite.
    - **Máx. vagas por termo** — teto de vagas *visitadas* por termo (trava de
      segurança para o script não varrer a lista para sempre).
+   - **Formulário (perguntas e popups do LinkedIn)** — o que fazer quando a
+     etapa pede uma resposta que o LinkedIn não tem:
+     - **Responder sozinho perguntas obrigatórias** — liga/desliga o
+       preenchimento automático de Sim/Não, listas e números;
+     - **Em Sim/Não, responder** — `Sim` (padrão) ou `Não`;
+     - **Número (anos, quantidade)** — resposta para campos numéricos (0–200);
+     - **Texto livre (ex.: cidade)** — resposta para campos de texto; **vazio**
+       (padrão) deixa a extensão não responder em vez de inventar.
+     Os popups de **avaliação/pesquisa** que o LinkedIn abre depois de
+     candidatar são fechados sozinhos, sempre, independentemente destas opções.
    As cotas são **dinâmicas**: quando uma delas estoura, a execução **pausa** e
    **volta sozinha** no instante em que a próxima vaga “libera” (a candidatura
    mais antiga sair da janela, ou a virada do dia).
@@ -143,14 +155,31 @@ pegavaga_chrome/
     duas tentativas), caso o botão estivesse só demorando a renderizar.
   - A vaga externa é **pulada de vez**: não gasta cota, não entra na pausa longa
     e não é mais visitada nas próximas varreduras (mas continua no relatório).
-- O script abre o formulário, clica em **Avançar / Revisar / Enviar
-  candidatura** até o LinkedIn confirmar o envio (ou até 15 etapas / 2 min).
-- **Ele não inventa respostas**: se parar em um campo obrigatório que não está
-  preenchido no seu perfil (telefone, perguntas de triagem, currículo), o
-  formulário é **descartado** e a vaga fica marcada como
-  `Travada em campo obrigatório` — e o motivo no relatório diz **qual campo**
-  ficou pendente (ex.: “Campos não preenchidos: Telefone”). Resolva esses casos
-  na mão.
+- O script abre o formulário, **espera cada etapa carregar de verdade** (duração
+  medida pelo conteúdo da tela, não por um tempo fixo — é isso que segura a
+  automação quando a internet está lenta), clica em
+  **Avançar / Revisar / Enviar candidatura** até o LinkedIn confirmar o envio
+  (ou até 15 etapas / 2 min).
+- **Popups do LinkedIn**: depois de candidatar, o LinkedIn costuma abrir um
+  popup de **avaliação/pesquisa** ou avisos (“salvar vaga”, “seguir empresa”,
+  “compartilhar”). O PegaVaga identifica esses dialogs (que **não** são o
+  formulário), fecha um a um — Fechar/Agora não/Não, obrigado/Entendi/Pular,
+  ou `Esc` — e segue para a próxima vaga. Sem isso o popup ficava na frente da
+  lista e a varredura empacava.
+- **Perguntas obrigatórias**: quando a etapa pede algo que o LinkedIn não
+  respondeu sozinho (Sim/Não, listas e números), a extensão responde com o que
+  está em **Formulário (perguntas e popups do LinkedIn)** — padrão: **Sim**,
+  número **1** e o texto livre configurado. Perguntas de texto livre ficam **em
+  branco** se você não preencher nada (a extensão não inventa respostas). Se
+  quiser respostas específicas por pergunta, grave em
+  `pegavaga_settings.apply.answers`, ex.:
+  `{ "autorização de trabalho": "Não", "pretensão salarial": "5000" }`.
+- **Ele não inventa o que não sabe**: se mesmo respondendo o possível o
+  formulário parar numa pergunta que não dá para preencher (currículo anexo,
+  telefone vazio, pergunta sem opção), ele é **descartado** e a vaga fica
+  marcada como `Travada em campo obrigatório` — o motivo no relatório diz
+  **qual campo** ficou pendente e **o que já foi respondido**
+  (ex.: “Campos não preenchidos: Telefone. Respondi sozinho: Sim.”).
 - **Ritmo humano**: todo intervalo tem variação aleatória, o clique é precedido
   de rolagem + passagem de mouse pelo elemento, há pausas de “leitura” da vaga,
   pausas longas periódicas e a extensão **cede a vez** para você quando está
@@ -200,7 +229,7 @@ Exemplos de motivo gravado:
 | `Externa (site da empresa)`        | A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então ela é pulada. `Botão "Candidatar-se no site da empresa", que aponta para careers.acme.com.` |
 | `Botão de candidatura não reconhecido` | Não identifiquei a Candidatura Simplificada nesta vaga; para não sair do LinkedIn, não cliquei. |
 | `Sem botão de candidatura`         | A página da vaga não oferece botão de candidatura.                               |
-| `Travada em campo obrigatório`     | …+ `Campos não preenchidos: Telefone, Pergunta: você autoriza…`                  |
+| `Travada em campo obrigatório`     | …+ `Campos não preenchidos: Telefone. Respondi sozinho: Sim.`                    |
 | `Formulário incompleto`            | …+ `Parou na etapa 3 de 15.`                                                     |
 | `Parada por proteção do LinkedIn`  | O LinkedIn pediu verificação ou limite de uso (a automação descansou 1 h).        |
 | `Adiada (sem cota ou fora do…)`    | A cota de candidaturas estourou; esta vaga ficou para a próxima passada.          |
@@ -231,7 +260,7 @@ via `Blob` + `<a download>` gerados no próprio pop-up.
 
 | Chave                  | Conteúdo                                                        |
 | ---------------------- | -------------------------------------------------------------- |
-| `pegavaga_settings`    | `{ baseUrl, location, terms[], apply{…}, schedule{…} }` — inclui as cotas, o ritmo humano (`minDelayMs`, `maxDelayMs`, `readMinMs`, `readMaxMs`, `respectUserActivity`, `breaksEnabled`, `breakEvery`, `breakMs`) e o agendador. |
+| `pegavaga_settings`    | `{ baseUrl, location, terms[], apply{…}, schedule{…} }` — inclui as cotas, o ritmo humano (`minDelayMs`, `maxDelayMs`, `readMinMs`, `readMaxMs`, `respectUserActivity`, `breaksEnabled`, `breakEvery`, `breakMs`), as respostas do formulário (`fillRequired`, `answerYes`, `answerNumber`, `answerText`, `answers`) e o agendador. |
 | `pegavaga_run`         | Fila atual: `{ running, paused, resumeAt, pauseReason, index, term, terms[], urls[], appliedInTerm, visitedInTerm, appliedTotal, sinceBreak, tabId, source }`. |
 | `pegavaga_jobs`        | `{ [jobId]: { id, title, company, link, term, description, applyStatus, applyReason, applyAttempts, applyTriedAt, appliedAt, capturedAt } }`. |
 | `pegavaga_meta`        | `{ lastRun, count, pageUrl }`.                                  |

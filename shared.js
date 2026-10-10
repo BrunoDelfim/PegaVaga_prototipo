@@ -59,6 +59,11 @@ globalThis.PegaVagaShared = (() => {
       breaksEnabled: true, // pausas longas periódicas entre candidaturas
       breakEvery: 10, // candidaturas entre uma pausa longa e outra
       breakMs: 90000, // duração base da pausa longa
+      fillRequired: true, // responde sozinho perguntas obrigatórias do formulário
+      answerYes: true, // resposta padrão em perguntas de Sim/Não
+      answerNumber: 1, // resposta padrão em campo numérico (anos, quantidade…)
+      answerText: '', // resposta padrão em texto livre (vazio = não inventa)
+      answers: {}, // respostas específicas: { "palavra-chave da pergunta": "resposta" }
     },
     schedule: {
       enabled: false,
@@ -253,6 +258,25 @@ globalThis.PegaVagaShared = (() => {
   /* Configuração                                                              */
   /* ------------------------------------------------------------------------ */
 
+  /**
+   * Respostas específicas do usuário (opcional): { "pergunta": "resposta" }.
+   * Só o que é texto útil sobrevive — chave vazia ou valor vazio não serve.
+   */
+  function normalizeAnswers(raw) {
+    const value = raw && typeof raw === 'object' ? raw : {};
+    const out = {};
+
+    Object.keys(value).forEach((key) => {
+      const name = String(key || '').trim().slice(0, 80);
+      const answer = value[key];
+
+      if (!name || answer == null || answer === '') return;
+      out[name] = String(answer).trim().slice(0, 120);
+    });
+
+    return out;
+  }
+
   /** Normaliza o que veio do storage/formulário para uma configuração válida. */
   function parseSettings(raw) {
     const value = raw && typeof raw === 'object' ? raw : {};
@@ -285,6 +309,13 @@ globalThis.PegaVagaShared = (() => {
         breaksEnabled: apply.breaksEnabled !== false,
         breakEvery: num(apply.breakEvery, 1, 100, defApply.breakEvery),
         breakMs: num(apply.breakMs, 10000, 600000, defApply.breakMs),
+        fillRequired: apply.fillRequired !== false,
+        answerYes: apply.answerYes !== false,
+        answerNumber: num(apply.answerNumber, 0, 200, defApply.answerNumber),
+        answerText: String(apply.answerText == null ? '' : apply.answerText)
+          .trim()
+          .slice(0, 120),
+        answers: normalizeAnswers(apply.answers),
       },
       schedule: {
         enabled: schedule.enabled === true,
@@ -476,7 +507,7 @@ globalThis.PegaVagaShared = (() => {
       label: 'Travada em campo obrigatório',
       failure: true,
       reason:
-        'O formulário parou em um campo ou pergunta obrigatória que a extensão não preenche.',
+        'O formulário parou numa pergunta obrigatória que a extensão não conseguiu responder (mesmo preenchendo as anteriores).',
     },
     incompleta: {
       label: 'Formulário incompleto',
@@ -621,6 +652,162 @@ globalThis.PegaVagaShared = (() => {
     if (insight && EASY_APPLY_LABEL.test(insight)) return APPLY_KINDS.easy;
 
     return APPLY_KINDS.unknown;
+  }
+
+  /* ------------------------------------------------------------------------ */
+  /* Popups do LinkedIn: formulário x avisos/pesquisas                         */
+  /* ------------------------------------------------------------------------ */
+
+  /**
+   * Texto em minúsculas, sem acento e com espaços colapsados. É o formato usado
+   * para comparar rótulos de botão e perguntas (o LinkedIn varia em caixa e
+   * acentuação entre as versões pt/en).
+   */
+  function plainText(value) {
+    return String(value == null ? '' : value)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * O que cada dialog do LinkedIn é. Só um deles é o formulário da Candidatura
+   * Simplificada — o resto (pesquisa de avaliação, "salvar vaga", "seguir
+   * empresa"…) pode aparecer por cima e precisa ser fechado, não preenchido.
+   */
+  const DIALOG_KINDS = {
+    form: 'formulario', // formulário da Candidatura Simplificada
+    survey: 'pesquisa', // popup de avaliação/pesquisa que aparece depois de enviar
+    notice: 'aviso', // recado/confirmação (ex.: vaga salva, seguir empresa)
+    unknown: 'desconhecido',
+  };
+
+  /** Sinais de que o dialog é o formulário da Candidatura Simplificada. */
+  const APPLY_FORM_RE =
+    /candidatura simplificada|easy apply|enviar candidatura|submit application|revisar|review|avancar|avançar|proxima etapa|proximo|next|curr[íi]culo|resume|anexar|upload|termos/i;
+
+  /** Sinais de popup pós-candidatura (avaliação, pesquisa ou recado). */
+  const POST_APPLY_RE =
+    /avalie|avaliacao|avaliação|avaliar|como foi sua experiencia|experiencia de candidatura|pesquisa|survey|feedback|nos ajude a melhorar|help us improve|rate your|give feedback|obrigado por se candidatar|thanks for applying|salvar (esta )?vaga|save (this )?job|seguir|follow|compartilhar|share|recomendar|recommend|candidatura (foi )?enviad|application (was )?sent|voce se candidatou/i;
+
+  /**
+   * Rótulos que fecham/recusam um popup (pt + en), do mais específico ao mais
+   * genérico. A ordem importa: "agora nao" é melhor que "nao".
+   */
+  const DISMISS_PATTERNS = [
+    { key: 'fechar', re: /^(fechar|close|dismiss|sair)\b/ },
+    { key: 'concluir', re: /^(concluir|done|entendi|got it|certo|ok)\b/ },
+    { key: 'agora_nao', re: /(agora nao|not now|mais tarde|maybe later|later|depois)/ },
+    { key: 'nao_obrigado', re: /(nao,\s?obrigad|no,\s?thanks|nao,\s?grato)/ },
+    { key: 'dispensar', re: /(dispensar|dispens|ignorar|skip|pular)/ },
+    { key: 'cancelar', re: /^(cancelar|cancel)\b/ },
+    { key: 'nao', re: /^(nao|no)$/ },
+  ];
+
+  /** Botões que nunca clicamos para fechar: descartar apaga a candidatura. */
+  const NEVER_DISMISS_RE = /descartar|discard|excluir|deletar|delete|remover|apagar/;
+
+  /**
+   * Classifica um dialog a partir dos sinais lidos na página:
+   * { text, hasForm, hasApplyAction, hasClose }.
+   *
+   * Regras (na ordem):
+   *   1. rodapé com "Avançar/Enviar candidatura"   -> formulário;
+   *   2. texto de pós-candidatura sem cara de form -> pesquisa;
+   *   3. tem campos de formulário com cara de candidatura -> formulário;
+   *   4. tem rótulo de candidatura -> formulário;
+   *   5. tem texto de pós-candidatura -> pesquisa;
+   *   6. tem botão de fechar -> aviso;
+   *   7. nada disso -> desconhecido (quem chama decide com cautela).
+   */
+  function classifyDialog(signals) {
+    const data = signals || {};
+    const text = plainText(data.text);
+    const looksForm = APPLY_FORM_RE.test(text);
+    const looksPost = POST_APPLY_RE.test(text);
+
+    if (data.hasApplyAction) return DIALOG_KINDS.form;
+    if (looksPost && !looksForm) return DIALOG_KINDS.survey;
+    if (data.hasForm && looksForm) return DIALOG_KINDS.form;
+    if (looksForm) return DIALOG_KINDS.form;
+    if (looksPost) return DIALOG_KINDS.survey;
+    if (data.hasClose) return DIALOG_KINDS.notice;
+
+    return DIALOG_KINDS.unknown;
+  }
+
+  /**
+   * Devolve o tipo de ação de fechar/recusar que o rótulo representa ('' se
+   * nenhum). É o que autoriza clicar num botão de popup sem risco de descartar
+   * uma candidatura.
+   */
+  function matchDismissLabel(label) {
+    const text = plainText(label);
+    if (!text || NEVER_DISMISS_RE.test(text)) return '';
+
+    for (const pattern of DISMISS_PATTERNS) {
+      if (pattern.re.test(text)) return pattern.key;
+    }
+
+    return '';
+  }
+
+  /** Resposta específica configurada para a pergunta ('' se não houver). */
+  function answerForQuestion(question, answers) {
+    const hint = plainText(question);
+    const map = answers && typeof answers === 'object' ? answers : {};
+
+    if (!hint) return '';
+
+    for (const key of Object.keys(map)) {
+      const name = plainText(key);
+      const value = map[key];
+
+      if (name && value != null && value !== '' && hint.includes(name)) {
+        return String(value);
+      }
+    }
+
+    return '';
+  }
+
+  /**
+   * Escolhe uma resposta entre as opções de uma pergunta (rádio/lista) que veio
+   * em branco, na ordem:
+   *   1. resposta específica do usuário (`answers`) que case com a pergunta;
+   *   2. "Sim" (ou "Não", se `prefs.yes === false`) — é o que o LinkedIn mais
+   *      pergunta ("tem autorização?", "tem experiência com…?");
+   *   3. a primeira opção que não seja um aviso de "Selecione…".
+   * Devolve o rótulo escolhido ('' quando não há opção utilizável).
+   */
+  function pickChoice(options, prefs) {
+    const list = (Array.isArray(options) ? options : []).map((label) =>
+      String(label == null ? '' : label).trim()
+    );
+    const cfg = prefs || {};
+
+    if (!list.length) return '';
+
+    const wanted = answerForQuestion(cfg.question, cfg.answers);
+
+    if (wanted) {
+      const needle = plainText(wanted);
+      const match = list.find((label) => plainText(label).includes(needle));
+      if (match) return match;
+    }
+
+    const plain = list.map(plainText);
+    const wantsNo = cfg.yes === false;
+    const preferred = wantsNo ? /^(nao|no)\b/ : /^(sim|yes)\b/;
+    const index = plain.findIndex((label) => preferred.test(label));
+
+    if (index >= 0) return list[index];
+
+    return (
+      list.find((label) => !/^(selecione|escolha|select|choose|--)/.test(plainText(label))) || ''
+    );
   }
 
   function applyOutcomeLabel(code) {
@@ -905,6 +1092,7 @@ globalThis.PegaVagaShared = (() => {
     APPLY_OUTCOMES,
     APPLY_PENDING,
     APPLY_KINDS,
+    DIALOG_KINDS,
     num,
     normalizeTerms,
     isLinkedInUrl,
@@ -926,6 +1114,11 @@ globalThis.PegaVagaShared = (() => {
     hostOf,
     isOffsiteUrl,
     classifyApply,
+    plainText,
+    classifyDialog,
+    matchDismissLabel,
+    answerForQuestion,
+    pickChoice,
     describeApplyFailure,
     summarizeApply,
     describeApplySummary,

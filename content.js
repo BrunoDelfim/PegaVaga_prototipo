@@ -94,6 +94,12 @@
     applyModalPollMs: 250, // intervalo de polling do modal de candidatura
     applyModalTimeoutMs: 10000, // tempo máximo esperando o modal abrir
     applyStepDelayMs: 1200, // espera entre etapas do formulário
+    applySettleMs: 5000, // tempo máximo esperando a etapa "parar de mudar"
+    applyStepWaitMs: 8000, // tempo máximo esperando a próxima etapa carregar
+    applySubmitWaitMs: 20000, // tempo máximo esperando a confirmação do envio
+    popupPollMs: 250, // intervalo entre as checagens de um popup
+    popupWaitMs: 3000, // tempo máximo esperando um popup fechar
+    popupBudgetMs: 20000, // tempo máximo fechando os popups de uma vaga
     applyMaxSteps: 15, // limite de "Avançar/Enviar" por vaga
     applyMaxAttempts: 2, // tentativas por vaga antes de desistir
     applyFlowTimeoutMs: 120000, // tempo máximo dentro do formulário de uma vaga
@@ -201,11 +207,14 @@
       '.jobs-unified-top-card__content--two-pane button.jobs-apply-button',
       'button[data-live-test-job-apply-button]',
     ],
-    modal: [
+    // Qualquer dialog da página: é assim que achamos o formulário E os popups
+    // que não são ele (pesquisa de avaliação, "salvar vaga", "seguir empresa"…).
+    dialog: [
       '.jobs-easy-apply-modal',
       'div[data-test-modal-container] div[role="dialog"]',
-      'div[role="dialog"][aria-labelledby]',
       '.artdeco-modal[role="dialog"]',
+      'div[role="dialog"][aria-labelledby]',
+      'div[role="dialog"]',
     ],
     footer: ['footer', '.jobs-easy-apply-modal__footer', '.artdeco-modal__actionbar'],
     discard: [
@@ -1029,9 +1038,63 @@
       : 'O botão não é de Candidatura Simplificada.';
   }
 
+  /** Todos os dialogs visíveis, sem os que estão aninhados em outro dialog. */
+  function dialogs() {
+    const found = queryAllUnique(APPLY_SEL.dialog).filter(isVisible);
+    return found.filter((el) => !found.some((other) => other !== el && other.contains(el)));
+  }
+
+  /** Sinais que dizem o que um dialog é (ver SHARED.classifyDialog). */
+  function dialogSignals(dialog) {
+    const footer = queryFirst(APPLY_SEL.footer, dialog) || dialog;
+    const buttons = Array.from(footer.querySelectorAll('button')).filter(isVisible);
+
+    // "Avançar/Enviar candidatura" é o que denuncia o formulário. Botões que só
+    // fecham (Concluir/Fechar/Cancelar) valem zero aqui: o modal de sucesso tem
+    // "Concluir" e não é o formulário.
+    const hasApplyAction = buttons.some(
+      (button) =>
+        classifyAction(button) !== null &&
+        !SHARED.matchDismissLabel(applyButtonLabel(button))
+    );
+
+    return {
+      text: clean(dialog.innerText || dialog.textContent).slice(0, 4000),
+      hasForm: Boolean(dialog.querySelector('form, fieldset, input, select, textarea')),
+      hasApplyAction,
+      hasClose: Boolean(queryFirst(APPLY_SEL.dismiss, dialog)),
+    };
+  }
+
+  /**
+   * Este dialog é o formulário da Candidatura Simplificada? O LinkedIn usa o
+   * mesmo `role="dialog"` para o formulário e para os popups de pesquisa que
+   * aparecem depois do envio — sem essa distinção, a automação confunde os dois.
+   */
+  function isApplyForm(dialog) {
+    if (!dialog) return false;
+    return SHARED.classifyDialog(dialogSignals(dialog)) === SHARED.DIALOG_KINDS.form;
+  }
+
+  /**
+   * O formulário da candidatura aberto agora. Popups de avaliação/pesquisa e
+   * avisos ("salvar vaga", "seguir empresa") são ignorados: eles não são o
+   * formulário e precisam ser fechados, não preenchidos.
+   */
   function findModal() {
-    const found = queryAllUnique(APPLY_SEL.modal).filter(isVisible);
-    return found.length ? found[0] : null;
+    for (const dialog of dialogs()) {
+      if (isApplyForm(dialog)) return dialog;
+    }
+    return null;
+  }
+
+  /** Popup aberto que NÃO é o formulário (ex.: "avalie a candidatura"). */
+  function findPopup(except) {
+    for (const dialog of dialogs()) {
+      if (except && dialog.contains(except)) continue;
+      if (!isApplyForm(dialog)) return dialog;
+    }
+    return null;
   }
 
   async function waitForModal(timeoutMs) {
@@ -1046,15 +1109,111 @@
     return findModal();
   }
 
+  /* ---- Popups que não são o formulário (fechar sem medo) ------------------ */
+
+  /**
+   * Botão que fecha/recusa um popup (Fechar, Agora não, Entendi…). Nunca devolve
+   * botões de descarte — clicar neles apagaria uma candidatura de verdade.
+   */
+  function popupCloseButton(dialog) {
+    if (!dialog) return null;
+
+    const buttons = Array.from(
+      dialog.querySelectorAll('button, [role="button"], a[role="button"]')
+    ).filter(isVisible);
+
+    const byLabel = buttons.filter((button) =>
+      SHARED.matchDismissLabel(applyButtonLabel(button))
+    );
+
+    if (byLabel.length) return byLabel[0];
+
+    // O "X" do canto (aria-label Fechar/Dismiss/Close/Concluir).
+    return queryFirst(APPLY_SEL.dismiss, dialog);
+  }
+
+  /** Fecha um popup (e confirma que ele saiu da frente da página). */
+  async function closePopup(dialog) {
+    if (!dialog || !document.contains(dialog)) return true;
+
+    const button = popupCloseButton(dialog);
+
+    if (button) {
+      humanClick(button);
+      await wait(CONFIG.popupPollMs);
+    } else {
+      // Sem botão conhecido: um Esc costuma fechar os modais do LinkedIn.
+      try {
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true })
+        );
+      } catch (error) {
+        /* sem KeyboardEvent: seguimos tentando pelo botão de fechar */
+      }
+    }
+
+    const deadline = Date.now() + CONFIG.popupWaitMs;
+
+    while (Date.now() < deadline) {
+      if (!document.contains(dialog) || !isVisible(dialog)) return true;
+      await wait(CONFIG.popupPollMs);
+    }
+
+    const gone = !document.contains(dialog) || !isVisible(dialog);
+
+    // Teimou? Um Esc extra costuma resolver os avisos do LinkedIn.
+    if (!gone) {
+      try {
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true })
+        );
+        await wait(CONFIG.popupPollMs);
+      } catch (error) {
+        /* ignoramos */
+      }
+    }
+
+    return !document.contains(dialog) || !isVisible(dialog);
+  }
+
+  /**
+   * Fecha todos os popups que não são o formulário (pesquisa de avaliação,
+   * "salvar vaga", "seguir empresa"…). É isso que destrava a varredura quando o
+   * LinkedIn joga um desses na tela depois de uma candidatura. Devolve quantos
+   * foram fechados.
+   */
+  async function clearPopups(keep, budgetMs) {
+    const deadline = Date.now() + (Number(budgetMs) || CONFIG.popupBudgetMs);
+    let closed = 0;
+
+    while (closed < 6 && Date.now() < deadline) {
+      const popup = findPopup(keep);
+      if (!popup) break;
+
+      if (!(await closePopup(popup))) break; // não insiste num popup teimoso
+      closed += 1;
+      await wait(CONFIG.popupPollMs);
+    }
+
+    return closed;
+  }
+
   /** "Enviar candidatura" x "Avançar/Revisar"? Desempata pelo texto do botão. */
   function classifyAction(button) {
     const label = normalize(
       (button.getAttribute('aria-label') || '') + ' ' + (button.textContent || '')
     );
 
-    if (/enviar candidatura|submit application|enviar candidatura com o linkedin/.test(label)) {
+    if (
+      /enviar candidatura|submit application|enviar candidatura com o linkedin|submeter candidatura/.test(
+        label
+      )
+    ) {
       return 'submit';
     }
+
+    // "Concluir/Done" é a tela final do formulário (candidatura enviada).
+    if (/^(concluir|concluir candidatura|finalizar|done)\b/.test(label)) return 'submit';
 
     if (/avançar|avancar|proxima|próxima|revisar|review|continuar|next/.test(label)) return 'next';
 
@@ -1075,8 +1234,12 @@
       if (classifyAction(button) === 'next') return { kind: 'next', button };
     }
 
-    const primary = buttons.find((button) =>
-      /artdeco-button--primary|artdeco-button--2|artdeco-button--3/.test(button.className)
+    // Último recurso: o botão "primário" — mas nunca um botão de fechar/recusar,
+    // que abortaria a candidatura no meio.
+    const primary = buttons.find(
+      (button) =>
+        /artdeco-button--primary|artdeco-button--2|artdeco-button--3/.test(button.className) &&
+        !SHARED.matchDismissLabel(applyButtonLabel(button))
     );
 
     return primary ? { kind: 'next', button: primary } : null;
@@ -1089,6 +1252,99 @@
     return /candidatura.{0,40}enviad|enviad.{0,20}candidatura|application.{0,20}sent|voce se candidatou/.test(
       text
     );
+  }
+
+  /* ---- Espera ativa: a página terminou de carregar a etapa? --------------- */
+
+  /**
+   * Assinatura do que está na tela (texto + botões visíveis). Muda quando o
+   * LinkedIn troca de etapa ou abre um popup — é o nosso "a página reagiu?".
+   */
+  function scopeSignature(scope) {
+    if (!scope) return '';
+
+    const text = normalize(scope.innerText || scope.textContent).slice(0, 1200);
+    const buttons = Array.from(scope.querySelectorAll('button'))
+      .filter(isVisible)
+      .map((button) =>
+        normalize((button.textContent || '') + ' ' + (button.getAttribute('aria-label') || ''))
+      )
+      .join('|');
+
+    return text + '::' + buttons;
+  }
+
+  /**
+   * Espera o conteúdo parar de mudar (duas leituras iguais seguidas). É o que
+   * substitui o "espera fixa de 1,2 s": com internet lenta, aguardamos a etapa
+   * carregar de verdade antes de ler os botões e clicar.
+   */
+  async function waitForSettle(scope, timeoutMs) {
+    const deadline = Date.now() + (Number(timeoutMs) || CONFIG.applySettleMs);
+    let previous = scopeSignature(scope);
+    let stable = 0;
+
+    while (Date.now() < deadline) {
+      await wait(CONFIG.applyModalPollMs);
+
+      const current = scopeSignature(scope);
+
+      if (current && current === previous) {
+        stable += 1;
+        if (stable >= 2) return true;
+      } else {
+        stable = 0;
+        previous = current;
+      }
+    }
+
+    return false;
+  }
+
+  /** Espera a etapa mudar (o clique pegou?). Evita clicar duas vezes no mesmo botão. */
+  async function waitForStepChange(scope, before, timeoutMs) {
+    const deadline = Date.now() + (Number(timeoutMs) || CONFIG.applyStepWaitMs);
+
+    while (Date.now() < deadline) {
+      await wait(CONFIG.applyModalPollMs);
+
+      if (!scope || !document.contains(scope)) return true;
+      if (scopeSignature(scope) !== before) return true;
+    }
+
+    return false;
+  }
+
+  /** Espera a tela de "candidatura enviada" (a internet lenta atrasa esse aviso). */
+  async function waitForSubmit(modal, timeoutMs) {
+    const deadline = Date.now() + (Number(timeoutMs) || CONFIG.applySubmitWaitMs);
+
+    while (Date.now() < deadline) {
+      if (!modal || !document.contains(modal)) return true;
+      if (looksSubmitted(modal)) return true;
+      if (!isApplyForm(modal)) return true; // virou outro dialog: envio confirmado
+      await wait(CONFIG.applyModalPollMs);
+    }
+
+    return false;
+  }
+
+  /**
+   * Espera o aviso de envio chegar (o modal fechar ou dizer "candidatura
+   * enviada"). Diferente do `waitForSubmit`, aqui só a confirmação de verdade
+   * conta: é o que usamos quando ainda **não** clicamos em "Enviar candidatura"
+   * e o dialog mudou de cara sozinho.
+   */
+  async function waitForConfirmation(modal, timeoutMs) {
+    const deadline = Date.now() + (Number(timeoutMs) || CONFIG.applySubmitWaitMs);
+
+    while (Date.now() < deadline) {
+      if (!modal || !document.contains(modal)) return true;
+      if (looksSubmitted(modal)) return true;
+      await wait(CONFIG.applyModalPollMs);
+    }
+
+    return false;
   }
 
   /** Rótulo visível de um campo do formulário (para o relatório de motivos). */
@@ -1173,75 +1429,294 @@
     return labels;
   }
 
-  /** Fecha o modal (descartando o formulário) para não deixar lixo na tela. */
-  async function closeModal(modal, discard) {
-    if (!modal || !document.contains(modal)) return;
+  /* ---- Perguntas obrigatórias: responder sozinho -------------------------- */
 
-    const button =
-      (discard && queryFirst(APPLY_SEL.discard, modal)) ||
-      queryFirst(APPLY_SEL.discard, modal) ||
-      queryFirst(APPLY_SEL.dismiss, modal);
+  /** Preferências de resposta lidas da configuração (ver shared.js). */
+  function answerPrefs(cfg) {
+    const apply = cfg || {};
 
-    if (button) {
-      humanClick(button);
-      await humanPause(CONFIG.applyStepDelayMs);
+    return {
+      yes: apply.answerYes !== false,
+      number: apply.answerNumber == null ? 1 : apply.answerNumber,
+      text: apply.answerText || '',
+      answers: apply.answers || {},
+    };
+  }
 
-      // O LinkedIn pede confirmação antes de descartar.
-      const confirm = queryFirst(APPLY_SEL.discard);
-      if (confirm && confirm !== button && isVisible(confirm)) {
-        humanClick(confirm);
-        await humanPause(CONFIG.applyStepDelayMs);
+  /** Dispara os eventos que o LinkedIn escuta quando alguém preenche um campo. */
+  function fireFieldEvents(field) {
+    if (!field || typeof field.dispatchEvent !== 'function') return;
+
+    ['input', 'change', 'blur'].forEach((type) => {
+      try {
+        field.dispatchEvent(new Event(type, { bubbles: true }));
+      } catch (error) {
+        /* sem Event: o LinkedIn não reage a este campo */
       }
+    });
+  }
+
+  /**
+   * Escreve num campo passando pelo setter nativo (`HTMLInputElement.value`).
+   * O LinkedIn é React: atribuir `field.value` direto não avisa o framework,
+   * mas o setter nativo + evento `input` sim.
+   */
+  function setNativeValue(field, value) {
+    try {
+      const proto = Object.getPrototypeOf(field);
+      const descriptor = proto && Object.getOwnPropertyDescriptor(proto, 'value');
+
+      if (descriptor && descriptor.set) {
+        descriptor.set.call(field, value);
+        return;
+      }
+    } catch (error) {
+      /* sem descritor: cai no value direto */
     }
 
-    if (document.contains(modal)) {
-      const dismiss = queryFirst(APPLY_SEL.dismiss, modal) || queryFirst(APPLY_SEL.dismiss);
-      if (dismiss) {
-        humanClick(dismiss);
-        await humanPause(CONFIG.applyStepDelayMs);
-      }
+    field.value = value;
+  }
+
+  /** Todos os rádios do mesmo grupo (nome), habilitados. */
+  function radioGroup(dialog, field) {
+    if (!field.name) return [field];
+
+    try {
+      const selector =
+        'input[type="radio"][name="' + String(field.name).replace(/"/g, '\\"') + '"]';
+      return Array.from(dialog.querySelectorAll(selector)).filter((input) => !input.disabled);
+    } catch (error) {
+      return [field];
     }
   }
 
-  /** Fecha o aviso de sucesso ("Concluir"), se ele aparecer. */
-  async function finishApply(modal) {
-    if (document.contains(modal) && looksSubmitted(modal)) {
-      const done = queryFirst(APPLY_SEL.dismiss, modal) || queryFirst(APPLY_SEL.dismiss);
-      if (done && isVisible(done)) {
-        humanClick(done);
+  /** Responde um grupo de rádio obrigatório (devolve o rótulo escolhido). */
+  function answerRadio(fields, prefs, question) {
+    if (!fields.length) return '';
+    if (fields.some((field) => field.checked)) return '';
+
+    const labels = fields.map((field) => fieldLabel(field) || String(field.value || ''));
+    const choice = SHARED.pickChoice(labels, Object.assign({}, prefs, { question }));
+    const index = labels.indexOf(choice);
+    const field = fields[index >= 0 ? index : 0];
+
+    if (!field) return '';
+
+    // O LinkedIn esconde o input e estiliza o label: clicar no label é o que
+    // uma pessoa faria (e é o que o React escuta de verdade).
+    const target = (field.labels && field.labels[0]) || field;
+
+    humanClick(target);
+
+    if (!field.checked) {
+      field.checked = true;
+      fireFieldEvents(field);
+    }
+
+    return clean(labels[index >= 0 ? index : 0] || field.value).slice(0, 60);
+  }
+
+  /** Responde uma lista (select) obrigatória (devolve o rótulo escolhido). */
+  function answerSelect(select, prefs, question) {
+    if (!select || select.disabled || String(select.value || '')) return '';
+
+    const options = Array.from(select.options || []).filter(
+      (option) => !option.disabled && String(option.value) !== ''
+    );
+
+    if (!options.length) return '';
+
+    const labels = options.map((option) => clean(option.textContent));
+    const choice = SHARED.pickChoice(labels, Object.assign({}, prefs, { question }));
+    const index = labels.indexOf(choice);
+    const option = options[index >= 0 ? index : 0];
+
+    if (!option) return '';
+
+    setNativeValue(select, option.value);
+    fireFieldEvents(select);
+
+    return clean(option.textContent).slice(0, 60);
+  }
+
+  /** Escreve num campo de texto obrigatório vazio (número/anos ou texto padrão). */
+  function answerText(field, prefs, question) {
+    if (!field || field.disabled || field.readOnly) return '';
+    if (String(field.value || '').trim()) return '';
+
+    const type = String(field.type || '').toLowerCase();
+    if (type === 'hidden' || type === 'file' || type === 'radio' || type === 'checkbox') return '';
+
+    const specific = SHARED.answerForQuestion(question, prefs.answers);
+    const looksNumber =
+      type === 'number' ||
+      /ano|anos|quantidade|experiencia|salario|pretensao|nota|valor/.test(normalize(question));
+
+    const value = specific || (looksNumber ? String(prefs.number) : prefs.text || '');
+    if (value === '' || value == null) return '';
+
+    setNativeValue(field, value);
+    fireFieldEvents(field);
+
+    return clean(question || value).slice(0, 60);
+  }
+
+  /**
+   * Responde o que dá das perguntas obrigatórias que ficaram em branco (Sim/Não,
+   * listas e números): é o que evita desistir da vaga por causa de uma etapa a
+   * mais. Devolve os rótulos respondidos, para entrarem no relatório.
+   */
+  async function fillPendingFields(dialog, cfg) {
+    const prefs = answerPrefs(cfg);
+    const filled = [];
+    const seen = new Set();
+
+    if (!dialog || (cfg && cfg.fillRequired === false)) return filled;
+
+    let fields = [];
+    try {
+      fields = Array.from(dialog.querySelectorAll('input, select, textarea'));
+    } catch (error) {
+      return filled;
+    }
+
+    for (const field of fields) {
+      const question = fieldLabel(field);
+      const type = String(field.type || '').toLowerCase();
+      const tag = String(field.tagName || '').toLowerCase();
+
+      if (type === 'checkbox') continue; // marcar por conta própria é arriscado
+
+      if (type === 'radio') {
+        const key = field.name || question || 'radio';
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const answer = answerRadio(radioGroup(dialog, field), prefs, question);
+        if (answer) filled.push(answer);
+        continue;
+      }
+
+      if (tag === 'select') {
+        const answer = answerSelect(field, prefs, question);
+        if (answer) filled.push(answer);
+        continue;
+      }
+
+      const answer = answerText(field, prefs, question);
+      if (answer) filled.push(answer);
+    }
+
+    if (filled.length) {
+      await wait(CONFIG.applyModalPollMs * 3); // o LinkedIn reage e reabilita o botão
+    }
+
+    return filled;
+  }
+
+  /** Fecha o modal (descartando o formulário) para não deixar lixo na tela. */
+  async function closeModal(modal, discard) {
+    if (modal && document.contains(modal)) {
+      const button =
+        (discard && queryFirst(APPLY_SEL.discard, modal)) ||
+        queryFirst(APPLY_SEL.discard, modal) ||
+        popupCloseButton(modal) ||
+        queryFirst(APPLY_SEL.dismiss, modal);
+
+      if (button) {
+        humanClick(button);
         await humanPause(CONFIG.applyStepDelayMs);
+
+        // O LinkedIn pede confirmação antes de descartar ("Descartar candidatura?").
+        const confirm = queryFirst(APPLY_SEL.discard);
+        if (confirm && confirm !== button && isVisible(confirm)) {
+          humanClick(confirm);
+          await humanPause(CONFIG.applyStepDelayMs);
+        }
+      }
+
+      if (document.contains(modal)) {
+        const dismiss =
+          popupCloseButton(modal) ||
+          queryFirst(APPLY_SEL.dismiss, modal) ||
+          queryFirst(APPLY_SEL.dismiss);
+
+        if (dismiss) {
+          humanClick(dismiss);
+          await humanPause(CONFIG.applyStepDelayMs);
+        }
       }
     }
 
-    const leftover = findModal();
-    if (leftover) {
-      const dismiss = queryFirst(APPLY_SEL.dismiss, leftover);
-      if (dismiss && isVisible(dismiss)) {
-        humanClick(dismiss);
-        await humanPause(CONFIG.applyStepDelayMs);
+    // Um descarte que falhou deixa o modal na frente da lista: limpamos tudo.
+    await clearPopups(null, CONFIG.popupWaitMs * 2);
+  }
+
+  /**
+   * Fecha o que ficou aberto de uma vaga anterior: um formulário descartado que
+   * não saiu da tela (o LinkedIn às vezes engasga no descarte) ou popups
+   * sobrantes. Sem isso, a próxima vaga trabalharia no formulário errado.
+   */
+  async function closeStaleForm(budgetMs) {
+    const modal = findModal();
+
+    if (modal) {
+      await closeModal(modal, true); // o closeModal já limpa os popups no fim
+      return;
+    }
+
+    await clearPopups(null, Number(budgetMs) || CONFIG.popupWaitMs * 2);
+  }
+
+  /**
+   * Depois do envio: fecha a confirmação e mais qualquer popup que o LinkedIn
+   * jogue na tela (pesquisa de avaliação, "salvar vaga", "seguir empresa"…).
+   * Sem isso, o overlay fica na frente da lista e a varredura empaca.
+   */
+  async function dismissAfterApply(modal) {
+    if (modal && document.contains(modal) && looksSubmitted(modal)) {
+      const done = popupCloseButton(modal);
+
+      if (done) {
+        humanClick(done);
+        await wait(CONFIG.popupPollMs);
       }
     }
+
+    await clearPopups(null, CONFIG.popupBudgetMs);
+
+    // O popup de avaliação/pesquisa às vezes só chega alguns segundos depois do
+    // envio (depende da internet): uma segunda passada pega esse atraso.
+    await wait(CONFIG.applyStepDelayMs);
+    await clearPopups(null, CONFIG.popupBudgetMs);
   }
 
   /**
    * Preenche e envia a candidatura simplificada da vaga aberta no painel.
-   * Devolve { status, missing?, steps?, error? }, com estes status:
+   * Devolve { status, missing?, filled?, steps?, error? }, com estes status:
    *   enviada   → candidatura confirmada pelo LinkedIn;
    *   externa   → botão manda para um site de fora: pulada, sem clique;
    *   desconhecida → o botão não se parece com a Candidatura Simplificada:
    *               também pulada, sem clique (tentamos de novo mais tarde);
    *   sem_botao → a vaga não tem botão de candidatura;
    *   sem_modal → clicou e o formulário não abriu;
-   *   travada   → parou em um campo obrigatório que não sabemos preencher
-   *               (`missing` traz os rótulos dos campos pendentes);
+   *   travada   → parou numa pergunta obrigatória que não deu para responder
+   *               (`missing` traz os rótulos pendentes, `filled` o respondido);
    *   incompleta→ estourou o tempo/etapas do formulário (`steps` diz onde parou);
    *   cancelada → o usuário pediu para parar no meio;
    *   bloqueio  → o LinkedIn sinalizou limite de uso/verificação (`error`).
+   *
+   * O fluxo é "espera ativa": em vez de dormir um tempo fixo (que quebra com
+   * internet lenta), esperamos a etapa carregar de verdade, fechamos os popups
+   * que o LinkedIn joga por cima e respondemos as perguntas obrigatórias.
    */
   async function applyToJob() {
     // Antes de qualquer coisa: será que a página está avisando de limite?
     const blockedBefore = detectRateLimit();
     if (blockedBefore) return { status: 'bloqueio', error: blockedBefore };
+
+    // Popup sobrando da vaga anterior? Sai da frente antes de qualquer clique.
+    await closeStaleForm(CONFIG.popupBudgetMs);
 
     const button = findApplyButton();
 
@@ -1257,11 +1732,26 @@
     await humanPause(CONFIG.applyPreClickMs); // respira antes de abrir o formulário
     humanClick(button);
 
-    const modal = await waitForModal(CONFIG.applyModalTimeoutMs);
+    let modal = await waitForModal(CONFIG.applyModalTimeoutMs);
+
+    // Internet lenta: o formulário pode demorar, ou um popup rouba a vez. Nesse
+    // caso limpamos a tela e damos mais uma rodada de espera.
+    if (!modal) {
+      await clearPopups(null, CONFIG.popupWaitMs * 2);
+      modal = await waitForModal(CONFIG.applyModalTimeoutMs);
+    }
+
     if (!modal) return { status: 'sem_modal' };
+
+    const settings = state.settings || (await getSettings());
+    const cfg = settings.apply || DEFAULT_APPLY;
+
+    await waitForSettle(modal, CONFIG.applySettleMs);
 
     const deadline = Date.now() + CONFIG.applyFlowTimeoutMs;
     let steps = 0;
+    let filled = [];
+    let stalled = 0;
 
     while (Date.now() < deadline && steps < CONFIG.applyMaxSteps) {
       if (state.abort) {
@@ -1269,44 +1759,104 @@
         return { status: 'cancelada', steps };
       }
 
-      await humanPause(CONFIG.applyStepDelayMs);
-
       const blocked = detectRateLimit();
       if (blocked) {
         await closeModal(modal, true);
         return { status: 'bloqueio', error: blocked, steps };
       }
 
+      // A candidatura já está enviada? (o modal fechou ou mostra a confirmação)
       if (!document.contains(modal) || looksSubmitted(modal)) {
-        await finishApply(modal);
-        return { status: 'enviada', steps };
+        await dismissAfterApply(modal);
+        return { status: 'enviada', filled, steps };
       }
 
-      const action = getModalAction(modal);
+      // O dialog mudou de cara sem confirmação (o LinkedIn re-renderiza bastante
+      // ao enviar): esperamos o aviso de envio chegar antes de dar a vaga por
+      // candidatada — melhor tentar de novo do que contar uma candidatura a mais.
+      if (!isApplyForm(modal)) {
+        const confirmed = await waitForConfirmation(modal, CONFIG.applySubmitWaitMs);
 
-      // Sem botão principal: campo obrigatório pendente (telefone, pergunta…).
+        await dismissAfterApply(modal);
+
+        if (confirmed) return { status: 'enviada', filled, steps };
+
+        return { status: 'incompleta', missing: describeBlocker(modal), filled, steps };
+      }
+
+      // Popup de pesquisa/aviso por cima do formulário: fechamos e seguimos.
+      if (findPopup(modal)) {
+        const closed = await clearPopups(modal, CONFIG.popupBudgetMs);
+
+        if (!closed) {
+          // Popup teimoso na frente do formulário: não dá para continuar hoje.
+          const missing = describeBlocker(modal);
+          await closeModal(modal, true);
+          return { status: 'incompleta', missing, filled, steps };
+        }
+
+        continue;
+      }
+
+      await waitForSettle(modal, CONFIG.applySettleMs);
+
+      let action = getModalAction(modal);
+
+      // Sem botão principal: pergunta obrigatória pendente. Tentamos responder.
       if (!action) {
-        const missing = describeBlocker(modal);
-        await closeModal(modal, true);
-        return { status: 'travada', missing, steps };
+        filled = filled.concat(await fillPendingFields(modal, cfg));
+        action = getModalAction(modal);
+
+        if (!action) {
+          // A etapa ainda pode estar carregando (internet lenta): mais uma volta.
+          await wait(CONFIG.applyStepWaitMs);
+          await clearPopups(modal, CONFIG.popupWaitMs);
+          action = getModalAction(modal);
+        }
+
+        if (!action) {
+          const missing = describeBlocker(modal);
+          await closeModal(modal, true);
+          return { status: 'travada', missing, filled, steps };
+        }
       }
 
+      const before = scopeSignature(modal);
       humanClick(action.button);
       steps += 1;
 
-      if (action.kind === 'submit') {
-        await humanPause(CONFIG.applyStepDelayMs * 2);
+      const changed = await waitForStepChange(modal, before, CONFIG.applyStepWaitMs);
 
-        if (!document.contains(modal) || looksSubmitted(modal)) {
-          await finishApply(modal);
-          return { status: 'enviada', steps };
+      if (action.kind === 'submit') {
+        // É o envio: esperamos a confirmação do LinkedIn aparecer (mesmo devagar).
+        const sent = await waitForSubmit(modal, CONFIG.applySubmitWaitMs);
+        await dismissAfterApply(modal);
+
+        if (sent) return { status: 'enviada', filled, steps };
+
+        // Não confirmou dentro do tempo: fica para a próxima passada, sem contar
+        // como candidatura enviada.
+        return { status: 'incompleta', missing: describeBlocker(modal), filled, steps };
+      }
+
+      // O clique não mexeu na tela? Damos mais uma chance antes de desistir —
+      // normalmente é o botão que estava desabilitado na hora exata do clique.
+      if (!changed) {
+        stalled += 1;
+
+        if (stalled >= 2) {
+          const missing = describeBlocker(modal);
+          await closeModal(modal, true);
+          return { status: 'incompleta', missing, filled, steps };
         }
+      } else {
+        stalled = 0;
       }
     }
 
     const missing = describeBlocker(modal);
     await closeModal(modal, true);
-    return { status: 'incompleta', missing, steps };
+    return { status: 'incompleta', missing, filled, steps };
   }
 
   /** Conta a candidatura no termo e grava a fila (sobrevive a reloads). */
@@ -1354,6 +1904,11 @@
 
     if (result.missing && result.missing.length) {
       parts.push('Campos não preenchidos: ' + result.missing.slice(0, 3).join(', ') + '.');
+    }
+
+    // O que a extensão respondeu sozinha nas perguntas do formulário.
+    if (result.filled && result.filled.length) {
+      parts.push('Respondi sozinho: ' + result.filled.slice(0, 3).join(', ') + '.');
     }
 
     if (result.error) parts.push('Detalhe: ' + String(result.error).slice(0, 160) + '.');
@@ -1741,6 +2296,11 @@
    * Visita a vaga: captura a descrição e, se a cota permitir, candidata-se.
    */
   async function processCard(card, id, settings) {
+    // Formulário/popup de uma vaga anterior pode estar cobrindo a lista: sem
+    // isso, o clique no card não abre a vaga. Só mexemos na página se ela
+    // estiver livre — a sua vez vem antes de tudo.
+    if (userIsIdle(settings)) await closeStaleForm();
+
     bumpVisited();
     await captureForCard(card, id);
     await humanPause(CONFIG.clickDelayMs);

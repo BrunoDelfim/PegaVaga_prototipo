@@ -117,6 +117,10 @@ function cacheElements() {
   els.applyDelayMax = document.getElementById('apply-delay-max');
   els.applyBreakEvery = document.getElementById('apply-break-every');
   els.applyBreakSeconds = document.getElementById('apply-break-seconds');
+  els.applyFillRequired = document.getElementById('apply-fill-required');
+  els.applyAnswerYes = document.getElementById('apply-answer-yes');
+  els.applyAnswerNumber = document.getElementById('apply-answer-number');
+  els.applyAnswerText = document.getElementById('apply-answer-text');
   els.applySummary = document.getElementById('apply-summary');
   els.guardInfo = document.getElementById('guard-info');
   els.btnExportFailures = document.getElementById('btn-export-failures');
@@ -167,6 +171,8 @@ function bindEvents() {
     els.applyDelayMax,
     els.applyBreakEvery,
     els.applyBreakSeconds,
+    els.applyAnswerNumber,
+    els.applyAnswerText,
     els.scheduleStart,
     els.scheduleStop,
   ];
@@ -178,6 +184,8 @@ function bindEvents() {
     els.applyEnabled,
     els.applyRespectUser,
     els.applyBreaks,
+    els.applyFillRequired,
+    els.applyAnswerYes,
     els.scheduleEnabled,
     els.scheduleAutoStart,
     els.scheduleFocus,
@@ -397,6 +405,10 @@ async function loadSettingsToForm() {
   els.applyDelayMax.value = String(secondsFromMs(settings.apply.maxDelayMs));
   els.applyBreakEvery.value = String(settings.apply.breakEvery);
   els.applyBreakSeconds.value = String(secondsFromMs(settings.apply.breakMs));
+  els.applyFillRequired.checked = settings.apply.fillRequired;
+  els.applyAnswerYes.value = settings.apply.answerYes ? 'yes' : 'no';
+  els.applyAnswerNumber.value = String(settings.apply.answerNumber);
+  els.applyAnswerText.value = settings.apply.answerText;
 
   els.scheduleEnabled.checked = settings.schedule.enabled;
   els.scheduleStart.value = settings.schedule.startTime;
@@ -503,6 +515,11 @@ async function saveSettingsFromForm(options) {
       breaksEnabled: els.applyBreaks.checked,
       breakEvery: els.applyBreakEvery.value,
       breakMs: msFromSeconds(els.applyBreakSeconds.value, settings.apply.breakMs),
+      fillRequired: els.applyFillRequired.checked,
+      answerYes: els.applyAnswerYes.value === 'yes',
+      answerNumber: els.applyAnswerNumber.value,
+      answerText: els.applyAnswerText.value,
+      answers: settings.apply.answers, // respostas específicas: só o storage as guarda
     },
     schedule: {
       enabled: els.scheduleEnabled.checked,

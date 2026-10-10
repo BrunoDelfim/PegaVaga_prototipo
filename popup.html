@@ -221,7 +221,8 @@
       }
 
       details.settings input,
-      details.settings textarea {
+      details.settings textarea,
+      details.settings select {
         width: 100%;
         padding: 6px 8px;
         border: 1px solid var(--line);
@@ -418,7 +419,7 @@
       <div class="status warn" id="guard-info" hidden></div>
 
       <details class="settings" id="settings">
-        <summary>⚙ Busca, candidaturas e agendador</summary>
+        <summary>⚙ Configurações</summary>
 
         <label for="base-url">URL de busca ou perfil</label>
         <input
@@ -478,6 +479,42 @@
           <p class="hint">
             Cotas dinâmicas: ao estourar uma delas o PegaVaga pausa e volta sozinho
             quando a próxima vaga liberar.
+          </p>
+
+          <span class="sub">Formulário (perguntas e popups do LinkedIn)</span>
+
+          <label class="inline">
+            <input type="checkbox" id="apply-fill-required" />
+            <span>
+              Responder sozinho perguntas obrigatórias (Sim/Não, listas e números)
+            </span>
+          </label>
+
+          <div class="grid2">
+            <div>
+              <label for="apply-answer-yes">Em Sim/Não, responder</label>
+              <select id="apply-answer-yes">
+                <option value="yes">Sim</option>
+                <option value="no">Não</option>
+              </select>
+            </div>
+            <div>
+              <label for="apply-answer-number">Número (anos, quantidade)</label>
+              <input id="apply-answer-number" type="number" min="0" max="200" step="1" />
+            </div>
+          </div>
+
+          <label for="apply-answer-text">Texto livre (ex.: cidade)</label>
+          <input
+            id="apply-answer-text"
+            type="text"
+            placeholder="Vazio = não inventa resposta"
+          />
+
+          <p class="hint">
+            O que o LinkedIn não respondeu vira estas respostas; deixar o texto livre
+            vazio evita respostas inventadas. Popups de avaliação ou pesquisa que
+            aparecem depois de candidatar são fechados sozinhos.
           </p>
         </div>
 
