@@ -155,17 +155,22 @@ pegavaga_chrome/
     duas tentativas), caso o botão estivesse só demorando a renderizar.
   - A vaga externa é **pulada de vez**: não gasta cota, não entra na pausa longa
     e não é mais visitada nas próximas varreduras (mas continua no relatório).
-- O script abre o formulário, **espera cada etapa carregar de verdade** (duração
-  medida pelo conteúdo da tela, não por um tempo fixo — é isso que segura a
-  automação quando a internet está lenta), clica em
+- O script abre o formulário e **espera o sinal da própria página**: um
+  `MutationObserver` avisa no instante em que o LinkedIn mexe na tela, então a
+  espera acaba quando a etapa **para de mudar** (a tela fica quieta) — e não
+  quando um tempo fixo passa. É isso que segura a automação quando a internet
+  está lenta (sem clicar duas vezes nem dar a etapa por perdida cedo): clica em
   **Avançar / Revisar / Enviar candidatura** até o LinkedIn confirmar o envio
   (ou até 15 etapas / 2 min).
 - **Popups do LinkedIn**: depois de candidatar, o LinkedIn costuma abrir um
   popup de **avaliação/pesquisa** ou avisos (“salvar vaga”, “seguir empresa”,
   “compartilhar”). O PegaVaga identifica esses dialogs (que **não** são o
-  formulário), fecha um a um — Fechar/Agora não/Não, obrigado/Entendi/Pular,
-  ou `Esc` — e segue para a próxima vaga. Sem isso o popup ficava na frente da
-  lista e a varredura empacava.
+  formulário) e fecha um a um — Fechar/Agora não/Não, obrigado/Entendi/Pular,
+  ou `Esc`. Além da limpeza normal, um **guarda de popup** fica de olho nas
+  mutações **durante todo o fluxo**: se um popup entrar na tela no meio de uma
+  espera (etapa carregando, envio em andamento), ele é fechado na hora, em
+  paralelo — o fluxo não precisa reiniciar, ele **continua de onde estava**.
+  Sem isso o popup ficava na frente da lista e a varredura empacava.
 - **Perguntas obrigatórias**: quando a etapa pede algo que o LinkedIn não
   respondeu sozinho (Sim/Não, listas e números), a extensão responde com o que
   está em **Formulário (perguntas e popups do LinkedIn)** — padrão: **Sim**,

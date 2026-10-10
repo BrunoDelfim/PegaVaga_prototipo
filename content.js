@@ -3,23 +3,32 @@
  * Script injetado nas páginas do LinkedIn (https://www.linkedin.com/*).
  *
  * Responsabilidades:
- *   1. Observar com MutationObserver a lista de vagas, que o LinkedIn carrega
- *      dinamicamente conforme o usuário rola a página.
+ *   1. Observar com MutationObserver a página inteira: a lista de vagas (que o
+ *      LinkedIn carrega conforme você rola) e os dialogs — formulário da
+ *      Candidatura Simplificada, popups de avaliação e avisos. É esse observer
+ *      que faz a extensão reagir na hora: quem está esperando é avisado da
+ *      mutação em vez de perguntar "mudou?" a cada 250 ms.
  *   2. Extrair, de cada card de vaga, título, empresa, link e a descrição
  *      completa (a descrição vive no painel de detalhes à direita, então o
  *      script seleciona cada card e lê o painel).
  *   3. Persistir tudo em chrome.storage.local, com merge por ID de vaga, para
  *      que os dados não se percam ao fechar o pop-up ou a aba.
  *   4. Candidatar-se sozinho ("Candidatura Simplificada") enquanto houver cota
- *      sobrando no termo, na hora, nas últimas 24 h e no dia.
- *   5. Varrer termo por termo: ao atingir a cota do termo, avança para o
+ *      sobrando no termo, na hora, nas últimas 24 h e no dia. Cada passo espera
+ *      o sinal da própria página (a etapa ficar quieta, o botão mudar, o aviso
+ *      de envio chegar) em vez de dormir um tempo fixo: internet lenta não faz
+ *      o script clicar duas vezes nem dar a etapa por perdida cedo.
+ *   5. Fechar, assim que entram na tela, os popups do LinkedIn (pesquisa de
+ *      avaliação, "salvar vaga", "seguir empresa"): o guard de popup age no
+ *      meio de qualquer espera e o fluxo continua de onde estava.
+ *   6. Varrer termo por termo: ao atingir a cota do termo, avança para o
  *      próximo da fila; quando acaba a cota, pausa e retoma mais tarde.
- *   6. Imitar o ritmo humano (intervalos variáveis, leitura da vaga, pausas
+ *   7. Imitar o ritmo humano (intervalos variáveis, leitura da vaga, pausas
  *      longas periódicas) e ceder a vez para o usuário: enquanto você mexe na
  *      página, a automação espera em vez de roubar o seu clique/rolagem.
- *   7. Anotar, por vaga, o motivo de não ter sido possível candidatar (site
+ *   8. Anotar, por vaga, o motivo de não ter sido possível candidatar (site
  *      externo, campo obrigatório, formulário fora do prazo…), para o relatório.
- *   8. Parar tudo quando o LinkedIn sinaliza limite de uso/verificação, com um
+ *   9. Parar tudo quando o LinkedIn sinaliza limite de uso/verificação, com um
  *      período de descanso — é melhor perder horas do que a conta.
  *
  * A fila de termos (chrome.storage.local) é a fonte da verdade: como cada termo
@@ -91,15 +100,20 @@
     domDebounceMs: 300, // debounce do MutationObserver
     waitListPollMs: 300, // intervalo de espera da lista de vagas aparecer
     waitListTimeoutMs: 15000, // tempo máximo esperando os cards carregarem
-    applyModalPollMs: 250, // intervalo de polling do modal de candidatura
+    applyModalPollMs: 250, // rede de segurança: rechecagem sem mutação no DOM
     applyModalTimeoutMs: 10000, // tempo máximo esperando o modal abrir
     applyStepDelayMs: 1200, // espera entre etapas do formulário
     applySettleMs: 5000, // tempo máximo esperando a etapa "parar de mudar"
+    applyQuietMs: 700, // silêncio no DOM que marca "a etapa terminou de carregar"
     applyStepWaitMs: 8000, // tempo máximo esperando a próxima etapa carregar
     applySubmitWaitMs: 20000, // tempo máximo esperando a confirmação do envio
-    popupPollMs: 250, // intervalo entre as checagens de um popup
+    popupPollMs: 250, // rede de segurança: rechecagem sem mutação no DOM
     popupWaitMs: 3000, // tempo máximo esperando um popup fechar
+    popupGraceMs: 600, // respiro para um popup recém-pedido ao servidor chegar
+    popupLateMs: 2500, // espera ativa pelo popup que só chega depois do envio
+    popupMaxCount: 6, // máximo de popups fechados numa rodada
     popupBudgetMs: 20000, // tempo máximo fechando os popups de uma vaga
+    interruptDebounceMs: 150, // agrupa as mutações antes de mexer num popup
     applyMaxSteps: 15, // limite de "Avançar/Enviar" por vaga
     applyMaxAttempts: 2, // tentativas por vaga antes de desistir
     applyFlowTimeoutMs: 120000, // tempo máximo dentro do formulário de uma vaga
@@ -255,6 +269,10 @@
     breakUntil: null, // fim da pausa longa em andamento (para a interface)
     guard: null, // bloqueio temporário detectado (proteção da conta)
     guardStopped: false, // a varredura parou por causa do bloqueio?
+    keepDialog: null, // o formulário aberto: o único dialog que não pode ser fechado
+    dismissing: false, // fechando o pós-candidatura (aí todo dialog é popup)
+    interruptBusy: false, // já estamos fechando um popup que entrou na tela
+    interruptTimer: null, // checagem de popup agendada pelas mutações
   };
 
   /* ------------------------------------------------------------------------ */
@@ -293,6 +311,47 @@
       clearTimeout(timer);
       timer = setTimeout(() => fn(...args), ms);
     };
+  }
+
+  /* ------------------------------------------------------------------------ */
+  /* Sinal do DOM: quem espera é avisado, não fica perguntando de 250 em 250ms  */
+  /* ------------------------------------------------------------------------ */
+
+  // A fila de espera (e a espera por evento) vive no shared.js: o observer
+  // acorda todo mundo (`wake`) e cada espera sai no instante da mutação.
+  const domSignal = SHARED.createSignal();
+
+  /**
+   * Avisa todo mundo que está esperando que a página mexeu. É chamado pelo
+   * MutationObserver: a partir daqui a espera é por evento, não por tempo — o
+   * `check` roda no mesmo instante em que o LinkedIn mexe na tela (abre o
+   * modal, troca a etapa, tira o popup), sem depender da velocidade da internet.
+   */
+  function wakeWaiters() {
+    domSignal.wake();
+  }
+
+  /**
+   * Espera a página mexer (ou o tempo acabar) para reavaliar `check`, e devolve
+   * o que ele devolver — ou `null` se o prazo acabou.
+   *
+   * O `pollMs` é só uma rede de segurança para o que não gera mutação (digitar
+   * num campo, por exemplo): o caminho normal é o aviso do observer.
+   */
+  function waitUntil(check, timeoutMs, pollMs) {
+    const step = pollMs == null ? CONFIG.applyModalPollMs : pollMs;
+
+    return SHARED.waitUntil(domSignal, check, timeoutMs, step);
+  }
+
+  /**
+   * Espera a página ficar quieta: nenhuma mutação dentro de `ms`. É o que diz
+   * "a etapa terminou de carregar" — melhor que duas leituras iguais, porque
+   * olha o que a página está fazendo, e não quanto tempo a internet levou.
+   * Devolve `true` se houve silêncio.
+   */
+  function waitForQuiet(ms) {
+    return SHARED.waitForQuiet(domSignal, ms);
   }
 
   function stripEmpty(patch) {
@@ -1009,14 +1068,21 @@
    * Sem sinal nenhum, devolve `desconhecida`.
    */
   async function resolveApplyKind(button) {
-    const deadline = Date.now() + CONFIG.applyKindWaitMs;
-    let kind = applyKind(button);
+    if (applyKind(button) !== SHARED.APPLY_KINDS.unknown) return applyKind(button);
 
-    while (kind === SHARED.APPLY_KINDS.unknown && Date.now() < deadline) {
-      await wait(CONFIG.applyKindPollMs);
-      if (!document.contains(button)) break;
-      kind = applyKind(button);
-    }
+    // Espera o botão mudar (o ícone/rótulo que revela o tipo chega do servidor):
+    // o observer avisa no instante da mutação, com o prazo como teto.
+    const kind = await waitUntil(
+      () => {
+        if (!document.contains(button)) return 'sumiu';
+        const current = applyKind(button);
+        return current !== SHARED.APPLY_KINDS.unknown ? current : null;
+      },
+      CONFIG.applyKindWaitMs,
+      CONFIG.applyKindPollMs
+    );
+
+    if (!kind || kind === 'sumiu') return SHARED.APPLY_KINDS.unknown;
 
     return kind;
   }
@@ -1098,18 +1164,64 @@
   }
 
   async function waitForModal(timeoutMs) {
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      const modal = findModal();
-      if (modal) return modal;
-      await wait(CONFIG.applyModalPollMs);
-    }
-
-    return findModal();
+    return waitUntil(() => findModal(), Number(timeoutMs) || CONFIG.applyModalTimeoutMs);
   }
 
   /* ---- Popups que não são o formulário (fechar sem medo) ------------------ */
+
+  /**
+   * O guarda de popup está de serviço? Só durante uma varredura e só quando já
+   * sabemos qual é o formulário (ou quando estamos fechando o pós-candidatura,
+   * que aí não há nada a proteger).
+   *
+   * Antes do formulário estar identificado o guard fica quieto de propósito:
+   * um dialog que ainda está carregando não pode ser confundido com popup.
+   */
+  function popupGuardActive() {
+    if (state.scanning !== true) return false;
+    if (state.dismissing === true) return true;
+
+    return Boolean(state.keepDialog) && document.contains(state.keepDialog);
+  }
+
+  /**
+   * Um popup entrou na tela? Fecha. É chamado pelo MutationObserver enquanto o
+   * script trabalha: o fluxo em andamento nem precisa saber — o overlay sai da
+   * frente e o trabalho continua de onde estava, sem esperar checagem por tempo.
+   */
+  async function handleInterrupt() {
+    if (state.interruptBusy || !popupGuardActive()) return false;
+
+    const popup = findPopup(state.keepDialog);
+    if (!popup) return false;
+
+    state.interruptBusy = true;
+
+    try {
+      return await closePopup(popup);
+    } catch (error) {
+      return false;
+    } finally {
+      state.interruptBusy = false;
+    }
+  }
+
+  /** As mutações vêm em rajada: agrupa antes de mexer na página. */
+  function scheduleInterrupt() {
+    if (state.interruptTimer || !popupGuardActive()) return;
+
+    state.interruptTimer = setTimeout(() => {
+      state.interruptTimer = null;
+      handleInterrupt().catch(() => {});
+    }, CONFIG.interruptDebounceMs);
+  }
+
+  function clearInterruptTimer() {
+    if (!state.interruptTimer) return;
+
+    clearTimeout(state.interruptTimer);
+    state.interruptTimer = null;
+  }
 
   /**
    * Botão que fecha/recusa um popup (Fechar, Agora não, Entendi…). Nunca devolve
@@ -1136,11 +1248,11 @@
   async function closePopup(dialog) {
     if (!dialog || !document.contains(dialog)) return true;
 
+    const gone = () => !document.contains(dialog) || !isVisible(dialog);
     const button = popupCloseButton(dialog);
 
     if (button) {
       humanClick(button);
-      await wait(CONFIG.popupPollMs);
     } else {
       // Sem botão conhecido: um Esc costuma fechar os modais do LinkedIn.
       try {
@@ -1152,28 +1264,19 @@
       }
     }
 
-    const deadline = Date.now() + CONFIG.popupWaitMs;
-
-    while (Date.now() < deadline) {
-      if (!document.contains(dialog) || !isVisible(dialog)) return true;
-      await wait(CONFIG.popupPollMs);
-    }
-
-    const gone = !document.contains(dialog) || !isVisible(dialog);
+    // O observer avisa no instante em que o LinkedIn tira o dialog da tela.
+    if (await waitUntil(gone, CONFIG.popupWaitMs)) return true;
 
     // Teimou? Um Esc extra costuma resolver os avisos do LinkedIn.
-    if (!gone) {
-      try {
-        document.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true })
-        );
-        await wait(CONFIG.popupPollMs);
-      } catch (error) {
-        /* ignoramos */
-      }
+    try {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true })
+      );
+    } catch (error) {
+      /* ignoramos */
     }
 
-    return !document.contains(dialog) || !isVisible(dialog);
+    return Boolean(await waitUntil(gone, CONFIG.popupWaitMs, CONFIG.popupPollMs));
   }
 
   /**
@@ -1181,18 +1284,24 @@
    * "salvar vaga", "seguir empresa"…). É isso que destrava a varredura quando o
    * LinkedIn joga um desses na tela depois de uma candidatura. Devolve quantos
    * foram fechados.
+   *
+   * Se não tem nada aberto, espera só um respiro curto por um popup que acabou
+   * de ser pedido ao servidor — e sai: quem pega o atrasado é o guard, que está
+   * de olho nas mutações da página.
    */
   async function clearPopups(keep, budgetMs) {
     const deadline = Date.now() + (Number(budgetMs) || CONFIG.popupBudgetMs);
     let closed = 0;
 
-    while (closed < 6 && Date.now() < deadline) {
-      const popup = findPopup(keep);
-      if (!popup) break;
+    while (closed < CONFIG.popupMaxCount && Date.now() < deadline) {
+      const waiting = Math.min(CONFIG.popupGraceMs, Math.max(0, deadline - Date.now()));
+      const popup =
+        findPopup(keep) || (await waitUntil(() => findPopup(keep), waiting, CONFIG.popupPollMs));
 
+      if (!popup) break;
       if (!(await closePopup(popup))) break; // não insiste num popup teimoso
+
       closed += 1;
-      await wait(CONFIG.popupPollMs);
     }
 
     return closed;
@@ -1275,9 +1384,10 @@
   }
 
   /**
-   * Espera o conteúdo parar de mudar (duas leituras iguais seguidas). É o que
-   * substitui o "espera fixa de 1,2 s": com internet lenta, aguardamos a etapa
-   * carregar de verdade antes de ler os botões e clicar.
+   * Espera a etapa parar de carregar. O caminho normal é o silêncio no DOM: o
+   * LinkedIn para de mexer quando terminou de montar a tela, então esperamos
+   * esse silêncio (não o tempo da internet). Se a página ficar nervosa e nunca
+   * silenciar, a assinatura do conteúdo entra como rede de segurança.
    */
   async function waitForSettle(scope, timeoutMs) {
     const deadline = Date.now() + (Number(timeoutMs) || CONFIG.applySettleMs);
@@ -1285,48 +1395,49 @@
     let stable = 0;
 
     while (Date.now() < deadline) {
-      await wait(CONFIG.applyModalPollMs);
+      const quiet = await waitForQuiet(Math.min(CONFIG.applyQuietMs, deadline - Date.now()));
+
+      if (quiet) return true; // a tela parou: está pronta para ser lida
 
       const current = scopeSignature(scope);
 
       if (current && current === previous) {
         stable += 1;
-        if (stable >= 2) return true;
       } else {
         stable = 0;
         previous = current;
       }
     }
 
-    return false;
+    return stable >= 1;
   }
 
   /** Espera a etapa mudar (o clique pegou?). Evita clicar duas vezes no mesmo botão. */
   async function waitForStepChange(scope, before, timeoutMs) {
-    const deadline = Date.now() + (Number(timeoutMs) || CONFIG.applyStepWaitMs);
+    const changed = await waitUntil(
+      () => {
+        if (!scope || !document.contains(scope)) return 'saiu';
+        return scopeSignature(scope) !== before ? 'mudou' : null;
+      },
+      Number(timeoutMs) || CONFIG.applyStepWaitMs
+    );
 
-    while (Date.now() < deadline) {
-      await wait(CONFIG.applyModalPollMs);
-
-      if (!scope || !document.contains(scope)) return true;
-      if (scopeSignature(scope) !== before) return true;
-    }
-
-    return false;
+    return Boolean(changed);
   }
 
   /** Espera a tela de "candidatura enviada" (a internet lenta atrasa esse aviso). */
   async function waitForSubmit(modal, timeoutMs) {
-    const deadline = Date.now() + (Number(timeoutMs) || CONFIG.applySubmitWaitMs);
+    const sent = await waitUntil(
+      () => {
+        if (!modal || !document.contains(modal)) return 'fechou';
+        if (looksSubmitted(modal)) return 'enviada';
+        if (!isApplyForm(modal)) return 'virou_popup'; // virou outro dialog: envio confirmado
+        return null;
+      },
+      Number(timeoutMs) || CONFIG.applySubmitWaitMs
+    );
 
-    while (Date.now() < deadline) {
-      if (!modal || !document.contains(modal)) return true;
-      if (looksSubmitted(modal)) return true;
-      if (!isApplyForm(modal)) return true; // virou outro dialog: envio confirmado
-      await wait(CONFIG.applyModalPollMs);
-    }
-
-    return false;
+    return Boolean(sent);
   }
 
   /**
@@ -1336,15 +1447,15 @@
    * e o dialog mudou de cara sozinho.
    */
   async function waitForConfirmation(modal, timeoutMs) {
-    const deadline = Date.now() + (Number(timeoutMs) || CONFIG.applySubmitWaitMs);
+    const confirmed = await waitUntil(
+      () => {
+        if (!modal || !document.contains(modal)) return 'fechou';
+        return looksSubmitted(modal) ? 'enviada' : null;
+      },
+      Number(timeoutMs) || CONFIG.applySubmitWaitMs
+    );
 
-    while (Date.now() < deadline) {
-      if (!modal || !document.contains(modal)) return true;
-      if (looksSubmitted(modal)) return true;
-      await wait(CONFIG.applyModalPollMs);
-    }
-
-    return false;
+    return Boolean(confirmed);
   }
 
   /** Rótulo visível de um campo do formulário (para o relatório de motivos). */
@@ -1608,7 +1719,13 @@
     }
 
     if (filled.length) {
-      await wait(CONFIG.applyModalPollMs * 3); // o LinkedIn reage e reabilita o botão
+      // Espera o LinkedIn reagir ao que respondemos (reabilitar o botão):
+      // a tela fica quieta quando terminou; o prazo antigo vira teto.
+      const deadline = Date.now() + CONFIG.applyModalPollMs * 3;
+
+      while (Date.now() < deadline) {
+        if (await waitForQuiet(Math.min(CONFIG.applyQuietMs, deadline - Date.now()))) break;
+      }
     }
 
     return filled;
@@ -1674,21 +1791,34 @@
    * Sem isso, o overlay fica na frente da lista e a varredura empaca.
    */
   async function dismissAfterApply(modal) {
-    if (modal && document.contains(modal) && looksSubmitted(modal)) {
-      const done = popupCloseButton(modal);
+    // Enquanto isso, todo dialog que aparecer é popup (não há formulário a
+    // proteger): o guard fecha sozinho, no instante em que entrar na tela.
+    state.dismissing = true;
 
-      if (done) {
-        humanClick(done);
-        await wait(CONFIG.popupPollMs);
+    try {
+      if (modal && document.contains(modal) && looksSubmitted(modal)) {
+        const done = popupCloseButton(modal);
+
+        if (done) {
+          humanClick(done);
+          await waitUntil(
+            () => !document.contains(modal) || !isVisible(modal),
+            CONFIG.popupWaitMs,
+            CONFIG.popupPollMs
+          );
+        }
       }
+
+      await clearPopups(null, CONFIG.popupBudgetMs);
+
+      // O popup de avaliação/pesquisa às vezes só chega depois do envio (vem do
+      // servidor). Em vez de dormir um tempo fixo, esperamos o sinal da tela: se
+      // ele chegar em 300 ms, fechamos em 300 ms.
+      await waitUntil(() => findPopup(null), CONFIG.popupLateMs, CONFIG.popupPollMs);
+      await clearPopups(null, CONFIG.popupBudgetMs);
+    } finally {
+      state.dismissing = false;
     }
-
-    await clearPopups(null, CONFIG.popupBudgetMs);
-
-    // O popup de avaliação/pesquisa às vezes só chega alguns segundos depois do
-    // envio (depende da internet): uma segunda passada pega esse atraso.
-    await wait(CONFIG.applyStepDelayMs);
-    await clearPopups(null, CONFIG.popupBudgetMs);
   }
 
   /**
@@ -1711,6 +1841,22 @@
    * que o LinkedIn joga por cima e respondemos as perguntas obrigatórias.
    */
   async function applyToJob() {
+    // O guard de popup precisa saber qual dialog é o formulário — e sair de
+    // serviço no fim, mesmo se o fluxo estourar no meio.
+    clearInterruptTimer(); // nada de guard atrasado de uma vaga anterior
+    state.keepDialog = null;
+    state.dismissing = false;
+
+    try {
+      return await runApplyFlow();
+    } finally {
+      state.keepDialog = null;
+      state.dismissing = false;
+      clearInterruptTimer();
+    }
+  }
+
+  async function runApplyFlow() {
     // Antes de qualquer coisa: será que a página está avisando de limite?
     const blockedBefore = detectRateLimit();
     if (blockedBefore) return { status: 'bloqueio', error: blockedBefore };
@@ -1742,6 +1888,10 @@
     }
 
     if (!modal) return { status: 'sem_modal' };
+
+    // A partir daqui o formulário está identificado: é ele que o guard protege
+    // enquanto fecha, na hora, qualquer popup que entrar na tela.
+    state.keepDialog = modal;
 
     const settings = state.settings || (await getSettings());
     const cfg = settings.apply || DEFAULT_APPLY;
@@ -1784,8 +1934,18 @@
         return { status: 'incompleta', missing: describeBlocker(modal), filled, steps };
       }
 
+      // O LinkedIn às vezes troca o nó do dialog entre etapas: o guard precisa
+      // continuar apontando para o formulário que está na tela agora.
+      if (state.keepDialog !== modal) state.keepDialog = modal;
+
       // Popup de pesquisa/aviso por cima do formulário: fechamos e seguimos.
       if (findPopup(modal)) {
+        // Se o guard já está fechando um deles, não clicamos no mesmo botão
+        // duas vezes: damos a vez a ele e conferimos de novo em seguida.
+        if (state.interruptBusy) {
+          await waitUntil(() => !state.interruptBusy, CONFIG.popupWaitMs, CONFIG.popupPollMs);
+        }
+
         const closed = await clearPopups(modal, CONFIG.popupBudgetMs);
 
         if (!closed) {
@@ -1808,10 +1968,10 @@
         action = getModalAction(modal);
 
         if (!action) {
-          // A etapa ainda pode estar carregando (internet lenta): mais uma volta.
-          await wait(CONFIG.applyStepWaitMs);
+          // A etapa ainda pode estar carregando (internet lenta): esperamos o
+          // botão aparecer na tela em vez de dormir um tempo fixo.
+          action = await waitUntil(() => getModalAction(modal), CONFIG.applyStepWaitMs);
           await clearPopups(modal, CONFIG.popupWaitMs);
-          action = getModalAction(modal);
         }
 
         if (!action) {
@@ -2015,15 +2175,16 @@
 
   /** Espera os cards aparecerem (o LinkedIn monta a lista de forma assíncrona). */
   async function waitForList(timeoutMs) {
-    const deadline = Date.now() + timeoutMs;
+    const cards = await waitUntil(
+      () => {
+        if (state.abort) return 'abortado';
+        return getCards().length ? getCards() : null;
+      },
+      Number(timeoutMs) || CONFIG.waitListTimeoutMs,
+      CONFIG.waitListPollMs
+    );
 
-    while (Date.now() < deadline) {
-      if (state.abort) return false;
-      if (getCards().length) return true;
-      await wait(CONFIG.waitListPollMs);
-    }
-
-    return getCards().length > 0;
+    return Array.isArray(cards) && cards.length > 0;
   }
 
   /**
@@ -2472,18 +2633,37 @@
     if (!state.scanning) syncSelectedJob();
   }, CONFIG.domDebounceMs);
 
+  /**
+   * Avisa quem espera (espera por evento, não por tempo) e chama o guard de
+   * popup. Isso roda no mesmo instante da mutação — é o que faz o script parar
+   * para fechar um popup que acabou de entrar na tela e voltar ao que estava
+   * fazendo, sem consultar o relógio.
+   */
+  function onDomMutation() {
+    wakeWaiters();
+    scheduleInterrupt();
+  }
+
   function startObserver() {
     if (state.observer) return;
 
-    const root = queryFirst(SEL.list) || document.body;
+    // Observamos o corpo inteiro (não só a lista): é no body que o LinkedIn
+    // pendura os dialogs — formulário, popups de avaliação, avisos.
+    const root = document.body || queryFirst(SEL.list);
     if (!root) return;
 
-    state.observer = new MutationObserver(onDomChanged);
+    state.observer = new MutationObserver(() => {
+      onDomMutation();
+      onDomChanged();
+    });
+
     state.observer.observe(root, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['class'],
+      // `class`/`style`/`aria-hidden`/`hidden` são como o LinkedIn mostra e
+      // esconde os dialogs; `disabled` marca o botão que acabou de habilitar.
+      attributeFilter: ['class', 'style', 'aria-hidden', 'hidden', 'role', 'disabled'],
     });
   }
 

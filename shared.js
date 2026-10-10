@@ -1062,6 +1062,126 @@ globalThis.PegaVagaShared = (() => {
     return light('ready', 'Pronta: nenhuma varredura em andamento.');
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* Espera por evento: o DOM avisa, ninguém fica perguntando de 250 em 250 ms  */
+  /* ------------------------------------------------------------------------ */
+
+  /**
+   * Fila de quem está esperando um sinal da página. O `content.js` chama
+   * `wake()` a cada mutação do MutationObserver; então quem espera reage no
+   * mesmo instante em que o LinkedIn mexe na tela — em vez de descobrir depois,
+   * numa checagem por tempo, que a internet demorou.
+   *
+   * Não usa DOM: é só uma lista de ouvintes, o que a torna testável de verdade.
+   */
+  function createSignal() {
+    const listeners = new Set();
+
+    return {
+      /** Quantos estão esperando agora (0 = não há por que acordar ninguém). */
+      get size() {
+        return listeners.size;
+      },
+
+      /** A página mexeu: avisa todo mundo. Um erro não derruba os outros. */
+      wake() {
+        if (!listeners.size) return;
+
+        Array.from(listeners).forEach((listener) => {
+          try {
+            listener();
+          } catch (error) {
+            /* segue avisando os demais */
+          }
+        });
+      },
+
+      /** Espera o próximo sinal. Devolve a função que cancela a inscrição. */
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+  }
+
+  /**
+   * Espera `check()` devolver algo. É acordada pelo sinal (mutação na página),
+   * com `pollMs` apenas como rede de segurança — para o que muda sem gerar
+   * mutação, como digitar num campo — e `timeoutMs` como prazo final.
+   * Devolve o valor de `check()` ou `null`.
+   */
+  function waitUntil(signal, check, timeoutMs, pollMs) {
+    const attempt = () => {
+      try {
+        return check() || null;
+      } catch (error) {
+        return null;
+      }
+    };
+
+    const immediate = attempt();
+    if (immediate) return Promise.resolve(immediate);
+
+    const step = Number(pollMs) || 0;
+    const budget = Number(timeoutMs) || 0;
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer = null;
+      let poll = null;
+      let off = null;
+
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        if (poll) clearInterval(poll);
+        if (off) off();
+        resolve(value || null);
+      };
+
+      off = signal && signal.subscribe ? signal.subscribe(() => {
+        const value = attempt();
+        if (value) finish(value);
+      }) : null;
+
+      if (step > 0) {
+        poll = setInterval(() => {
+          const value = attempt();
+          if (value) finish(value);
+        }, step);
+      }
+
+      if (budget > 0) timer = setTimeout(() => finish(null), budget);
+    });
+  }
+
+  /**
+   * Espera a página ficar quieta: nenhuma mutação dentro de `ms`. É assim que o
+   * content script sabe que a etapa terminou de carregar — olhando o que a
+   * página está fazendo, não quanto tempo a internet levou. Devolve `true` se
+   * houve silêncio (e `false` se algo mexeu antes).
+   */
+  function waitForQuiet(signal, ms) {
+    const silence = Math.max(16, Number(ms) || 0);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let off = null;
+
+      const finish = (quiet) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (off) off();
+        resolve(quiet);
+      };
+
+      off = signal && signal.subscribe ? signal.subscribe(() => finish(false)) : null;
+      const timer = setTimeout(() => finish(true), silence);
+    });
+  }
+
   /** Monta a luzinha com a cor do nível e o texto (tooltip) já pronto. */
   function light(key, detail) {
     const preset = STATUS_LIGHTS[key] || STATUS_LIGHTS.ready;
@@ -1119,6 +1239,9 @@ globalThis.PegaVagaShared = (() => {
     matchDismissLabel,
     answerForQuestion,
     pickChoice,
+    createSignal,
+    waitUntil,
+    waitForQuiet,
     describeApplyFailure,
     summarizeApply,
     describeApplySummary,
