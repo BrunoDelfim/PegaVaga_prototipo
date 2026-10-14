@@ -4,7 +4,7 @@ Plano de trabalho para sair da beta e publicar na **Chrome Web Store**.
 Cada item diz **por quê** e **como fazer**; ao concluir, troque `[ ]` por `[x]` e
 preencha a linha **Feito em** com a versão e o commit.
 
-**Progresso:** 4 de 14 itens · **Versão:** a que está no `manifest.json`
+**Progresso:** 5 de 14 itens · **Versão:** a que está no `manifest.json`
 
 Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
@@ -117,10 +117,18 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   termina é útil para quem deixa rodando em segundo plano.
   *Feito em:* —
 
-- [ ] **13. Atualizar o `tests/SMOKE_TEST.md`**
+- [x] **13. Atualizar o `tests/SMOKE_TEST.md`**
   Incluir o que mudou: abas (Início/Configurações), lâmpada (tema), card “Vagas
   por termo”, tooltips/destaques dos gráficos e o toast.
-  *Feito em:* —
+  *Feito em:* `0.7.4` (commit `caee973`, documentação — sem bump) — o roteiro foi
+  reorganizado e passou de **46 para 69 conferências**: entra a **interface**
+  (abas, lâmpada com persistência do tema e modo “segue o sistema”, chip com o
+  **azul** novo, toast, estado vazio), os **gráficos** (donut com legenda e
+  destaque cruzado, tooltips em fatias e barras, cotas, “Vagas por termo”, as 24 h
+  com ontem mais claro) e os **avisos** (risco/beta e o descarte do item 1, com o
+  truque de console para forçar o contador sem capturar 5.000 vagas). Rótulos
+  atualizados para os botões de hoje e o fim ganhou o passo de **testar o zip**
+  empacotado — é o que fecha o caminho `roteiro → tag → zip → instalar`.
 
 - [ ] **14. i18n (pt/en)**
   O código já reconhece rótulos em português e inglês; falta a interface.
@@ -149,4 +157,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 13/10/2026 | 3. Aviso de risco no app | `0.7.4` | `6ea0976` |
 | 13/10/2026 | 6. CI no GitHub Actions | — (infra) | `cda8e02` |
 | 13/10/2026 | 10. Empacotamento (zip + tag `v0.7.4`) | `0.7.4` | `fdf9efa` |
+| 13/10/2026 | 13. Roteiro de smoke test | — (docs) | `caee973` |
 
