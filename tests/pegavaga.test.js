@@ -79,6 +79,12 @@ ok('CLEAR zera o contador de descartes', /MSG\.CLEAR:[\s\S]{0,300}state\.dropped
 ok('popup le e mostra o contador de descartes', read('popup.js').includes('meta.dropped') && read('popup.html').includes('id="trim-hint"'));
 ok('aviso de risco/beta no pop-up', popupHtml.includes('conta e risco') && popupHtml.includes('class="notice"'));
 ok('CI roda os testes', fs.existsSync(ROOT + '.github/workflows/testes.yml') && read('.github/workflows/testes.yml').includes('node tests/pegavaga.test.js'));
+const packSh = read('tools/empacotar.sh');
+ok('script de empacotamento existe', fs.existsSync(ROOT + 'tools/empacotar.sh'));
+ok('zip empacota os arquivos da extensao', ['manifest.json', 'shared.js', 'background.js', 'content.js', 'popup.html', 'popup.js', 'icons'].every((f) => packSh.includes(f)));
+const packBlock = packSh.slice(packSh.indexOf('FILES=('), packSh.indexOf(')', packSh.indexOf('FILES=(')));
+ok('pacote nao inclui tests/.github/.md', !/tests|\.github|\.md/.test(packBlock), packBlock);
+ok('git archive sem --prefix (manifest na raiz)', !/git archive[^\n]*--prefix/.test(packSh));
 
 section('5. Numeros e termos');
 eq('num normal', S.num('5', 1, 10, 3), 5);

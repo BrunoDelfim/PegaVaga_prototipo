@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# =============================================================================
+# PegaVaga - empacotar.sh
+# Gera o .zip que vai para a Chrome Web Store.
+#
+#   bash tools/empacotar.sh            # empacota o commit atual (HEAD)
+#   bash tools/empacotar.sh v0.7.4     # empacota uma tag (é o certo para publicar:
+#                                      # o zip tem de ser o que a tag marca)
+#
+# Dois detalhes que a loja cobra:
+#   1. "manifest.json na raiz do zip, não dentro de uma pasta" (docs da Chrome
+#      Web Store) — por isso não usamos --prefix no git archive;
+#   2. descrição do manifest com no máximo 132 caracteres (o script avisa).
+#
+# Como o pacote sai de `git archive`, entram só arquivos **versionados** e da
+# lista explícita abaixo: ficam de fora `tests/`, `.github/`, os `.md` e o `.git`.
+# Não precisa de `zip` instalado — o próprio git monta o zip.
+# =============================================================================
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+REF="${1:-HEAD}"
+OUT_DIR="dist"
+
+# Tudo o que a extensão precisa para rodar (a loja não quer o resto).
+FILES=(
+  manifest.json
+  shared.js
+  background.js
+  content.js
+  popup.html
+  popup.js
+  icons
+)
+
+if ! git rev-parse --verify --quiet "${REF}^{commit}" >/dev/null; then
+  echo "ERRO: ref não encontrado: $REF" >&2
+  echo "      Use uma tag (ex.: v0.7.4) ou deixe vazio para empacotar o HEAD." >&2
+  exit 1
+fi
+
+VERSION="$(node -p "require('./manifest.json').version")"
+REF_VERSION="$(git show "$REF:manifest.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")"
+DESC_LEN="$(git show "$REF:manifest.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).description.length")"
+OUT="$OUT_DIR/pegavaga-$VERSION.zip"
+
+# Empacotar a tag errada é fácil: avisa quando o HEAD e o ref discordam.
+if [ "$REF_VERSION" != "$VERSION" ]; then
+  echo "AVISO: o manifest.json do commit atual diz $VERSION, mas $REF diz $REF_VERSION." >&2
+  echo "       O zip sai com $REF_VERSION (o conteúdo do ref escolhido)." >&2
+fi
+
+if [ "$DESC_LEN" -gt 132 ]; then
+  echo "AVISO: a descrição do manifest tem $DESC_LEN caracteres; a loja pede até 132." >&2
+fi
+
+# O teste é a rede de segurança: não empacota o que não passa.
+echo "Rodando os testes antes de empacotar..."
+if ! TEST_OUT="$(node tests/pegavaga.test.js)"; then
+  echo "$TEST_OUT"
+  echo "ERRO: os testes falharam; nenhum zip foi gerado." >&2
+  exit 1
+fi
+echo "$TEST_OUT" | tail -n 3
+
+mkdir -p "$OUT_DIR"
+rm -f "$OUT"
+git archive --format=zip -o "$OUT" "$REF" -- "${FILES[@]}"
+
+if command -v unzip >/dev/null 2>&1; then
+  if unzip -Z1 "$OUT" | grep -qx 'manifest.json'; then
+    echo "ok: manifest.json está na raiz do zip"
+  else
+    echo "ERRO: manifest.json não está na raiz do zip." >&2
+    exit 1
+  fi
+
+  echo "Conteúdo de $(basename "$OUT"):"
+  unzip -Z1 "$OUT" | sed 's/^/  /'
+else
+  echo "(sem unzip para listar o conteúdo; o zip foi gerado assim mesmo)"
+fi
+
+echo "Pronto: $OUT ($(du -h "$OUT" | cut -f1))"
