@@ -59,6 +59,9 @@
     CLEAR: 'PEGAVAGA_CLEAR',
     PROGRESS: 'PEGAVAGA_PROGRESS',
     RESUME: 'PEGAVAGA_RESUME',
+    HELP: 'PEGAVAGA_HELP',
+    HELP_CLEAR: 'PEGAVAGA_HELP_CLEAR',
+    SKIP: 'PEGAVAGA_SKIP',
   };
 
   const DEFAULT_APPLY = (SHARED.DEFAULT_SETTINGS && SHARED.DEFAULT_SETTINGS.apply) || {
@@ -120,6 +123,11 @@
     applyKindWaitMs: 3000, // tempo máximo esperando o botão revelar o tipo (ícone/rótulo)
     applyKindPollMs: 200, // intervalo de releitura do botão de candidatura
     resumeTimerCapMs: 1800000, // teto do timer local de retomada (30 min)
+
+    /* Ajuda: quando a vaga trava num campo que só o usuário preenche */
+    helpWaitMs: 120000, // quanto esperamos a sua ajuda antes de desistir da vaga (2 min)
+    helpPollMs: 1000, // rechecagem durante a espera por ajuda
+    helpSettleMs: 3000, // silêncio no formulário que marca "você terminou de mexer"
 
     /* Ritmo humano / furtividade */
     humanRatio: 0.3, // variação padrão aplicada aos intervalos
@@ -273,6 +281,8 @@
     dismissing: false, // fechando o pós-candidatura (aí todo dialog é popup)
     interruptBusy: false, // já estamos fechando um popup que entrou na tela
     interruptTimer: null, // checagem de popup agendada pelas mutações
+    helpRequested: false, // estamos esperando a sua ajuda numa vaga travada?
+    helpSkip: false, // você pediu para pular a vaga travada
   };
 
   /* ------------------------------------------------------------------------ */
@@ -596,6 +606,8 @@
             resumeAt: run.resumeAt || null,
             pauseReason: run.pauseReason || null,
             problem: run.problem || null,
+            needsHelp: run.needsHelp === true,
+            helpMissing: run.helpMissing || null,
             index: run.index || 0,
             total: Array.isArray(run.urls) ? run.urls.length : 1,
             term: run.term || '',
@@ -610,10 +622,18 @@
         : null,
     };
 
+    sendRuntime(payload);
+  }
+
+  /**
+   * Avisa o service worker (e o pop-up, se estiver aberto) sem deixar promise
+   * solta nem derrubar a varredura: sem receptor, a mensagem é só ignorada.
+   */
+  function sendRuntime(message) {
     try {
-      chrome.runtime.sendMessage(payload, () => void chrome.runtime.lastError);
+      chrome.runtime.sendMessage(message, () => void chrome.runtime.lastError);
     } catch (error) {
-      /* pop-up fechado: sem receptor, apenas ignoramos */
+      /* pop-up fechado e service worker dormindo: nada a avisar */
     }
   }
 
@@ -1540,6 +1560,130 @@
     return labels;
   }
 
+  /* ---- Ajuda: quando a vaga trava num campo que só o usuário preenche ------ */
+
+  /**
+   * O formulário parou num campo que a extensão não sabe responder (pergunta
+   * personalizada, sem valor salvo no LinkedIn). Em vez de descartar a vaga, a
+   * gente **pede a sua ajuda**: notificação na área de trabalho, a aba do
+   * LinkedIn em foco ao clicar nela e o formulário intacto esperando você.
+   *
+   * Você pode completar o campo (a automação retoma assim que o botão voltar a
+   * habilitar) ou pedir para **pular a vaga**.
+   *
+   * Devolve 'resolved' (você completou), 'skip' (você pulou) ou 'timeout'.
+   *
+   * `opts.step` avisa que entramos aqui porque o clique não avançou (o botão
+   * estava habilitado); nesse caso a retomada espera você PARAR de mexer no
+   * formulário, em vez de só o botão reabilitar.
+   */
+  async function askForHelp(modal, id, missing, opts) {
+    const cfg = (state.settings && state.settings.apply) || DEFAULT_APPLY;
+    if (cfg.helpOnStuck === false) return 'timeout';
+
+    const labels = (Array.isArray(missing) ? missing : describeBlocker(modal)).filter(Boolean);
+    if (!labels.length) labels.push('um campo do formulário');
+
+    const job = state.jobs[id] || {};
+
+    state.helpRequested = true;
+    state.helpSkip = false;
+    await setRunHelp(labels);
+
+    console.info(
+      '[PegaVaga] Preciso de ajuda nesta vaga. Campo(s):',
+      labels.join(', '),
+      opts && opts.step ? '(o clique não avança)' : '(o botão está desabilitado)'
+    );
+
+    // O service worker mostra a notificação e, no clique, traz esta aba à frente.
+    notifyHelp(labels, job.title || '');
+
+    const outcome = await waitForHelp(modal, opts);
+
+    console.info('[PegaVaga] Fim da espera por ajuda:', outcome);
+
+    state.helpRequested = false;
+    state.helpSkip = false;
+    await setRunHelp(null);
+    notifyHelpDone();
+
+    return outcome;
+  }
+
+  /**
+   * Espera você resolver a vaga travada. Sai quando: você pede para pular, o
+   * formulário avança/envia sozinho (ou o botão principal volta a habilitar),
+   * ou o prazo acaba.
+   */
+  async function waitForHelp(modal, opts) {
+    const waitStep = Boolean(opts && opts.step); // entrou porque o clique não avançou
+    let baseline = modal && document.contains(modal) ? scopeSignature(modal) : '';
+    let changedAt = 0;
+
+    const outcome = await waitUntil(
+      () => {
+        if (state.abort || state.helpSkip) return 'skip';
+        if (!modal || !document.contains(modal)) return 'resolved';
+        if (looksSubmitted(modal) || !isApplyForm(modal)) return 'resolved';
+
+        if (waitStep) {
+          // O botão já estava habilitado: retomamos quando você parar de mexer
+          // (a tela mudou e ficou quieta), sem clicar por cima da sua digitação.
+          const signature = scopeSignature(modal);
+          if (signature !== baseline) {
+            baseline = signature;
+            changedAt = Date.now();
+          }
+          if (changedAt && Date.now() - changedAt > CONFIG.helpSettleMs) return 'resolved';
+          return null;
+        }
+
+        // Veio de "botão desabilitado": retomamos quando ele voltar a habilitar.
+        if (getModalAction(modal)) return 'resolved';
+        return null;
+      },
+      CONFIG.helpWaitMs,
+      CONFIG.helpPollMs
+    );
+
+    return outcome || 'timeout';
+  }
+
+  /** Grava (ou limpa, com `null`) o aviso de que a vaga espera a sua ajuda. */
+  async function setRunHelp(missing) {
+    const run = state.run;
+    if (!run || run.running !== true) return;
+
+    const labels = (Array.isArray(missing) ? missing : []).filter(Boolean);
+    const needsHelp = labels.length > 0;
+
+    if (Boolean(run.needsHelp) === needsHelp) return;
+
+    const next = Object.assign({}, run, {
+      needsHelp,
+      helpMissing: needsHelp ? labels.slice(0, 3).join(', ') : null,
+    });
+
+    state.run = next;
+    await saveRun(next);
+    broadcastProgress();
+  }
+
+  /** Pede ao service worker a notificação de ajuda (o clique traz a aba à frente). */
+  function notifyHelp(missing, jobTitle) {
+    sendRuntime({
+      type: MSG.HELP,
+      missing: (Array.isArray(missing) ? missing : []).slice(0, 3),
+      jobTitle: jobTitle || '',
+    });
+  }
+
+  /** Fecha a notificação de ajuda (o caso já foi resolvido ou a vaga pulada). */
+  function notifyHelpDone() {
+    sendRuntime({ type: MSG.HELP_CLEAR });
+  }
+
   /* ---- Perguntas obrigatórias: responder sozinho -------------------------- */
 
   /** Preferências de resposta lidas da configuração (ver shared.js). */
@@ -1840,23 +1984,26 @@
    * internet lenta), esperamos a etapa carregar de verdade, fechamos os popups
    * que o LinkedIn joga por cima e respondemos as perguntas obrigatórias.
    */
-  async function applyToJob() {
+  async function applyToJob(id) {
     // O guard de popup precisa saber qual dialog é o formulário — e sair de
     // serviço no fim, mesmo se o fluxo estourar no meio.
     clearInterruptTimer(); // nada de guard atrasado de uma vaga anterior
     state.keepDialog = null;
     state.dismissing = false;
+    state.helpSkip = false; // um pedido antigo de "pular" não pode vazar para cá
 
     try {
-      return await runApplyFlow();
+      return await runApplyFlow(id);
     } finally {
       state.keepDialog = null;
       state.dismissing = false;
+      state.helpRequested = false;
+      state.helpSkip = false;
       clearInterruptTimer();
     }
   }
 
-  async function runApplyFlow() {
+  async function runApplyFlow(id) {
     // Antes de qualquer coisa: será que a página está avisando de limite?
     const blockedBefore = detectRateLimit();
     if (blockedBefore) return { status: 'bloqueio', error: blockedBefore };
@@ -1894,11 +2041,12 @@
     state.keepDialog = modal;
 
     const settings = state.settings || (await getSettings());
+    state.settings = settings;
     const cfg = settings.apply || DEFAULT_APPLY;
 
     await waitForSettle(modal, CONFIG.applySettleMs);
 
-    const deadline = Date.now() + CONFIG.applyFlowTimeoutMs;
+    let deadline = Date.now() + CONFIG.applyFlowTimeoutMs;
     let steps = 0;
     let filled = [];
     let stalled = 0;
@@ -1975,6 +2123,17 @@
         }
 
         if (!action) {
+          // O formulário travou num campo que a extensão não sabe responder
+          // (pergunta personalizada, sem valor salvo no LinkedIn). Em vez de
+          // descartar a vaga na hora, pedimos a sua ajuda.
+          const help = await askForHelp(modal, id, describeBlocker(modal));
+
+          if (help === 'resolved') {
+            deadline = Date.now() + CONFIG.applyFlowTimeoutMs; // volta com fôlego novo
+            await waitForSettle(modal, CONFIG.applySettleMs);
+            continue;
+          }
+
           const missing = describeBlocker(modal);
           await closeModal(modal, true);
           return { status: 'travada', missing, filled, steps };
@@ -2005,7 +2164,21 @@
         stalled += 1;
 
         if (stalled >= 2) {
+          // O botão existe, mas o clique não avança: quase sempre é um campo
+          // personalizado que o LinkedIn não aceita. Pedimos a sua ajuda.
           const missing = describeBlocker(modal);
+
+          if (missing.length) {
+            const help = await askForHelp(modal, id, missing, { step: true });
+
+            if (help === 'resolved') {
+              stalled = 0;
+              deadline = Date.now() + CONFIG.applyFlowTimeoutMs;
+              await waitForSettle(modal, CONFIG.applySettleMs);
+              continue;
+            }
+          }
+
           await closeModal(modal, true);
           return { status: 'incompleta', missing, filled, steps };
         }
@@ -2509,7 +2682,7 @@
       return;
     }
 
-    const result = await applyToJob();
+    const result = await applyToJob(id);
     await recordApplyResult(id, result);
 
     if (result.status === 'bloqueio') {
@@ -2699,6 +2872,18 @@
         // O agendador (background.js) cutuca a aba quando a cota libera.
         sendResponse({ ok: true, resuming: true });
         resumeNow().catch(() => {});
+        break;
+
+      case MSG.SKIP:
+        // "Pular vaga": a vaga travada é cancelada e a varredura vai para a
+        // próxima. Sem vaga esperando (o pedido veio tarde), apenas avisamos.
+        if (state.helpRequested) {
+          state.helpSkip = true;
+          wakeWaiters(); // acorda a espera por ajuda no mesmo instante
+          sendResponse({ ok: true, skipping: true });
+        } else {
+          sendResponse({ ok: false, reason: 'nothing_to_skip' });
+        }
         break;
 
       case MSG.STOP:

@@ -107,6 +107,7 @@ function cacheElements() {
   els.settingsHint = document.getElementById('settings-hint');
   els.scheduleHint = document.getElementById('schedule-hint');
   els.applyEnabled = document.getElementById('apply-enabled');
+  els.applyHelpStuck = document.getElementById('apply-help-stuck');
   els.applyPerTerm = document.getElementById('apply-per-term');
   els.applyHour = document.getElementById('apply-hour');
   els.apply24h = document.getElementById('apply-24h');
@@ -124,6 +125,8 @@ function cacheElements() {
   els.applyAnswerText = document.getElementById('apply-answer-text');
   els.applySummary = document.getElementById('apply-summary');
   els.guardInfo = document.getElementById('guard-info');
+  els.helpInfo = document.getElementById('help-info');
+  els.btnSkip = document.getElementById('btn-skip');
   els.btnExportFailures = document.getElementById('btn-export-failures');
   els.scheduleEnabled = document.getElementById('schedule-enabled');
   els.scheduleStart = document.getElementById('schedule-start');
@@ -156,6 +159,7 @@ function buildDayInputs() {
 function bindEvents() {
   els.btnStart.addEventListener('click', onStartClick);
   els.btnStop.addEventListener('click', onStopClick);
+  els.btnSkip.addEventListener('click', onSkipClick);
   els.btnExport.addEventListener('click', onExportClick);
   els.btnExportFailures.addEventListener('click', onExportFailuresClick);
   els.btnClear.addEventListener('click', onClearClick);
@@ -183,6 +187,7 @@ function bindEvents() {
 
   [
     els.applyEnabled,
+    els.applyHelpStuck,
     els.applyRespectUser,
     els.applyBreaks,
     els.applyFillRequired,
@@ -367,6 +372,25 @@ async function onStopClick() {
   setStatus('Varredura interrompida.', 'warn');
 }
 
+/**
+ * "Pular vaga travada": a vaga que está esperando a sua ajuda é cancelada e a
+ * varredura vai para a próxima. O pedido vai pelo service worker, que sabe qual
+ * aba do LinkedIn está com o formulário aberto.
+ */
+async function onSkipClick() {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: MSG.SKIP });
+
+    if (response && response.ok) {
+      setStatus('Pulando a vaga travada: cancelando a atual e indo para a próxima.', 'warn');
+    } else {
+      setStatus('Nenhuma vaga travada esperando ajuda agora.', 'warn');
+    }
+  } catch (error) {
+    setStatus('Não consegui pular a vaga agora. Tente de novo.', 'error');
+  }
+}
+
 async function onClearClick() {
   await chrome.storage.local.remove(STORAGE_RUN_KEY);
 
@@ -399,6 +423,7 @@ async function loadSettingsToForm() {
   els.terms.value = settings.terms.join('\n');
 
   els.applyEnabled.checked = settings.apply.enabled;
+  els.applyHelpStuck.checked = settings.apply.helpOnStuck;
   els.applyPerTerm.value = String(settings.apply.perTerm);
   els.applyHour.value = String(settings.apply.perHour);
   els.apply24h.value = String(settings.apply.per24h);
@@ -512,6 +537,7 @@ async function saveSettingsFromForm(options) {
     terms: els.terms.value,
     apply: {
       enabled: els.applyEnabled.checked,
+      helpOnStuck: els.applyHelpStuck.checked,
       perTerm: els.applyPerTerm.value,
       perHour: els.applyHour.value,
       per24h: els.apply24h.value,
@@ -753,6 +779,7 @@ function renderRun(run, totalFallback, breakUntil) {
   renderQuota();
   renderScheduleHint();
   renderStatusLight();
+  renderHelp(run);
 
   if (run && run.running) {
     const total =
@@ -788,6 +815,29 @@ function renderRun(run, totalFallback, breakUntil) {
 
   els.runInfo.hidden = true;
   els.runInfo.textContent = '';
+}
+
+/**
+ * Faixa "PegaVaga precisa de ajuda": aparece quando uma vaga travou num campo
+ * que só você preenche. Enquanto isso, o botão "Pular vaga travada" fica ativo.
+ */
+function renderHelp(run) {
+  if (!els.helpInfo) return;
+
+  const active = Boolean(run && run.running && run.needsHelp);
+
+  els.helpInfo.hidden = !active;
+  if (els.btnSkip) els.btnSkip.disabled = !active;
+
+  if (!active) {
+    els.helpInfo.textContent = '';
+    return;
+  }
+
+  els.helpInfo.textContent =
+    '✋ PegaVaga precisa de ajuda: não consegui preencher ' +
+    (run.helpMissing || 'um campo obrigatório') +
+    '. Abra a aba do LinkedIn e complete — ou clique em "Pular vaga travada".';
 }
 
 /** Descobre se há varredura em andamento (fila no storage ou ping na aba). */

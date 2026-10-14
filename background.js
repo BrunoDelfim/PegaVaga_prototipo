@@ -65,9 +65,35 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 /* O content script avisa o andamento mesmo com o pop-up fechado: assim a luz do
- * ícone acompanha a varredura em tempo real. */
-chrome.runtime.onMessage.addListener((message) => {
-  if (message && message.type === MSG.PROGRESS) refreshStatus(message);
+ * ícone acompanha a varredura em tempo real. Aqui também tratamos o pedido de
+ * ajuda (notificação de área de trabalho) e o "pular vaga travada". */
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message) return false;
+
+  if (message.type === MSG.PROGRESS) {
+    refreshStatus(message);
+    return false;
+  }
+
+  if (message.type === MSG.HELP) {
+    showHelpNotification(message, sender).then((shown) =>
+      sendResponse({ ok: true, shown: Boolean(shown) })
+    );
+    return true; // a resposta vem depois (a notificação é assíncrona)
+  }
+
+  if (message.type === MSG.HELP_CLEAR) {
+    clearHelpNotification();
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (message.type === MSG.SKIP) {
+    skipStuckJob().then((skipped) => sendResponse({ ok: Boolean(skipped) }));
+    return true; // a resposta vem depois (precisa da aba)
+  }
+
+  return false;
 });
 
 /* Ao subir um service worker novo, garante o alarme e a luz certos. */
@@ -361,6 +387,7 @@ async function startRun(settings) {
 
 /** Encerra a execução: apaga a fila (fonte da verdade) e avisa a aba. */
 async function stopRun(run) {
+  clearHelpNotification();
   await chrome.storage.local.remove(STORAGE.run).catch(() => {});
   await sendToTab(run && run.tabId, { type: MSG.STOP });
 }
@@ -404,4 +431,140 @@ function sendToTab(tabId, message) {
     }
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/* Ajuda: quando uma vaga trava num campo que só o usuário sabe preencher      */
+/* -------------------------------------------------------------------------- */
+
+const HELP_NOTIFICATION_ID = 'pegavaga-help';
+let helpTabId = null; // aba que pediu ajuda (é ela que o clique traz para frente)
+
+/**
+ * Mostra a notificação "PegaVaga precisa de ajuda". Clicar nela traz a aba do
+ * LinkedIn para frente; o botão "Pular vaga" manda o content script cancelar a
+ * candidatura atual e seguir para a próxima.
+ */
+async function showHelpNotification(message, sender) {
+  if (!chrome.notifications) {
+    console.warn('[PegaVaga] Notificações indisponíveis: recarregue a extensão para valer a permissão.');
+    return false;
+  }
+
+  const tabId = (sender && sender.tab && sender.tab.id) || (await resolveHelpTabId());
+  helpTabId = tabId != null ? tabId : null;
+
+  const missing = (message && Array.isArray(message.missing) ? message.missing : [])
+    .filter(Boolean)
+    .slice(0, 2);
+  const jobTitle = message && message.jobTitle ? String(message.jobTitle).slice(0, 60) : '';
+  const fields = missing.length ? missing.join(', ') : 'um campo obrigatório';
+
+  try {
+    await chrome.notifications.create(HELP_NOTIFICATION_ID, {
+      type: 'basic',
+      iconUrl: 'icons/pg-128.png',
+      title: 'PegaVaga precisa de ajuda para continuar',
+      message:
+        'Não consegui preencher ' +
+        fields +
+        (jobTitle ? ' na vaga «' + jobTitle + '»' : '') +
+        '. Abra a página para completar ou pule a vaga.',
+      priority: 2,
+      requireInteraction: true,
+      buttons: [{ title: 'Preencher manualmente' }, { title: 'Pular vaga' }],
+    });
+    console.info('[PegaVaga] Notificação de ajuda criada.');
+    return true;
+  } catch (error) {
+    // Sem a permissão de notificações: o pop-up mostra o mesmo aviso (faixa + luz vermelha).
+    console.warn('[PegaVaga] Não consegui criar a notificação de ajuda:', error);
+    return false;
+  }
+}
+
+/** Fecha a notificação de ajuda (se estiver aberta). */
+function clearHelpNotification() {
+  try {
+    chrome.notifications.clear(HELP_NOTIFICATION_ID, () => void chrome.runtime.lastError);
+  } catch (error) {
+    /* notificações indisponíveis: nada a fechar */
+  }
+}
+
+/** Traz a aba do LinkedIn (a que pediu ajuda) para frente. */
+async function focusHelpTab() {
+  const tabId = await resolveHelpTabId();
+  if (tabId == null) return;
+
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    await chrome.tabs.update(tabId, { active: true });
+    if (tab && tab.windowId != null) {
+      await chrome.windows.update(tab.windowId, { focused: true });
+    }
+  } catch (error) {
+    /* aba fechada: nada a focar */
+  }
+}
+
+/** Manda a aba cancelar a vaga travada e avançar. Devolve se foi entregue. */
+async function skipStuckJob() {
+  const tabId = await resolveHelpTabId();
+  if (tabId == null) return false;
+
+  const delivered = await sendToTab(tabId, { type: MSG.SKIP });
+  if (delivered) clearHelpNotification();
+  return delivered;
+}
+
+/** Descobre qual aba do LinkedIn está com a vaga travada. */
+async function resolveHelpTabId() {
+  if (helpTabId != null) {
+    try {
+      await chrome.tabs.get(helpTabId);
+      return helpTabId;
+    } catch (error) {
+      helpTabId = null;
+    }
+  }
+
+  try {
+    const state = await readState();
+    const tabId = state.run && state.run.tabId;
+    if (tabId != null) {
+      await chrome.tabs.get(tabId);
+      return tabId;
+    }
+  } catch (error) {
+    /* segue para a busca por uma aba do LinkedIn */
+  }
+
+  const tab = await findLinkedInTab();
+  return tab ? tab.id : null;
+}
+
+/* Listeners da notificação de ajuda (só existem com a permissão de notificações). */
+if (chrome.notifications) {
+  chrome.notifications.onClicked.addListener((id) => {
+    if (id === HELP_NOTIFICATION_ID) focusHelpTab();
+  });
+
+  chrome.notifications.onButtonClicked.addListener((id, index) => {
+    if (id !== HELP_NOTIFICATION_ID) return;
+
+    if (index === 0) {
+      focusHelpTab(); // "Preencher manualmente": traz a aba do LinkedIn para frente
+    } else if (index === 1) {
+      skipStuckJob(); // "Pular vaga": cancela a atual e avança
+    }
+  });
+}
+
+/* Se a aba que pediu ajuda sumir, a notificação não faz mais sentido. */
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (helpTabId != null && tabId === helpTabId) {
+    helpTabId = null;
+    clearHelpNotification();
+  }
+});
 

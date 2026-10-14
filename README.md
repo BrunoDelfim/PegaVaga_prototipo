@@ -75,6 +75,12 @@ pegavaga_chrome/
        (padrão) deixa a extensão não responder em vez de inventar.
      Os popups de **avaliação/pesquisa** que o LinkedIn abre depois de
      candidatar são fechados sozinhos, sempre, independentemente destas opções.
+   - **Pedir a minha ajuda (notificação)** — liga a ajuda quando uma vaga **trava
+     num campo que só você preenche** (pergunta personalizada, sem valor salvo no
+     LinkedIn). Em vez de descartar a vaga, o PegaVaga manda uma **notificação na
+     área de trabalho** (“PegaVaga precisa de ajuda para continuar”), mantém o
+     formulário aberto e espera. Veja o passo a passo em
+     [Quando uma vaga precisa de você](#quando-uma-vaga-precisa-de-você).
    As cotas são **dinâmicas**: quando uma delas estoura, a execução **pausa** e
    **volta sozinha** no instante em que a próxima vaga “libera” (a candidatura
    mais antiga sair da janela, ou a virada do dia).
@@ -187,9 +193,12 @@ pegavaga_chrome/
   `{ "autorização de trabalho": "Não", "pretensão salarial": "5000" }`.
 - **Ele não inventa o que não sabe**: se mesmo respondendo o possível o
   formulário parar numa pergunta que não dá para preencher (currículo anexo,
-  telefone vazio, pergunta sem opção), ele é **descartado** e a vaga fica
-  marcada como `Travada em campo obrigatório` — o motivo no relatório diz
-  **qual campo** ficou pendente e **o que já foi respondido**
+  telefone vazio, pergunta sem opção), ele **pede a sua ajuda** (notificação) em
+  vez de descartar a vaga — veja
+  [Quando uma vaga precisa de você](#quando-uma-vaga-precisa-de-você). Com essa
+  ajuda **desligada**, a vaga é descartada e fica marcada como
+  `Travada em campo obrigatório` — o motivo no relatório diz **qual campo**
+  ficou pendente e **o que já foi respondido**
   (ex.: “Campos não preenchidos: Telefone. Respondi sozinho: Sim.”).
 - **Ritmo humano**: todo intervalo tem variação aleatória, o clique é precedido
   de rolagem + passagem de mouse pelo elemento, há pausas de “leitura” da vaga,
@@ -212,6 +221,35 @@ pegavaga_chrome/
 > do LinkedIn: a extensão age na sua sessão, com os seus dados, e o envio é
 > definitivo. Comece com cotas baixas (por exemplo 5/h, 20/dia) e acompanhe as
 > primeiras execuções antes de deixar rodando sozinho.
+
+### Quando uma vaga precisa de você
+
+Quase toda vaga tem **perguntas personalizadas** que o LinkedIn não sabe
+responder sozinho (valor não salvo no seu perfil). Nesse caso o formulário
+**trava**: o botão “Avançar” fica desabilitado e nada avança.
+
+Com **“Pedir a minha ajuda”** ligado (padrão), em vez de descartar a vaga o
+PegaVaga:
+
+1. **Mantém o formulário aberto** e pausa a vaga (não descarta, não pula);
+2. Manda uma **notificação na área de trabalho** — *“PegaVaga precisa de ajuda
+   para continuar”* — dizendo o nome da vaga e o campo que ficou pendente;
+3. A notificação tem o botão **“Preencher manualmente”**, que **traz a aba do
+   LinkedIn para frente** (clicar no corpo da notificação também foca a aba) —
+   é só completar o campo na tela;
+4. Quando você preenche o obrigatório, o LinkedIn **reabilita o botão** e o
+   PegaVaga **retoma sozinho**, seguindo com a candidatura;
+5. Não quer preencher? Clique em **“Pular vaga”** (na notificação) ou em
+   **“⏭ Pular vaga travada”** (no pop-up): a candidatura atual é cancelada e a
+   varredura segue para a próxima.
+
+> Enquanto uma vaga espera por você, o pop-up mostra a faixa
+> **“✋ PegaVaga precisa de ajuda”** e a **luz fica vermelha**. Se ninguém
+> aparecer em alguns minutos, a vaga é descartada para a varredura não travar (o
+> relatório registra o motivo, como antes).
+
+> Desligue **“Pedir a minha ajuda”** para voltar ao comportamento antigo:
+> descarta a vaga e segue em frente sozinho.
 
 ### Arquivos gerados
 

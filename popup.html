@@ -142,6 +142,14 @@
         background: #cbd5e1;
       }
 
+      #btn-skip {
+        background: #fef3c7;
+        color: #92651d;
+      }
+      #btn-skip:hover:not(:disabled) {
+        background: #fde68a;
+      }
+
       #btn-export {
         background: var(--ok);
         color: #fff;
@@ -316,6 +324,10 @@
         margin: 0 0 12px;
       }
 
+      #help-info {
+        margin: 0 0 12px;
+      }
+
       .group {
         margin-top: 12px;
         padding-top: 10px;
@@ -417,6 +429,7 @@
       </div>
 
       <div class="status warn" id="guard-info" hidden></div>
+      <div class="status warn" id="help-info" hidden></div>
 
       <details class="settings" id="settings">
         <summary>⚙ Configurações</summary>
@@ -453,6 +466,14 @@
           <label class="inline">
             <input type="checkbox" id="apply-enabled" />
             <span>Candidatar-se sozinho pela Candidatura Simplificada</span>
+          </label>
+
+          <label class="inline">
+            <input type="checkbox" id="apply-help-stuck" />
+            <span>
+              Pedir a minha ajuda (notificação na área de trabalho) quando uma vaga
+              travar num campo que só eu posso preencher, em vez de descartá-la
+            </span>
           </label>
 
           <div class="grid3">
@@ -611,6 +632,7 @@
 
       <button id="btn-start" type="button">▶ Iniciar Busca e Varredura</button>
       <button id="btn-stop" type="button" disabled>■ Parar Varredura</button>
+      <button id="btn-skip" type="button" disabled>⏭ Pular vaga travada</button>
       <button id="btn-export" type="button">⬇ Exportar para Excel (CSV)</button>
       <button id="btn-export-failures" type="button">
         ⚠ Exportar não candidatadas (CSV)

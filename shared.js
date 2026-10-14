@@ -27,6 +27,9 @@ globalThis.PegaVagaShared = (() => {
     CLEAR: 'PEGAVAGA_CLEAR',
     PROGRESS: 'PEGAVAGA_PROGRESS',
     RESUME: 'PEGAVAGA_RESUME',
+    HELP: 'PEGAVAGA_HELP', // content → background: mostra a notificação de ajuda
+    HELP_CLEAR: 'PEGAVAGA_HELP_CLEAR', // content → background: fecha a notificação
+    SKIP: 'PEGAVAGA_SKIP', // pop-up/notificação → content: pula a vaga travada
   };
 
   const LINKEDIN_SEARCH_URL = 'https://www.linkedin.com/jobs/search/';
@@ -68,6 +71,7 @@ globalThis.PegaVagaShared = (() => {
       answerNumber: 1, // resposta padrão em campo numérico (anos, quantidade…)
       answerText: '', // resposta padrão em texto livre (vazio = não inventa)
       answers: {}, // respostas específicas: { "palavra-chave da pergunta": "resposta" }
+      helpOnStuck: true, // pede ajuda (notificação) em vez de descartar a vaga travada
     },
     schedule: {
       enabled: false,
@@ -328,6 +332,7 @@ globalThis.PegaVagaShared = (() => {
           .trim()
           .slice(0, 120),
         answers: normalizeAnswers(apply.answers),
+        helpOnStuck: apply.helpOnStuck !== false,
       },
       schedule: {
         enabled: schedule.enabled === true,
@@ -1048,6 +1053,17 @@ globalThis.PegaVagaShared = (() => {
 
     // 2) A varredura bateu em algo (ex.: página sem a lista de vagas).
     if (run && run.problem) return light('attention', String(run.problem));
+
+    // 2.1) Uma vaga travou num campo que só o usuário preenche: notificamos e
+    //      esperamos a ajuda dele (a vaga não é descartada).
+    if (run && run.needsHelp) {
+      return light(
+        'attention',
+        'PegaVaga precisa de ajuda para continuar' +
+          (run.helpMissing ? ' (campo: ' + run.helpMissing + ')' : '') +
+          '.'
+      );
+    }
 
     // 3) Pausa normal: cota, janela do agendador, descanso ou vez do usuário.
     if (paused) {
