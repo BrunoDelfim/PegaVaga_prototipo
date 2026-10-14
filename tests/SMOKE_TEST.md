@@ -214,6 +214,19 @@ fim — e não siga adiante antes de entender a falha.
       restaure o JSON e confirme que a configuração volta completa, **inclusive
       as respostas do formulário**.
 
+### R. Notificação de fim de varredura
+- [ ] Com **“Avisar quando a varredura terminar”** ligado, deixe uma varredura
+      curta terminar **com a janela em segundo plano** (troque de aba ou use outro
+      programa) → aparece **“PegaVaga terminou a varredura”** com o resumo
+      (vagas · candidaturas · descartadas).
+- [ ] Clicar na notificação **traz a aba do LinkedIn para frente**.
+- [ ] Com a **página em foco**, o fim da varredura **não** gera notificação.
+- [ ] Com a opção **desligada**, nenhuma notificação de fim aparece.
+- [ ] Em **modo simulação**, o texto diz “formulários preenchidos sem enviar”.
+- [ ] Se o LinkedIn pedir verificação/limite (guard), aparece **“PegaVaga parou
+      para proteger a sua conta”** e ela **fica na tela** até você vê-la (as
+      outras somem sozinhas).
+
 ## Antes de publicar (teste final)
 
 1. Rode **este roteiro inteiro num perfil limpo** do Chrome (item 5 do checklist).

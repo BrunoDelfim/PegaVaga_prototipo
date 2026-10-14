@@ -382,7 +382,36 @@ ok(
 ok('restauracao grava e repoe a tela depois de confirmar', /async function onRestoreConfirm[\s\S]{0,600}storage\.local\.set[\s\S]{0,200}loadSettingsToForm[\s\S]{0,200}saveSettingsFromForm/.test(popupJs));
 ok('download aceita tipo proprio', popupJs.includes('function downloadFile(content, filename, type)'));
 
-section('17. Espera por evento (assincrono)');
+section('17. Notificacao de fim de varredura');
+ok('notifyOnFinish ligado por padrao', S.DEFAULT_SETTINGS.apply.notifyOnFinish === true);
+ok('notifyOnFinish aceita desligar', S.parseSettings({ apply: { notifyOnFinish: false } }).apply.notifyOnFinish === false);
+ok('notifyOnFinish recusa valor solto', S.parseSettings({ apply: { notifyOnFinish: 'nao' } }).apply.notifyOnFinish === true);
+ok('MSG.DONE registrada', S.MSG.DONE === 'PEGAVAGA_DONE');
+
+const fimRun = S.describeRunEnd({ reason: 'fila', jobs: 128, applied: 9, dropped: 0, dryRun: false });
+eq('titulo da conclusao', fimRun.title, 'PegaVaga terminou a varredura');
+ok('conclusao traz vagas e candidaturas', fimRun.message.includes('128 vagas capturadas') && fimRun.message.includes('9 candidaturas enviadas'));
+ok('conclusao nao e urgente', fimRun.urgent === false);
+eq('singular com uma vaga e uma candidatura', S.describeRunEnd({ jobs: 1, applied: 1 }).message, '1 vaga capturada · 1 candidatura enviada.');
+ok('modo simulacao muda o texto', /sem enviar \(modo simulação\)/.test(S.describeRunEnd({ jobs: 3, applied: 2, dryRun: true }).message));
+ok('descarte entra no texto quando existe', S.describeRunEnd({ jobs: 3, applied: 1, dropped: 4 }).message.includes('4 antiga(s) descartada(s) por espaço'));
+ok('sem descarte o texto nao fala disso', !S.describeRunEnd({ jobs: 3, applied: 1 }).message.includes('descartada'));
+
+const paradaRun = S.describeRunEnd({ reason: 'bloqueio', guardReason: 'Aviso de limite de uso na página do LinkedIn' });
+eq('titulo da parada por protecao', paradaRun.title, 'PegaVaga parou para proteger a sua conta');
+ok('parada e urgente e traz o motivo', paradaRun.urgent === true && paradaRun.message.includes('Aviso de limite de uso'));
+ok('parada sem motivo tambem funciona', S.describeRunEnd({ reason: 'bloqueio' }).message.includes('limite de uso'));
+ok('texto tolera dados vazios', S.describeRunEnd({}).message === '0 vagas capturadas · 0 candidaturas enviadas.' && S.describeRunEnd(null).title.length > 0);
+
+ok('content avisa o fim da fila antes de limpar', /notifyRunEnded\('fila'\);[\s\S]{0,90}clearRun\(\)/.test(contentJs));
+ok('content avisa a parada por protecao', /notifyRunEnded\('bloqueio'\)/.test(contentJs));
+ok('aviso respeita a opcao e o foco da pagina', /notifyOnFinish === false\) return/.test(contentJs) && contentJs.includes('document.hasFocus()'));
+const bgJs = read('background.js');
+ok('background mostra o aviso de fim', bgJs.includes('showRunEndNotification') && bgJs.includes('MSG.DONE') && bgJs.includes('DONE_NOTIFICATION_ID'));
+ok('clique no aviso traz a aba para frente', /DONE_NOTIFICATION_ID\) focusRunTab/.test(bgJs));
+ok('popup tem o interruptor do aviso', popupHtml.includes('id="apply-notify-finish"') && popupJs.includes('notifyOnFinish: els.applyNotifyFinish.checked'));
+
+section('18. Espera por evento (assincrono)');
 (async () => {
   const sig = S.createSignal();
   eq('waitUntil imediato', await S.waitUntil(sig, () => 42, 100, 0), 42);

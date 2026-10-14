@@ -707,6 +707,39 @@
     }
   }
 
+  /**
+   * Avisa o service worker que a varredura acabou (ou parou por proteção), para
+   * ele mostrar a notificação na área de trabalho — quem deixa rodando em
+   * segundo plano não fica sem saber.
+   *
+   * Só manda quando a opção está ligada (quem conhece a configuração é este
+   * lado, então o background não precisa reler nada) e só quando a página **não**
+   * está em foco: se você está olhando a tela, a notificação seria redundante.
+   */
+  function notifyRunEnded(reason, extra) {
+    const cfg = (state.settings && state.settings.apply) || DEFAULT_APPLY;
+
+    if (cfg.notifyOnFinish === false) return;
+    if (typeof document.hasFocus === 'function' && document.hasFocus()) return;
+
+    const run = state.run || {};
+
+    sendRuntime(
+      Object.assign(
+        {
+          type: MSG.DONE,
+          reason: reason || 'fila',
+          jobs: Object.keys(state.jobs).length,
+          applied: Number(run.appliedTotal) || 0,
+          dropped: state.dropped,
+          dryRun: cfg.dryRun === true,
+          guardReason: (state.guard && state.guard.reason) || '',
+        },
+        extra || {}
+      )
+    );
+  }
+
 
   /* ------------------------------------------------------------------------ */
   /* Rolagem da lista                                                          */
@@ -1050,6 +1083,8 @@
     };
 
     await chrome.storage.local.set({ [STORAGE_GUARD_KEY]: state.guard }).catch((error) => noteError('gravar o bloqueio', error));
+    // Parada que exige atenção: quem está fora do navegador precisa saber.
+    notifyRunEnded('bloqueio');
     broadcastProgress();
   }
 
@@ -2532,6 +2567,9 @@
     const nextIndex = (run.index || 0) + 1;
 
     if (nextIndex >= urls.length) {
+      // Acabou a fila: é aqui que a notificação de "terminou a varredura" sai
+      // (antes de limpar a fila, que é de onde o resumo vem).
+      notifyRunEnded('fila');
       await clearRun();
       broadcastProgress();
       return;

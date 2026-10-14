@@ -93,6 +93,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // a resposta vem depois (precisa da aba)
   }
 
+  if (message.type === MSG.DONE) {
+    // Fim de varredura (ou parada por proteção): o texto vem pronto do content.
+    showRunEndNotification(message).then((shown) =>
+      sendResponse({ ok: true, shown: Boolean(shown) })
+    );
+    return true; // a resposta vem depois (a notificação é assíncrona)
+  }
+
   return false;
 });
 
@@ -491,11 +499,8 @@ function clearHelpNotification() {
   }
 }
 
-/** Traz a aba do LinkedIn (a que pediu ajuda) para frente. */
-async function focusHelpTab() {
-  const tabId = await resolveHelpTabId();
-  if (tabId == null) return;
-
+/** Traz uma aba (do LinkedIn) para frente, focando a janela dela também. */
+async function focusTabId(tabId) {
   try {
     const tab = await chrome.tabs.get(tabId);
     await chrome.tabs.update(tabId, { active: true });
@@ -505,6 +510,61 @@ async function focusHelpTab() {
   } catch (error) {
     /* aba fechada: nada a focar */
   }
+}
+
+/** Traz a aba do LinkedIn (a que pediu ajuda) para frente. */
+async function focusHelpTab() {
+  const tabId = await resolveHelpTabId();
+  if (tabId == null) return;
+  await focusTabId(tabId);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Fim da varredura (ou parada por proteção da conta)                         */
+/* -------------------------------------------------------------------------- */
+
+const DONE_NOTIFICATION_ID = 'pegavaga-done';
+
+/**
+ * Avisa que a varredura terminou — útil para quem deixou rodando em segundo
+ * plano — ou que ela **parou por proteção da conta** (aí a notificação fica na
+ * tela até você ver).
+ *
+ * O texto sai de `SHARED.describeRunEnd()`, alimentado com o resumo que o
+ * `content.js` mandou: assim a decisão do que dizer é uma função pura, testada
+ * fora do service worker.
+ */
+async function showRunEndNotification(message) {
+  if (!chrome.notifications) {
+    console.warn('[PegaVaga] Notificações indisponíveis: recarregue a extensão para valer a permissão.');
+    return false;
+  }
+
+  const texto = SHARED.describeRunEnd(message);
+
+  try {
+    await chrome.notifications.create(DONE_NOTIFICATION_ID, {
+      type: 'basic',
+      iconUrl: 'icons/pg-128.png',
+      title: texto.title,
+      message: texto.message,
+      priority: texto.urgent ? 2 : 0,
+      requireInteraction: Boolean(texto.urgent),
+    });
+    console.info('[PegaVaga] Notificação de fim de varredura criada.');
+    return true;
+  } catch (error) {
+    // Sem a permissão: o pop-up e a luz do ícone continuam mostrando o estado.
+    console.warn('[PegaVaga] Não consegui criar a notificação de fim de varredura:', error);
+    return false;
+  }
+}
+
+/** Traz a aba da varredura para frente (mesma ideia do pedido de ajuda). */
+async function focusRunTab() {
+  const tabId = await resolveHelpTabId();
+  if (tabId == null) return;
+  await focusTabId(tabId);
 }
 
 /** Manda a aba cancelar a vaga travada e avançar. Devolve se foi entregue. */
@@ -547,6 +607,7 @@ async function resolveHelpTabId() {
 if (chrome.notifications) {
   chrome.notifications.onClicked.addListener((id) => {
     if (id === HELP_NOTIFICATION_ID) focusHelpTab();
+    else if (id === DONE_NOTIFICATION_ID) focusRunTab();
   });
 
   chrome.notifications.onButtonClicked.addListener((id, index) => {

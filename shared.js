@@ -32,6 +32,7 @@ globalThis.PegaVagaShared = (() => {
     HELP: 'PEGAVAGA_HELP', // content → background: mostra a notificação de ajuda
     HELP_CLEAR: 'PEGAVAGA_HELP_CLEAR', // content → background: fecha a notificação
     SKIP: 'PEGAVAGA_SKIP', // pop-up/notificação → content: pula a vaga travada
+    DONE: 'PEGAVAGA_DONE', // content → background: varredura terminou (ou parou por proteção)
   };
 
   const LINKEDIN_SEARCH_URL = 'https://www.linkedin.com/jobs/search/';
@@ -82,6 +83,7 @@ globalThis.PegaVagaShared = (() => {
       answerText: '', // resposta padrão em texto livre (vazio = não inventa)
       answers: {}, // respostas específicas: { "palavra-chave da pergunta": "resposta" }
       helpOnStuck: true, // pede ajuda (notificação) em vez de descartar a vaga travada
+      notifyOnFinish: true, // avisa na área de trabalho quando a varredura termina
     },
     schedule: {
       enabled: false,
@@ -344,6 +346,7 @@ globalThis.PegaVagaShared = (() => {
           .slice(0, 120),
         answers: normalizeAnswers(apply.answers),
         helpOnStuck: apply.helpOnStuck !== false,
+        notifyOnFinish: apply.notifyOnFinish !== false,
       },
       schedule: {
         enabled: schedule.enabled === true,
@@ -1335,7 +1338,7 @@ globalThis.PegaVagaShared = (() => {
   }
 
   /** Inteiro >= 0 no diagnóstico (nunca sai "undefined"/"NaN"). */
-  function diagCount(value) {
+  function safeCount(value) {
     const parsed = Math.round(Number(value));
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }
@@ -1353,11 +1356,55 @@ globalThis.PegaVagaShared = (() => {
     return (
       estado +
       ' · termo ' + termo +
-      ' · ' + diagCount(run.appliedInTerm) + ' candidatura(s) no termo' +
-      ' · ' + diagCount(run.appliedTotal) + ' na execução' +
+      ' · ' + safeCount(run.appliedInTerm) + ' candidatura(s) no termo' +
+      ' · ' + safeCount(run.appliedTotal) + ' na execução' +
       ' · ' + total + ' termo(s) na fila' +
       (run.problem ? ' · problema: ' + run.problem : '')
     );
+  }
+
+  /**
+   * Texto da notificação de fim de varredura (título + corpo). Puro e testável:
+   * quem mostra é o service worker, com o resumo que o `content.js` mandou.
+   * `reason === 'bloqueio'` é o caso que exige atenção (o LinkedIn pediu
+   * verificação); `urgent` deixa a notificação presa na tela.
+   * @param {Object} data { reason, jobs, applied, dropped, dryRun, guardReason }
+   * @returns {{ title: string, message: string, urgent: boolean }}
+   */
+  function describeRunEnd(data) {
+    const d = data || {};
+
+    if (d.reason === 'bloqueio') {
+      return {
+        title: 'PegaVaga parou para proteger a sua conta',
+        message:
+          'O LinkedIn pediu verificação ou avisou de limite de uso' +
+          (d.guardReason ? ' (' + d.guardReason + ')' : '') +
+          '. A varredura parou sozinha e volta a funcionar depois do descanso.',
+        urgent: true,
+      };
+    }
+
+    const vagas = safeCount(d.jobs);
+    const candidaturas = safeCount(d.applied);
+    const descartadas = safeCount(d.dropped);
+    const partes = [vagas + (vagas === 1 ? ' vaga capturada' : ' vagas capturadas')];
+
+    partes.push(
+      d.dryRun
+        ? candidaturas + ' formulário(s) preenchido(s) sem enviar (modo simulação)'
+        : candidaturas + (candidaturas === 1 ? ' candidatura enviada' : ' candidaturas enviadas')
+    );
+
+    if (descartadas) {
+      partes.push(descartadas + ' antiga(s) descartada(s) por espaço');
+    }
+
+    return {
+      title: 'PegaVaga terminou a varredura',
+      message: partes.join(' · ') + '.',
+      urgent: false,
+    };
   }
 
   /**
@@ -1380,13 +1427,13 @@ globalThis.PegaVagaShared = (() => {
     linhas.push('');
     linhas.push(
       'Vagas: ' +
-        diagCount(d.count) +
+        safeCount(d.count) +
         ' · descartadas por espaço: ' +
-        diagCount(d.dropped) +
+        safeCount(d.dropped) +
         ' · última varredura: ' +
         (d.lastRun || 'nenhuma')
     );
-    linhas.push('Candidaturas registradas: ' + diagCount(d.apps));
+    linhas.push('Candidaturas registradas: ' + safeCount(d.apps));
     linhas.push('Fila: ' + diagRun(d.run));
     linhas.push(
       'Bloqueio: ' +
@@ -1500,6 +1547,7 @@ globalThis.PegaVagaShared = (() => {
     trimJobs,
     ERROR_KEEP,
     buildDiagnostics,
+    describeRunEnd,
     buildSettingsBackup,
     parseSettingsBackup,
     HOUR_MS,

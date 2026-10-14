@@ -42,7 +42,7 @@ A versão vive no `manifest.json` (campo `version`). A regra de avanço é:
 Em resumo: o **último número** é o contador do dia a dia (0–9) e o **do meio** só
 muda quando ele estoura.
 
-Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.7`) — é ela que o
+Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.8`) — é ela que o
 script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
@@ -111,6 +111,14 @@ seguimos abaixo de 1.
        (padrão) deixa a extensão não responder em vez de inventar.
      Os popups de **avaliação/pesquisa** que o LinkedIn abre depois de
      candidatar são fechados sozinhos, sempre, independentemente destas opções.
+   - **Avisar quando a varredura terminar** — **ligado por padrão**: no fim da fila
+     aparece uma notificação na área de trabalho com o resumo (**vagas
+     capturadas · candidaturas enviadas · antigas descartadas**), e clicar nela
+     **traz a aba do LinkedIn para frente**. Se o LinkedIn pedir verificação ou
+     avisar de limite de uso, ela avisa que a varredura **parou para proteger a
+     sua conta** e fica na tela até você ver. Com a página em foco nada aparece (a
+     notificação seria redundante), e no **modo simulação** o texto diz
+     “formulários preenchidos sem enviar”.
    - **Pedir a minha ajuda (notificação)** — **ligado por padrão**: quando uma vaga **trava
      num campo que só você preenche** (pergunta personalizada, sem valor salvo no
      LinkedIn). Em vez de descartar a vaga, o PegaVaga manda uma **notificação na
@@ -406,7 +414,7 @@ item.
 
 ```bash
 bash tools/empacotar.sh          # empacota o commit atual (HEAD)
-bash tools/empacotar.sh v0.7.7   # empacota uma tag — é o que se publica
+bash tools/empacotar.sh v0.7.8   # empacota uma tag — é o que se publica
 ```
 
 O script roda os testes antes (não gera zip com teste vermelho), monta

@@ -123,6 +123,7 @@ function cacheElements() {
   els.applyEnabled = document.getElementById('apply-enabled');
   els.applyDryRun = document.getElementById('apply-dry-run');
   els.applyHelpStuck = document.getElementById('apply-help-stuck');
+  els.applyNotifyFinish = document.getElementById('apply-notify-finish');
   els.applyPerTerm = document.getElementById('apply-per-term');
   els.applyHour = document.getElementById('apply-hour');
   els.apply24h = document.getElementById('apply-24h');
@@ -237,6 +238,7 @@ function bindEvents() {
     els.applyEnabled,
     els.applyDryRun,
     els.applyHelpStuck,
+    els.applyNotifyFinish,
     els.applyRespectUser,
     els.applyBreaks,
     els.applyFillRequired,
@@ -634,6 +636,7 @@ async function loadSettingsToForm() {
   els.applyEnabled.checked = settings.apply.enabled;
   els.applyDryRun.checked = settings.apply.dryRun;
   els.applyHelpStuck.checked = settings.apply.helpOnStuck;
+  els.applyNotifyFinish.checked = settings.apply.notifyOnFinish;
   els.applyPerTerm.value = String(settings.apply.perTerm);
   els.applyHour.value = String(settings.apply.perHour);
   els.apply24h.value = String(settings.apply.per24h);
@@ -749,6 +752,7 @@ async function saveSettingsFromForm(options) {
       enabled: els.applyEnabled.checked,
       dryRun: els.applyDryRun.checked,
       helpOnStuck: els.applyHelpStuck.checked,
+      notifyOnFinish: els.applyNotifyFinish.checked,
       perTerm: els.applyPerTerm.value,
       perHour: els.applyHour.value,
       per24h: els.apply24h.value,
