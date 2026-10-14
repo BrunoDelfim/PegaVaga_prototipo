@@ -66,6 +66,8 @@ const els = {};
 let saveTimer = null;
 let statusTimer = null;
 let selectTab = null; // troca de aba (Início / Configurações)
+let selectedTerm = null; // termo escolhido no card "Vagas por termo"
+const termsCache = { jobs: null }; // últimas vagas lidas (para re-render ao clicar)
 let settings = SHARED.parseSettings(null);
 let appsCache = [];
 let runCache = null;
@@ -81,6 +83,7 @@ async function init() {
   bindEvents();
   bindChartTips();
   bindTabs();
+  bindTerms();
 
   await loadSettingsToForm();
   await refresh();
@@ -140,6 +143,11 @@ function cacheElements() {
   els.spark = document.getElementById('spark');
   els.sparkCard = document.getElementById('spark-card');
   els.sparkHint = document.getElementById('spark-hint');
+  els.termsCard = document.getElementById('terms-card');
+  els.termsBars = document.getElementById('terms-bars');
+  els.termSpark = document.getElementById('term-spark');
+  els.termSparkName = document.getElementById('term-spark-name');
+  els.termSparkTotal = document.getElementById('term-spark-total');
   els.btnExportFailures = document.getElementById('btn-export-failures');
   els.scheduleEnabled = document.getElementById('schedule-enabled');
   els.scheduleStart = document.getElementById('schedule-start');
@@ -676,6 +684,7 @@ async function refresh() {
   renderApplySummary(jobs);
   renderQuota();
   renderSpark();
+  renderTerms(jobs);
 }
 
 /**
@@ -904,6 +913,189 @@ function renderSpark() {
   els.sparkHint.textContent = total
     ? total + ' candidatura(s) nas últimas 24 h (' + max + ' na hora de pico).'
     : '';
+}
+
+/** Escapa texto para entrar com segurança no HTML (termos vêm do usuário). */
+function escHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Card "Vagas por termo": uma linha por termo de busca (barra proporcional ao
+ * total de vagas, com "vagas · candidatadas") e, embaixo, o mini-gráfico das
+ * últimas 24 h do termo escolhido. Clicar num termo troca o gráfico.
+ */
+function renderTerms(jobs) {
+  if (!els.termsCard || !els.termsBars) return;
+
+  termsCache.jobs = jobs;
+
+  const groups = new Map();
+
+  for (const job of jobs) {
+    const term = String(job.term || '').trim() || 'sem termo';
+    const entry = groups.get(term) || { term, total: 0, applied: 0 };
+
+    entry.total += 1;
+    if (job.appliedAt) entry.applied += 1;
+    groups.set(term, entry);
+  }
+
+  const rows = Array.from(groups.values()).sort(
+    (a, b) => b.total - a.total || a.term.localeCompare(b.term, 'pt-BR')
+  );
+
+  els.termsCard.hidden = rows.length === 0;
+
+  if (!rows.length) {
+    els.termsBars.innerHTML = '';
+    return;
+  }
+
+  // Mantém o termo escolhido; se ele sumiu da lista, volta para o primeiro.
+  if (!selectedTerm || !rows.some((row) => row.term === selectedTerm)) {
+    selectedTerm = rows[0].term;
+  }
+
+  const max = Math.max(...rows.map((row) => row.total));
+
+  els.termsBars.innerHTML = rows
+    .map((row) => {
+      const pct = Math.max(4, Math.round((row.total / max) * 100));
+      const tip =
+        row.term + ': ' + row.total + ' vaga(s) · ' + row.applied + ' candidatada(s)';
+
+      return (
+        '<li class="term-row" data-term="' +
+        escHtml(row.term) +
+        '" data-tip="' +
+        escHtml(tip) +
+        '" role="button" tabindex="0" aria-pressed="' +
+        (row.term === selectedTerm ? 'true' : 'false') +
+        '">' +
+        '<span class="term-name" title="' +
+        escHtml(row.term) +
+        '">' +
+        escHtml(row.term) +
+        '</span>' +
+        '<span class="term-bar"><i style="width:' +
+        pct +
+        '%"></i></span>' +
+        '<span class="term-count"><b>' +
+        row.total +
+        '</b> · ' +
+        row.applied +
+        '</span>' +
+        '</li>'
+      );
+    })
+    .join('');
+
+  renderTermSpark(jobs, rows);
+}
+
+/** Mini-gráfico de 24 h do termo escolhido (vagas capturadas x candidaturas). */
+function renderTermSpark(jobs, rows) {
+  if (!els.termSpark) return;
+
+  const entry = rows.find((row) => row.term === selectedTerm);
+  if (!entry) return;
+
+  const now = Date.now();
+  const found = new Array(24).fill(0);
+  const applied = new Array(24).fill(0);
+
+  const bucket = (iso) => {
+    const ts = Date.parse(iso || '');
+    if (!Number.isFinite(ts)) return -1;
+    return 23 - Math.floor((now - ts) / 3600000);
+  };
+
+  for (const job of jobs) {
+    if ((String(job.term || '').trim() || 'sem termo') !== selectedTerm) continue;
+
+    const i = bucket(job.capturedAt);
+    if (i >= 0 && i < 24) found[i] += 1;
+
+    const j = bucket(job.appliedAt);
+    if (j >= 0 && j < 24) applied[j] += 1;
+  }
+
+  const max = Math.max(1, ...found, ...applied);
+  const barWidth = 320 / 24;
+
+  els.termSpark.innerHTML = found
+    .map((count, i) => {
+      const hoursAgo = 23 - i;
+      const when = hoursAgo === 0 ? 'nesta hora' : 'há ' + hoursAgo + ' h';
+      const tip = when + ': ' + count + ' vaga(s) · ' + applied[i] + ' candidatura(s)';
+      const x = (i * barWidth + 1.5).toFixed(1);
+      const w = (barWidth - 3).toFixed(1);
+
+      const bar = (value, cls) => {
+        if (!value) return '';
+        const height = Math.max(3, Math.round((value / max) * 36));
+
+        return (
+          '<rect class="' +
+          cls +
+          '" x="' +
+          x +
+          '" y="' +
+          (40 - height) +
+          '" width="' +
+          w +
+          '" height="' +
+          height +
+          '" rx="1.5" data-tip="' +
+          tip +
+          '"></rect>'
+        );
+      };
+
+      return bar(count, 'job') + bar(applied[i], 'app');
+    })
+    .join('');
+
+  const totalFound = found.reduce((sum, n) => sum + n, 0);
+  const totalApplied = applied.reduce((sum, n) => sum + n, 0);
+
+  if (els.termSparkName) els.termSparkName.textContent = selectedTerm;
+  if (els.termSparkTotal) {
+    els.termSparkTotal.textContent =
+      '24 h: ' + totalFound + ' vaga(s) · ' + totalApplied + ' candidatura(s)';
+  }
+}
+
+/** Troca o termo em foco no card "Vagas por termo". */
+function selectTerm(term) {
+  selectedTerm = term;
+  if (termsCache.jobs) renderTerms(termsCache.jobs);
+}
+
+/** Clique (ou Enter/Espaço) num termo do card "Vagas por termo". */
+function bindTerms() {
+  const list = els.termsBars;
+  if (!list) return;
+
+  const pick = (event) => {
+    const row = event.target && event.target.closest ? event.target.closest('.term-row') : null;
+    if (!row) return;
+
+    const term = row.getAttribute('data-term');
+    if (term && term !== selectedTerm) selectTerm(term);
+  };
+
+  list.addEventListener('click', pick);
+  list.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    pick(event);
+  });
 }
 
 /**

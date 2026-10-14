@@ -302,6 +302,53 @@
       .qbar:hover .qbar-top b { color: var(--brand-2); }
 
       .spark rect:hover { fill: var(--brand-2); opacity: 1; }
+
+      /* ========================= Card "Vagas por termo" ==================== */
+      .terms-bars { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+      .term-row {
+        display: grid;
+        grid-template-columns: 84px 1fr auto;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 5px;
+        border-radius: var(--r-sm);
+        cursor: pointer;
+        transition: background 0.12s ease;
+      }
+      .term-row:hover { background: var(--brand-soft); }
+      .term-row[aria-pressed="true"] {
+        background: var(--brand-soft);
+        box-shadow: inset 0 0 0 1px #c7dbf3;
+      }
+      .term-row:focus-visible { outline: none; box-shadow: var(--ring); }
+      .term-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--fs-sm);
+        font-weight: 650;
+        color: var(--text);
+      }
+      .term-bar { height: 8px; border-radius: 99px; background: #eef2f7; overflow: hidden; }
+      .term-bar i { display: block; height: 100%; border-radius: 99px; background: var(--brand); }
+      .term-count { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+      .term-count b { font-weight: 750; color: var(--text); }
+
+      .term-spark-wrap { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+      .term-spark-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: var(--fs-xs);
+        color: var(--muted);
+      }
+      .term-spark-head b { font-size: var(--fs-sm); color: var(--brand-2); }
+      .term-spark { height: 40px; margin-top: 4px; }
+      .term-spark rect.job { fill: var(--brand); opacity: 0.28; }
+      .term-spark rect.app { fill: var(--brand); opacity: 1; }
+      .term-spark rect:hover { fill: var(--brand); }
+      .term-spark rect.job:hover { opacity: 0.45; }
       /* ============================== Avisos =============================== */
       .status {
         padding: 9px 11px;
@@ -552,6 +599,8 @@
         .donut-track { stroke: #1e293b; }
         .qbar-track,
         .progress { background: #1e293b; }
+        .term-bar { background: #1e293b; }
+        .term-row[aria-pressed="true"] { box-shadow: inset 0 0 0 1px #1e3a5f; }
         .days label { background: var(--card); }
         .terms-preview li { border-color: #1e3a5f; }
         #settings .switch input[type="checkbox"] { background: #334155; }
@@ -634,6 +683,23 @@
         <span class="card-title">Candidaturas nas últimas 24 h</span>
         <svg class="spark" id="spark" viewBox="0 0 320 44" preserveAspectRatio="none" aria-hidden="true"></svg>
         <p class="hint" id="spark-hint"></p>
+      </section>
+
+      <section class="card" id="terms-card" hidden>
+        <span class="card-title">Vagas por termo</span>
+        <ul class="terms-bars" id="terms-bars"></ul>
+        <div class="term-spark-wrap">
+          <div class="term-spark-head">
+            <b id="term-spark-name"></b>
+            <span id="term-spark-total"></span>
+          </div>
+          <svg class="spark term-spark" id="term-spark" viewBox="0 0 320 40"
+            preserveAspectRatio="none" aria-hidden="true"></svg>
+        </div>
+        <p class="hint">
+          Números: <b>vagas capturadas</b> · candidatadas. Clique num termo para ver as
+          últimas 24 h dele (barra clara = vagas, escura = candidaturas).
+        </p>
       </section>
 
       <div class="status warn" id="guard-info" hidden></div>

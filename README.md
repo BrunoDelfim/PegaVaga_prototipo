@@ -155,6 +155,11 @@ muda quando ele estoura.
    - as **barras de cota** (sessão, hora, 24 h, dia) — a que estourou fica
      vermelha; o texto continua disponível no tooltip;
    - o **mini-gráfico de candidaturas por hora** nas últimas 24 h;
+   - o card **“Vagas por termo”**: uma barra por termo de busca, com
+     **vagas capturadas · candidatadas** ao lado. **Clique num termo** para ver o
+     mini-gráfico das últimas 24 h **daquele termo** (barra clara = vagas
+     capturadas, escura = candidaturas) — é assim que dá para ver *quando* cada
+     termo rendeu;
    - a linha do agendador, ex.:
      `Janela: Seg, Ter, Qua, Qui, Sex, 08:00 → 18:00 · próxima: seg. 08:00.`
      (quando a fila está pausada, ela também diz **por quê**: cota, janela,
