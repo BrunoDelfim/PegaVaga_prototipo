@@ -517,6 +517,13 @@ globalThis.PegaVagaShared = (() => {
       failure: true,
       reason: 'A página da vaga não oferece botão de candidatura.',
     },
+    ja_candidatada: {
+      label: 'Já candidatada antes',
+      failure: false, // não é falha: você já tinha se candidatado a esta vaga
+      already: true, // categoria própria no relatório (contagem separada)
+      reason:
+        'O LinkedIn mostra que você já se candidatou a esta vaga antes; a candidatura não foi enviada de novo.',
+    },
     sem_modal: {
       label: 'Formulário não abriu',
       failure: true,
@@ -588,6 +595,18 @@ globalThis.PegaVagaShared = (() => {
    */
   const EASY_APPLY_LABEL =
     /candidatura simplificada|simplificada|easy apply|(no|pelo|com o|with) linkedin|linkedin (application|bug)/i;
+
+  /**
+   * Sinais (pt/en) de que você JÁ se candidatou a esta vaga antes: nesse caso o
+   * LinkedIn troca o botão de candidatura pelo aviso "Candidatou-se" /
+   * "Você se candidatou" / "Candidatura enviada" (às vezes com a data).
+   *
+   * O core é "candidatou(-se)": cobre "Candidatou-se há 1 mês", "Você se
+   * candidatou", "Já se candidatou"… O "não se candidatou" (oposto) não casa,
+   * porque aqui pedimos o "candidatou" colado no "se" ou no "você se".
+   */
+  const ALREADY_APPLIED_RE =
+    /candidatou-se|candidatou se|voce( ja)? se candidatou|ja se candidatou|candidatura (foi )?enviad|you (already )?applied|applied on|application (submitted|sent)/i;
 
   /** Resultado da leitura do botão de candidatura. */
   const APPLY_KINDS = {
@@ -689,6 +708,15 @@ globalThis.PegaVagaShared = (() => {
       .toLowerCase()
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  /**
+   * O texto diz que você já se candidatou a esta vaga antes? Recebe o texto do
+   * topo da vaga e/ou o rótulo do botão (a comparação ignora acento e caixa).
+   */
+  function looksAlreadyApplied(text) {
+    const value = plainText(text);
+    return Boolean(value) && ALREADY_APPLIED_RE.test(value);
   }
 
   /**
@@ -864,6 +892,7 @@ globalThis.PegaVagaShared = (() => {
         label: outcome.label,
         reason: value.applyReason || outcome.reason,
         pending: false,
+        already: Boolean(outcome.already),
       };
     }
 
@@ -887,7 +916,7 @@ globalThis.PegaVagaShared = (() => {
    */
   function summarizeApply(jobs, options) {
     const list = Array.isArray(jobs) ? jobs : Object.values(jobs || {});
-    const summary = { total: list.length, applied: 0, failed: 0, pending: 0, reasons: [] };
+    const summary = { total: list.length, applied: 0, already: 0, failed: 0, pending: 0, reasons: [] };
     const byLabel = new Map();
 
     for (const job of list) {
@@ -898,13 +927,15 @@ globalThis.PegaVagaShared = (() => {
         continue;
       }
 
-      if (failure.pending) summary.pending += 1;
+      if (failure.already) summary.already += 1;
+      else if (failure.pending) summary.pending += 1;
       else summary.failed += 1;
 
       const entry = byLabel.get(failure.label) || {
         code: failure.code,
         label: failure.label,
         pending: failure.pending,
+        already: Boolean(failure.already),
         count: 0,
       };
 
@@ -924,11 +955,12 @@ globalThis.PegaVagaShared = (() => {
     if (!summary || !summary.total) return 'Nenhuma vaga capturada ainda.';
 
     let text = summary.applied + ' candidatada(s)';
+    if (summary.already) text += ' · ' + summary.already + ' já candidatada(s) antes';
     if (summary.failed) text += ' · ' + summary.failed + ' não candidatada(s)';
     if (summary.pending) text += ' · ' + summary.pending + ' na fila';
 
     const top = (summary.reasons || [])
-      .filter((entry) => !entry.pending)
+      .filter((entry) => !entry.pending && !entry.already)
       .slice(0, 3)
       .map((entry) => entry.count + ' ' + entry.label.toLowerCase());
 
@@ -1266,6 +1298,7 @@ globalThis.PegaVagaShared = (() => {
     isOffsiteUrl,
     classifyApply,
     plainText,
+    looksAlreadyApplied,
     classifyDialog,
     matchDismissLabel,
     answerForQuestion,

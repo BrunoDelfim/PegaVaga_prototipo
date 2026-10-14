@@ -933,7 +933,7 @@ function buildFailuresCSV(jobs) {
 
   for (const job of jobs) {
     const failure = SHARED.describeApplyFailure(job, options);
-    if (!failure) continue;
+    if (!failure || failure.already) continue; // já candidatada antes não é falha
 
     rows.push([
       job.id || '',
@@ -1099,7 +1099,9 @@ async function onExportFailuresClick() {
     const csv = buildFailuresCSV(jobs);
 
     if (!csv) {
-      setStatus('Todas as vagas capturadas foram candidatadas. Nada a relatar.', 'ok');
+      const summary = SHARED.summarizeApply(jobs, { applyEnabled: settings.apply.enabled });
+      const extra = summary.already ? ' (' + summary.already + ' já candidatada(s) antes)' : '';
+      setStatus('Todas as vagas capturadas foram candidatadas. Nada a relatar.' + extra, 'ok');
       return;
     }
 

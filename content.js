@@ -195,6 +195,15 @@
       '.scaffold-layout__detail',
       '.jobs-details',
     ],
+    // Topo da vaga (título/empresa/botão). É aqui que o LinkedIn escreve
+    // "Você se candidatou" quando a vaga já foi candidatada — lemos só o topo,
+    // nunca a descrição inteira, para não casar com o texto da vaga por engano.
+    detailsTopCard: [
+      '.job-details-jobs-unified-top-card',
+      '.jobs-unified-top-card',
+      '.jobs-details__main-content',
+      '.jobs-search__job-details--container .job-details-jobs-unified-top-card',
+    ],
     detailsTitle: [
       '.job-details-jobs-unified-top-card__job-title',
       '.jobs-unified-top-card__job-title',
@@ -1019,6 +1028,38 @@
 
   function findApplyButton() {
     return queryFirst(APPLY_SEL.button);
+  }
+
+  /**
+   * A vaga aberta mostra que você JÁ se candidatou antes? Nesse caso o LinkedIn
+   * troca o botão de candidatura pelo aviso "Você se candidatou" / "Candidatura
+   * enviada" (às vezes com a data). Lemos só o topo da vaga e o rótulo do botão
+   * — nunca a descrição — para não casar com o texto da vaga por acidente.
+   */
+  function looksAlreadyApplied() {
+    const parts = [];
+
+    const topCard = queryFirst(SEL.detailsTopCard);
+    if (topCard) parts.push(topCard.textContent || '');
+
+    const insight = queryFirst(SEL.jobInsight);
+    if (insight) parts.push(insight.textContent || '');
+
+    const button = findApplyButton();
+    if (button) parts.push(applyButtonLabel(button));
+
+    if (SHARED.looksAlreadyApplied(parts.join(' '))) return true;
+
+    // Rede de segurança: em alguns layouts o aviso "Candidatou-se" aparece fora
+    // do topo que olhamos. Lemos só o COMEÇO do painel de detalhes (o topo, onde
+    // fica o aviso) — nunca a descrição inteira, para não casar por acidente.
+    const root = queryFirst(SEL.detailsRoot);
+    if (root) {
+      const opening = String(root.textContent || '').slice(0, 1200);
+      if (SHARED.looksAlreadyApplied(opening)) return true;
+    }
+
+    return false;
   }
 
   /**
@@ -2013,6 +2054,9 @@
 
     const button = findApplyButton();
 
+    // Já candidatada antes? O LinkedIn tira o botão e mostra "Você se candidatou".
+    if (looksAlreadyApplied()) return { status: 'ja_candidatada' };
+
     if (!button) return { status: 'sem_botao' };
 
     // Vaga que sai do LinkedIn (site da empresa)? Não clicamos: só registramos o
@@ -2292,9 +2336,9 @@
       setSinceBreak(state.sinceBreak + 1);
       await persistApps();
       await bumpApplied();
-    } else if (result.status === 'externa') {
-      // Vaga fora do LinkedIn: não é para nós nem vale gastar outra tentativa —
-      // ela nunca mais é visitada (e não consome cota nenhuma).
+    } else if (result.status === 'externa' || result.status === 'ja_candidatada') {
+      // Vaga fora do LinkedIn ou já candidatada antes: não vale gastar outra
+      // tentativa — ela nunca mais é visitada (e não consome cota nenhuma).
       patch.applyAttempts = CONFIG.applyMaxAttempts;
     }
 
@@ -2573,8 +2617,8 @@
     if (!job.description) return true;
     if (!settings.apply.enabled) return false;
     if (job.appliedAt) return false;
-    // Vaga que sai do LinkedIn: já sabemos o desfecho, não voltamos nela.
-    if (job.applyStatus === 'externa') return false;
+    // Vaga que sai do LinkedIn ou já candidatada antes: não voltamos nela.
+    if (job.applyStatus === 'externa' || job.applyStatus === 'ja_candidatada') return false;
 
     return (job.applyAttempts || 0) < CONFIG.applyMaxAttempts;
   }
@@ -2614,6 +2658,14 @@
    * clicar em nada. Devolve `false` quando é para seguir com a candidatura.
    */
   async function skipIfOffsite(id) {
+    // Vaga em que você já se candidatou antes: o LinkedIn esconde/desabilita o
+    // botão e mostra "Você se candidatou". Registramos isso — e não "sem botão".
+    if (looksAlreadyApplied()) {
+      console.info('[PegaVaga] Vaga já candidatada antes (aviso do LinkedIn detectado).');
+      await recordApplyResult(id, { status: 'ja_candidatada' });
+      return true;
+    }
+
     const button = findApplyButton();
     if (!button) return false; // sem botão: o fluxo normal decide o desfecho
 

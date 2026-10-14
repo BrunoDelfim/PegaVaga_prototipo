@@ -127,7 +127,7 @@ pegavaga_chrome/
      mostra a fila, ex.: `Varredura em andamento: 3 termos em loop (react → node.js → vue).`
 7. Acompanhe no pop-up:
    - `N vagas capturadas` e o resumo das candidaturas, ex.:
-     `12 candidatada(s) · 8 não candidatada(s) · 3 na fila: 4 travada em campo obrigatório · 2 externa (site da empresa)`;
+     `12 candidatada(s) · 5 já candidatada(s) antes · 8 não candidatada(s) · 3 na fila: 4 travada em campo obrigatório · 2 externa (site da empresa)`;
    - a linha `Termo X de N: "…" · K candidatura(s) neste termo`;
    - a linha de cotas, ex.:
      `Candidaturas — 2/6 na hora · 5/25 em 24 h · 8 hoje · 3/8 neste termo`;
@@ -210,6 +210,12 @@ pegavaga_chrome/
 - Uma vaga **nunca** é candidatada duas vezes: o resultado fica gravado na vaga
   (`Candidatado em`, `Status da candidatura` e `Motivo da não candidatura`, que
   vão para o CSV).
+- Vaga em que você **já se candidatou antes**: o LinkedIn troca o botão pelo
+  aviso “Candidatou-se” / “Você se candidatou” / “Candidatura enviada”. O PegaVaga
+  reconhece isso, **pula a vaga** (sem clique e sem gastar cota) e marca como
+  `Já candidatada antes` — assim o resumo **conta quantas já eram suas**, em vez
+  de dizer que faltou botão naquela vaga. Essas vagas **não** entram no CSV das
+  não candidatadas (elas já estavam candidatadas).
 - Se o **Parar Varredura** for clicado no meio de um formulário, ele é
   descartado (`Cancelada`).
 - Vagas que a varredura **não chegou a tentar** (cota estourada, teto de vagas,
@@ -265,7 +271,8 @@ PegaVaga:
 - `Motivo da nao candidatura` fica **vazio** quando a candidatura foi enviada.
 
 Valores possíveis de `Status da candidatura`: `Enviada`,
-`Externa (site da empresa)`, `Botão de candidatura não reconhecido`,
+`Já candidatada antes`, `Externa (site da empresa)`,
+`Botão de candidatura não reconhecido`,
 `Sem botão de candidatura`, `Formulário não abriu`,
 `Travada em campo obrigatório`, `Formulário incompleto`, `Interrompida (Parar)`,
 `Parada por proteção do LinkedIn`, `Erro na automação`,
@@ -276,6 +283,7 @@ Exemplos de motivo gravado:
 | Status                             | Motivo (resumo)                                                                 |
 | ---------------------------------- | ------------------------------------------------------------------------------- |
 | `Externa (site da empresa)`        | A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então ela é pulada. `Botão "Candidatar-se no site da empresa", que aponta para careers.acme.com.` |
+| `Já candidatada antes`             | O LinkedIn mostra que você já se candidatou a esta vaga antes; a candidatura não foi enviada de novo. |
 | `Botão de candidatura não reconhecido` | Não identifiquei a Candidatura Simplificada nesta vaga; para não sair do LinkedIn, não cliquei. |
 | `Sem botão de candidatura`         | A página da vaga não oferece botão de candidatura.                               |
 | `Travada em campo obrigatório`     | …+ `Campos não preenchidos: Telefone. Respondi sozinho: Sim.`                    |
@@ -288,7 +296,7 @@ Exemplos de motivo gravado:
 `pegavaga_nao_candidatadas_AAAA-MM-DD_HH-MM-SS.csv`, com colunas
 `ID`, `Titulo`, `Empresa`, `Link`, `Termo`, `Status`, `Motivo`,
 `Ultima tentativa`. Só entram as vagas que **não** foram candidatadas (as
-definitivas e as que ficaram na fila).
+definitivas e as que ficaram na fila); as `Já candidatada antes` ficam de fora.
 
 ## Permissões utilizadas
 
@@ -297,6 +305,7 @@ definitivas e as que ficaram na fila).
 | `storage`        | Guardar a configuração, a fila, as vagas e as cotas.           |
 | `activeTab`      | Falar com a aba ativa do LinkedIn a partir do pop-up.         |
 | `alarms`         | Agendador: acordar o service worker no horário escolhido e quando uma cota libera. |
+| `notifications`  | Avisar na área de trabalho quando uma vaga precisa da sua ajuda. |
 | `https://www.linkedin.com/*` | Injetar o `content.js`, ler o DOM das vagas e navegar nas abas do LinkedIn. |
 
 Não são necessárias as permissões `tabs` nem `downloads`: a URL da aba do
