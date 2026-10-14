@@ -221,10 +221,13 @@ globalThis.PegaVagaShared = (() => {
 
   /**
    * Traduz um texto já montado, preservando os espaços das pontas (texto de
-   * nó do DOM vem com quebras e indentação). Chave direta primeiro; depois as
-   * chaves com marcadores, como `{ n } vagas capturadas`.
+   * nó do DOM vem com quebras e indentação). A chave do dicionário é procurada
+   * com os espaços **internos normalizados**: um rótulo quebrado em duas linhas
+   * no HTML é o mesmo texto que o de uma linha só — sem isso, só traduziam os
+   * rótulos que cabiam numa linha (era o que acontecia com metade do painel).
    *
-   * Texto sem tradução volta como veio — nada de `undefined` na tela.
+   * Chave direta primeiro; depois as chaves com marcadores, como
+   * `{ n } vagas capturadas`. Texto sem tradução volta como veio.
    */
   function translate(texto, idioma) {
     const base = String(texto == null ? '' : texto);
@@ -234,9 +237,11 @@ globalThis.PegaVagaShared = (() => {
 
     const antes = (base.match(/^\s*/) || [''])[0];
     const depois = (base.match(/\s*$/) || [''])[0];
-    const miolo = base.slice(antes.length, base.length - depois.length);
+    const cru = base.slice(antes.length, base.length - depois.length);
 
-    if (!miolo) return base;
+    if (!cru) return base;
+
+    const miolo = cru.replace(/\s+/g, ' ');
 
     if (UI_EN[miolo] != null) return antes + UI_EN[miolo] + depois;
 

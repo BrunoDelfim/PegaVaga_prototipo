@@ -495,12 +495,22 @@ S.setLocale('pt');
 
 // Cobertura: nada da interface fica sem tradução no idioma novo.
 const corpoPopup = popupHtml.slice(popupHtml.indexOf('</style>'));
-const textosPopup = [...corpoPopup.matchAll(/>([^<>{}]{3,}?)</g)]
-  .map((m) => m[1].replace(/\s+/g, ' ').trim())
-  .filter((t) => /[A-Za-zÀ-ÿ]{3}/.test(t));
+// Texto **cru**, como o navegador entrega: com as quebras de linha e a
+// indentação do HTML. Normalizar aqui esconderia o bug que deixava metade do
+// painel em português (rótulo quebrado em duas linhas não casava com a chave).
+const nosDaTela = [...corpoPopup.matchAll(/>([^<>{}]{3,}?)</g)].map((m) => m[1]);
+const textosPopup = nosDaTela.map((t) => t.replace(/\s+/g, ' ').trim()).filter((t) => /[A-Za-zÀ-ÿ]{3}/.test(t));
 const atributosPopup = [...corpoPopup.matchAll(/(?:title|placeholder|aria-label)="([^"]{3,})"/g)].map((m) => m[1]);
+S.setLocale('en'); // as duas verificações abaixo olham o idioma de destino
 eq('todo texto do pop-up tem traducao', [...new Set(textosPopup)].filter((t) => S.UI_EN[t] == null && !neutrosI18n.includes(t)), []);
 eq('todo atributo do pop-up tem traducao', [...new Set(atributosPopup)].filter((t) => S.UI_EN[t] == null && !neutrosI18n.includes(t)), []);
+const nosSemTraducao = [...new Set(nosDaTela)].filter((cru) => {
+  const miolo = cru.replace(/\s+/g, ' ').trim();
+  if (!/[A-Za-zÀ-ÿ]{3}/.test(miolo) || !/\s/.test(miolo)) return false;
+  if (neutrosI18n.includes(miolo)) return false;
+  return S.translate(cru) === cru; // ficou igual = continua em português
+});
+eq('nenhum no da tela fica em portugues', nosSemTraducao, []);
 eq('marcadores batem nos dois idiomas', Object.entries(S.UI_EN).filter((par) => marcadoresDe(par[0]) !== marcadoresDe(par[1])).map((par) => par[0]), []);
 eq('nenhuma traducao vazia', Object.entries(S.UI_EN).filter((par) => !String(par[1]).trim()).map((par) => par[0]), []);
 ok('dicionario tem volume util', Object.keys(S.UI_EN).length >= 120);
@@ -652,6 +662,12 @@ eq('traduzir de novo nao muda nada', S.syncText('Home', primeiraEn.registro, 'en
 eq('voltar para pt devolve o original', S.syncText('Home', primeiraEn.registro, 'pt').texto, 'Início');
 eq('texto que o render trocou vira novo original', S.syncText('Configurações', primeiraEn.registro, 'en').texto, 'Settings');
 eq('texto com numero tambem passa', S.syncText('128 vagas capturadas', null, 'en').texto, '128 jobs captured');
+// Texto cru de nó do DOM, com as quebras de linha do HTML: tem de traduzir igual.
+eq(
+  'rotulo quebrado em duas linhas traduz',
+  S.syncText('\n                Ceder a vez para mim: enquanto eu mexo na página, a automação espera em\n                vez de clicar ou rolar por cima\n              ', null, 'en').texto.trim(),
+  'Yield to me: while I use the page, the automation waits instead of clicking or scrolling over me'
+);
 eq('sem idioma en o texto fica em pt', S.syncText('Início', null, 'pt').texto, 'Início');
 eq('texto desconhecido fica como esta', S.syncText('???', null, 'en').texto, '???');
 eq('espacos das pontas sobrevivem', S.syncText('\n   Início\n ', null, 'en').texto, '\n   Home\n ');
