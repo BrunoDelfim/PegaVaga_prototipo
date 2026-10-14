@@ -952,14 +952,14 @@ function renderSpark() {
   els.spark.innerHTML = buckets
     .map((count, i) => {
       const height = count ? Math.max(3, Math.round((count / max) * 40)) : 2;
-      const hoursAgo = 23 - i;
-      const when = hoursAgo === 0 ? 'nesta hora' : 'há ' + hoursAgo + ' h';
+      const info = bucketInfo(i, now);
+      const cls = i === 23 ? 'now' : info.isToday ? '' : 'prev';
 
       return (
         '<rect' +
-        (i === 23 ? ' class="now"' : '') +
+        (cls ? ' class="' + cls + '"' : '') +
         ' data-tip="' +
-        when +
+        info.when +
         ': ' +
         count +
         ' candidatura(s)"' +
@@ -978,8 +978,24 @@ function renderSpark() {
 
   els.sparkCard.hidden = total === 0;
   els.sparkHint.textContent = total
-    ? total + ' candidatura(s) nas últimas 24 h (' + max + ' na hora de pico).'
+    ? total +
+      ' candidatura(s) nas últimas 24 h (pico de ' +
+      max +
+      ' em uma hora) · barra clara = ontem.'
     : '';
+}
+/**
+ * Dia e hora de uma barra do gráfico de 24 h (`i` = 0 é a hora mais antiga).
+ * Serve para pintar "hoje" e "ontem" com cores diferentes e para o tooltip.
+ */
+function bucketInfo(i, now) {
+  const date = new Date(now - (23 - i) * 3600000);
+  const isToday = date.toDateString() === new Date(now).toDateString();
+
+  return {
+    isToday,
+    when: (isToday ? 'hoje' : 'ontem') + ', ' + String(date.getHours()).padStart(2, '0') + 'h',
+  };
 }
 
 /** Escapa texto para entrar com segurança no HTML (termos vêm do usuário). */
@@ -1099,9 +1115,9 @@ function renderTermSpark(jobs, rows) {
 
   els.termSpark.innerHTML = found
     .map((count, i) => {
-      const hoursAgo = 23 - i;
-      const when = hoursAgo === 0 ? 'nesta hora' : 'há ' + hoursAgo + ' h';
-      const tip = when + ': ' + count + ' vaga(s) · ' + applied[i] + ' candidatura(s)';
+      const info = bucketInfo(i, now);
+      const day = info.isToday ? '' : ' prev';
+      const tip = info.when + ': ' + count + ' vaga(s) · ' + applied[i] + ' candidatura(s)';
       const x = (i * barWidth + 1.5).toFixed(1);
       const w = (barWidth - 3).toFixed(1);
 
@@ -1112,6 +1128,7 @@ function renderTermSpark(jobs, rows) {
         return (
           '<rect class="' +
           cls +
+          day +
           '" x="' +
           x +
           '" y="' +
