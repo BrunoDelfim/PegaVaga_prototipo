@@ -4,7 +4,7 @@ Plano de trabalho para sair da beta e publicar na **Chrome Web Store**.
 Cada item diz **por quê** e **como fazer**; ao concluir, troque `[ ]` por `[x]` e
 preencha a linha **Feito em** com a versão e o commit.
 
-**Progresso:** 8 de 14 itens · **Versão:** a que está no `manifest.json`
+**Progresso:** 9 de 14 itens · **Versão:** a que está no `manifest.json`
 
 Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
@@ -130,9 +130,21 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   o `state.apps.push` está dentro desse ramo, com teste) e a barra da fila avisa
   **“modo simulação (não envio)”**.
 
-- [ ] **9. Backup/restauração da configuração**
+- [x] **9. Backup/restauração da configuração**
   Hoje, limpar ou reinstalar perde tudo. Exportar/importar um JSON resolve.
-  *Feito em:* —
+  *Feito em:* `0.7.7` (commit `6441de6`, tag **`v0.7.7`**) — **Configurações →
+  Backup da configuração**, com duas funções **puras** no `shared.js`:
+  `buildSettingsBackup()` monta o JSON (com `app`/`version`/`exportedAt` e a
+  configuração **incluindo as respostas do formulário** — é o que dói mais
+  perder) e `parseSettingsBackup()` lê o arquivo, aceita tanto o JSON gerado como
+  uma configuração “crua”, e **passa tudo pelo `parseSettings`** (número fora de
+  faixa vira o padrão, termo repetido é limpo).
+  *Decisão importante:* o parser **recusa JSON que não é do PegaVaga** — sem isso,
+  escolher o arquivo errado restauraria os padrões e apagaria a configuração de
+  verdade. A restauração também é **em dois tempos** (escolher o arquivo só mostra
+  versão e data e pede confirmação; o botão **Restaurar agora** é que grava), o
+  que evita apagar por engano — e usei **confirmação inline em vez de `confirm()`**,
+  porque diálogo nativo pode fechar o pop-up. As vagas continuam saindo pelo CSV.
 
 - [x] **10. Empacotamento (zip + tag/release)**
   Script para gerar o `.zip` de publicação (fora `tests/`, `.git`, `.md`) e uma
@@ -200,4 +212,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 13/10/2026 | 13. Roteiro de smoke test | — (docs) | `caee973` |
 | 13/10/2026 | 2. Política de privacidade | — (docs) | `5231400` |
 | 13/10/2026 | 7. Copiar diagnóstico e 8. Modo simulação | `0.7.6` | `28923ca`, `19733de` |
+| 13/10/2026 | 9. Backup da configuração em JSON | `0.7.7` | `6441de6` |
 
