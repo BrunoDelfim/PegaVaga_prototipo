@@ -386,6 +386,17 @@ checklist com bloqueadores (política de privacidade, material da
 loja), itens fortes (CI, diagnóstico, dry-run, empacotamento) e polimento.
 Cada item tem **por quê**, **como fazer** e uma caixinha que vai sendo marcada.
 
+## Privacidade
+
+A política está em [`PRIVACY.md`](PRIVACY.md) — em resumo: **nada sai do seu
+navegador**. Tudo vive no `chrome.storage.local`, sem servidor, sem conta, sem
+analytics e sem `storage.sync`; o único destino de rede é o próprio `linkedin.com`,
+quando o navegador abre as vagas por sua causa.
+
+O material operacional da publicação (URL da política, propósito único, respostas
+do formulário de dados e justificativa de cada permissão) fica em
+[`LOJA.md`](LOJA.md).
+
 ## Permissões utilizadas
 
 | Permissão        | Motivo                                                        |

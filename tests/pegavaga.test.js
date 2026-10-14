@@ -89,6 +89,17 @@ const smoke = read('tests/SMOKE_TEST.md');
 ok('smoke test cita a interface nova', ['Início', 'Configurações', 'lâmpada', 'donut', 'toast'].every((t) => smoke.includes(t)));
 ok('smoke test cita os avisos do app', smoke.includes('conta e risco') && smoke.includes('Descartei'));
 
+// Privacidade: estas checagens sustentam o que a PRIVACY.md afirma.
+const allSrc = ['shared.js', 'background.js', 'content.js', 'popup.js'].map(read).join('\n');
+ok('sem storage.sync (nada vai para a conta Google)', !/storage\.sync/.test(allSrc));
+ok('sem XMLHttpRequest/WebSocket/sendBeacon', !/XMLHttpRequest|WebSocket|sendBeacon/.test(allSrc));
+ok('fetch so de arquivo da propria extensao', (allSrc.match(/fetch\([^)]*\)/g) || []).every((c) => c.includes('chrome.runtime.getURL')));
+ok('popup sem script/estilo remoto', !/<script[^>]+src="https?:/.test(popupHtml) && !/@import\s+url\(https?:/.test(popupHtml));
+ok('PRIVACY.md existe e cita o storage local', fs.existsSync(ROOT + 'PRIVACY.md') && read('PRIVACY.md').includes('chrome.storage.local'));
+ok('PRIVACY.md afirma que nada sai do navegador', /nada sai do seu navegador/i.test(read('PRIVACY.md')));
+const loja = read('LOJA.md');
+ok('LOJA.md traz o formulario de dados e todas as permissoes', loja.includes('Data usage') && ['storage', 'unlimitedStorage', 'activeTab', 'alarms', 'notifications'].every((p) => loja.includes('`' + p + '`')));
+
 section('5. Numeros e termos');
 eq('num normal', S.num('5', 1, 10, 3), 5);
 eq('num vazio -> fallback', S.num('', 1, 10, 3), 3);
