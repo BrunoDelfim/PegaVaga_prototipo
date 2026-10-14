@@ -70,7 +70,12 @@ rm -f "$OUT"
 git archive --format=zip -o "$OUT" "$REF" -- "${FILES[@]}"
 
 if command -v unzip >/dev/null 2>&1; then
-  if unzip -Z1 "$OUT" | grep -qx 'manifest.json'; then
+  # A lista vai para uma variável e o grep lê por herestring: com `unzip | grep -q`
+  # o grep fecha o cano assim que encontra a linha, o unzip morre com SIGPIPE e o
+  # `pipefail` reprovava a verificação **mesmo com o zip certo**.
+  conteudo="$(unzip -Z1 "$OUT")"
+
+  if grep -qx 'manifest.json' <<< "$conteudo"; then
     echo "ok: manifest.json está na raiz do zip"
   else
     echo "ERRO: manifest.json não está na raiz do zip." >&2
@@ -78,7 +83,7 @@ if command -v unzip >/dev/null 2>&1; then
   fi
 
   echo "Conteúdo de $(basename "$OUT"):"
-  unzip -Z1 "$OUT" | sed 's/^/  /'
+  sed 's/^/  /' <<< "$conteudo"
 else
   echo "(sem unzip para listar o conteúdo; o zip foi gerado assim mesmo)"
 fi
