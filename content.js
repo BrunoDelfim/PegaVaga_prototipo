@@ -2964,6 +2964,7 @@
         // fica de pé de propósito: as cotas protegem a conta de uma rajada.
         state.abort = true;
         state.jobs = {};
+        state.dropped = 0; // zera junto: sem vagas, o aviso de descarte não faz sentido
         state.lastSyncedId = null;
         state.lastRun = null;
         clearRun();

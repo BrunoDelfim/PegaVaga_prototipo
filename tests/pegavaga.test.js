@@ -75,6 +75,8 @@ section('4. Higiene');
 });
 ok('content.js tem 1 onMessage', (read('content.js').match(/chrome\.runtime\.onMessage\.addListener/g) || []).length === 1);
 ok('popup.js tem 1 onMessage', (read('popup.js').match(/chrome\.runtime\.onMessage\.addListener/g) || []).length === 1);
+ok('CLEAR zera o contador de descartes', /MSG\.CLEAR:[\s\S]{0,300}state\.dropped = 0;/.test(read('content.js')));
+ok('popup le e mostra o contador de descartes', read('popup.js').includes('meta.dropped') && read('popup.html').includes('id="trim-hint"'));
 
 section('5. Numeros e termos');
 eq('num normal', S.num('5', 1, 10, 3), 5);

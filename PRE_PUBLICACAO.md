@@ -27,7 +27,8 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   tempo saem. O total descartado vai para `pegavaga_meta.dropped` e o pop-up
   avisa no card **Início** (“descartei N vagas antigas…”). Os tetos são aplicados
   no `persist()`, antes de cada gravação — o mapa inteiro é reescrito sempre, por
-  isso o teto também protege a velocidade.
+  isso o teto também protege a velocidade. O contador zera junto com as vagas no
+  **Limpar** (`0.7.3`), senão o aviso apareceria num banco vazio.
 
 - [ ] **2. Política de privacidade + declaração de uso de dados**
   A Chrome Web Store exige a política **e** o preenchimento do formulário de
@@ -121,5 +122,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | Data | Item | Versão | Commit |
 | --- | --- | --- | --- |
 | 13/10/2026 | Checklist criado | `0.6.9` | — |
-| 13/10/2026 | 1. Teto de armazenamento | `0.7.2` | `ced7d36` |
+| 13/10/2026 | 1. Teto de armazenamento | `0.7.2`–`0.7.3` | `ced7d36` |
 
