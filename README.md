@@ -24,6 +24,18 @@ pegavaga_chrome/
 └── README.md
 ```
 
+## Versionamento
+
+A versão vive no `manifest.json` (campo `version`). A regra de avanço é:
+
+1. **Sobe só o último número**, de **1 em 1**: `0.5.0` → `0.5.1` → `0.5.2` … → `0.5.9`.
+2. Quando o último número chega a **9**, ele volta a **0** e **avança o número do
+   meio**: `0.5.9` → `0.6.0`.
+3. Repete: `0.6.0` … `0.6.9` → `0.7.0` (e, no limite, `0.9.9` → `1.0.0`).
+
+Em resumo: o **último número** é o contador do dia a dia (0–9) e o **do meio** só
+muda quando ele estoura.
+
 ## Instalação (modo desenvolvedor)
 
 1. Abra `chrome://extensions/`.
