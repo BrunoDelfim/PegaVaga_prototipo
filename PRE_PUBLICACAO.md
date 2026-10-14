@@ -268,3 +268,4 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 13/10/2026 | Correção: `const` duplicado no `renderRun` (o CI pegou; o zip da `0.7.13` foi apagado) | `0.7.14` | `e76f526` |
 | 13/10/2026 | Correção no `tools/empacotar.sh`: verificação do `manifest.json` reprovava zip certo (SIGPIPE + `pipefail`) | — (infra) | `fc13f4a` |
 | 13/10/2026 | Regras de produto: campos obrigatórios (URL, localização, 1+ termos), Candidatura Simplificada e candidatura automática fixas (interruptores desativados) | `0.7.15` | `0fab3fb` |
+| 13/10/2026 | Correção: rótulos quebrados em duas linhas ficavam em português (16 nós) | `0.7.16` | `16f9082` |
