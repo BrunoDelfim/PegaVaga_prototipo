@@ -76,6 +76,7 @@ async function init() {
   cacheElements();
   buildDayInputs();
   bindEvents();
+  bindChartTips();
 
   await loadSettingsToForm();
   await refresh();
@@ -694,10 +695,10 @@ function renderApplySummary(jobs) {
 
 /** Situações do resumo, na ordem em que aparecem no donut e na legenda. */
 const SUMMARY_PARTS = [
-  { key: 'applied', label: 'nesta sessão', color: 'var(--ok)' },
-  { key: 'already', label: 'antes', color: 'var(--brand)' },
-  { key: 'failed', label: 'não candidatada(s)', color: 'var(--danger)' },
-  { key: 'pending', label: 'na fila', color: '#94a3b8' },
+  { key: 'applied', label: 'nesta sessão', color: 'var(--ok)', tip: 'Vagas candidatadas nesta sessão' },
+  { key: 'already', label: 'antes', color: 'var(--brand)', tip: 'Vagas já candidatadas antes' },
+  { key: 'failed', label: 'não candidatada(s)', color: 'var(--danger)', tip: 'Vagas não candidatadas' },
+  { key: 'pending', label: 'na fila', color: '#94a3b8', tip: 'Vagas na fila' },
 ];
 
 /** Pinta os anéis do donut conforme o resumo (arcos empilhados). */
@@ -714,6 +715,7 @@ function renderDonut(summary) {
     seg.setAttribute('stroke', part.color);
     seg.setAttribute('stroke-dasharray', length + ' ' + (circumference - length));
     seg.setAttribute('stroke-dashoffset', String(-offset));
+    seg.setAttribute('data-tip', part.tip + ': ' + summary[part.key]);
     offset += length;
   }
 }
@@ -725,7 +727,13 @@ function renderLegend(summary) {
   els.applySummary.innerHTML = SUMMARY_PARTS.filter((part) => summary[part.key] > 0)
     .map(
       (part) =>
-        '<li><i style="background:' +
+        '<li data-key="' +
+        part.key +
+        '" data-tip="' +
+        part.tip +
+        ': ' +
+        summary[part.key] +
+        '"><i style="background:' +
         part.color +
         '"></i><b>' +
         summary[part.key] +
@@ -812,7 +820,13 @@ function renderQuota() {
     .map((row) => {
       const pct = row.limit > 0 ? Math.min(100, Math.round((row.used / row.limit) * 100)) : 0;
       return (
-        '<div class="qbar">' +
+        '<div class="qbar" data-tip="' +
+        row.label +
+        ': ' +
+        row.used +
+        ' de ' +
+        row.limit +
+        ' usadas">' +
         '<div class="qbar-top"><span>' +
         row.label +
         '</span><b>' +
@@ -858,11 +872,17 @@ function renderSpark() {
   els.spark.innerHTML = buckets
     .map((count, i) => {
       const height = count ? Math.max(3, Math.round((count / max) * 40)) : 2;
-      const cls = i === 23 ? ' class="now"' : '';
+      const hoursAgo = 23 - i;
+      const when = hoursAgo === 0 ? 'nesta hora' : 'há ' + hoursAgo + ' h';
 
       return (
         '<rect' +
-        cls +
+        (i === 23 ? ' class="now"' : '') +
+        ' data-tip="' +
+        when +
+        ': ' +
+        count +
+        ' candidatura(s)"' +
         ' x="' +
         (i * barWidth + 1.5).toFixed(1) +
         '" y="' +
@@ -880,6 +900,56 @@ function renderSpark() {
   els.sparkHint.textContent = total
     ? total + ' candidatura(s) nas últimas 24 h (' + max + ' na hora de pico).'
     : '';
+}
+
+/**
+ * Tooltip dos gráficos + destaque cruzado.
+ *
+ * Qualquer elemento com `data-tip` mostra o balão ao passar o mouse (o texto sai
+ * do próprio atributo, que o render acabou de escrever). Passar o mouse por um
+ * item da legenda acende o anel correspondente no donut.
+ */
+function bindChartTips() {
+  const tip = document.getElementById('chart-tip');
+
+  document.addEventListener('mousemove', (event) => {
+    if (!tip) return;
+
+    const el =
+      event.target && event.target.closest ? event.target.closest('[data-tip]') : null;
+
+    if (!el) {
+      tip.hidden = true;
+      return;
+    }
+
+    tip.textContent = el.getAttribute('data-tip');
+    tip.hidden = false;
+
+    const box = tip.getBoundingClientRect();
+    const half = box.width / 2 + 6;
+    const x = Math.min(Math.max(event.clientX, half), window.innerWidth - half);
+    const y = Math.max(event.clientY, box.height + 12);
+
+    tip.style.left = Math.round(x) + 'px';
+    tip.style.top = Math.round(y) + 'px';
+  });
+
+  // Legenda -> anel do donut.
+  const highlight = (on) => (event) => {
+    const item =
+      event.target && event.target.closest
+        ? event.target.closest('#apply-summary li[data-key]')
+        : null;
+
+    if (!item) return;
+
+    const seg = document.getElementById('seg-' + item.getAttribute('data-key'));
+    if (seg) seg.classList.toggle('hi', on);
+  };
+
+  document.addEventListener('mouseover', highlight(true));
+  document.addEventListener('mouseout', highlight(false));
 }
 
 /** Explica o agendador: janela, próxima abertura ou pausa por cota. */

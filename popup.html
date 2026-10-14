@@ -147,7 +147,10 @@
       .donut { display: block; width: 92px; height: 92px; }
       .donut circle { fill: none; stroke-width: 11; }
       .donut-track { stroke: #eef2f7; }
-      .donut-seg { transition: stroke-dasharray 0.3s ease, stroke-dashoffset 0.3s ease; }
+      .donut-seg {
+        transition: stroke-dasharray 0.3s ease, stroke-dashoffset 0.3s ease,
+          stroke-width 0.12s ease;
+      }
       .donut-center {
         position: absolute;
         inset: 0;
@@ -178,7 +181,13 @@
       }
       .legend:empty { display: none; }
       .legend li { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--text); }
-      .legend i { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; }
+      .legend i {
+        flex: 0 0 auto;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        transition: transform 0.15s ease;
+      }
       .legend b { font-weight: 750; }
 
       /* ============================ Faixa da fila =========================== */
@@ -226,8 +235,38 @@
 
       /* Mini-gráfico: candidaturas por hora (24 h) */
       .spark { display: block; width: 100%; height: 44px; margin-top: 2px; }
-      .spark rect { fill: var(--brand); opacity: 0.85; }
+      .spark rect { fill: var(--brand); opacity: 0.85; transition: opacity 0.12s ease, fill 0.12s ease; }
       .spark rect.now { fill: var(--brand-2); opacity: 1; }
+
+      /* ===================== Tooltip e destaque no hover ==================== */
+      .chart-tip {
+        position: fixed;
+        z-index: 60;
+        max-width: 220px;
+        padding: 6px 9px;
+        border-radius: var(--r-sm);
+        background: rgba(15, 23, 42, 0.94);
+        color: #fff;
+        font-size: 10.5px;
+        font-weight: 600;
+        line-height: 1.4;
+        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.28);
+        pointer-events: none;
+        transform: translate(-50%, -130%);
+        white-space: nowrap;
+      }
+
+      /* Donut: engorda o anel sob o mouse (ou o par destacado na legenda). */
+      .donut-seg:hover,
+      .donut-seg.hi { stroke-width: 15; }
+
+      .legend li:hover i { transform: scale(1.7); }
+
+      .qbar-fill { transition: width 0.3s ease, filter 0.15s ease; }
+      .qbar:hover .qbar-fill { filter: brightness(1.08); }
+      .qbar:hover .qbar-top b { color: var(--brand-2); }
+
+      .spark rect:hover { fill: var(--brand-2); opacity: 1; }
       /* ============================== Avisos =============================== */
       .status {
         padding: 9px 11px;
@@ -776,6 +815,8 @@
         Pular
       </button>
     </div>
+
+    <div class="chart-tip" id="chart-tip" hidden></div>
 
     <script src="shared.js"></script>
     <script src="popup.js"></script>
