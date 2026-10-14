@@ -127,6 +127,9 @@ function cacheElements() {
   els.guardInfo = document.getElementById('guard-info');
   els.helpInfo = document.getElementById('help-info');
   els.btnSkip = document.getElementById('btn-skip');
+  els.runChip = document.getElementById('run-chip');
+  els.statusText = document.getElementById('status-text');
+  els.emptyState = document.getElementById('empty-state');
   els.btnExportFailures = document.getElementById('btn-export-failures');
   els.scheduleEnabled = document.getElementById('schedule-enabled');
   els.scheduleStart = document.getElementById('schedule-start');
@@ -647,6 +650,9 @@ async function refresh() {
 
   els.count.textContent = String(jobs.length);
 
+  // Estado vazio: ilustração + convite, quando ainda não capturei nada.
+  if (els.emptyState) els.emptyState.hidden = jobs.length > 0;
+
   if (meta && meta.lastRun) {
     const when = new Date(meta.lastRun);
     els.lastRun.textContent = isNaN(when.getTime())
@@ -884,6 +890,10 @@ function renderStatusLight() {
   els.statusLight.className = 'light ' + light.key;
   els.statusLight.title = light.title;
   els.statusLight.setAttribute('aria-label', light.label);
+
+  // O chip do cabeçalho mostra o mesmo estado, em texto.
+  if (els.statusText) els.statusText.textContent = light.label;
+  if (els.runChip) els.runChip.title = light.title;
 }
 
 function setStatus(message, type) {

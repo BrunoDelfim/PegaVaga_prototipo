@@ -4,308 +4,365 @@
     <meta charset="UTF-8" />
     <title>PegaVaga</title>
     <style>
+      /* ============================ Design system ============================ */
       :root {
-        /* Sem isto, o Chrome desenha a moldura do popup (e a barra de rolagem)
-           no esquema escuro do sistema: aquela "borda preta" de 1px em volta. */
+        /* Sem isto o Chrome desenha a moldura/scrollbar do popup em modo escuro. */
         color-scheme: light;
 
-        --bg: #0a66c2;
-        --bg-dark: #004182;
-        --ok: #1f9d55;
-        --warn: #b7791f;
-        --error: #c53030;
-        --text: #1f2933;
+        --brand: #0a66c2;
+        --brand-2: #04559f;
+        --brand-soft: #e8f1fb;
+        --ok: #17794a;
+        --ok-soft: #e6f6ee;
+        --warn: #b45309;
+        --warn-soft: #fff4d6;
+        --danger: #c02626;
+        --danger-soft: #fdecec;
+        --text: #0f172a;
         --muted: #64748b;
-        --line: #e2e8f0;
-        --surface: #f8fafc;
+        --line: #e5e9f0;
+        --surface: #f5f7fb;
+        --card: #ffffff;
+        --r-sm: 8px;
+        --r-md: 12px;
+        --r-lg: 16px;
+        --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+        --ring: 0 0 0 3px rgba(10, 102, 194, 0.18);
       }
 
-      * {
-        box-sizing: border-box;
-      }
-
-      html {
-        background: var(--surface);
-      }
-
-      html,
-      body {
-        border: none;
-      }
-
-      /* Barra de rolagem clara e fina: no Linux/modo escuro ela vem preta e
-         "gruda" na borda direita do popup. */
-      ::-webkit-scrollbar {
-        width: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
-        border-radius: 8px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8;
-      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html { background: var(--surface); }
+      html, body { border: none; }
 
       body {
-        width: 340px;
+        width: 360px;
         margin: 0;
-        padding: 0px;
+        padding: 0 0 74px; /* respiro para a barra de ações fixa */
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial,
           sans-serif;
         font-size: 13px;
         color: var(--text);
         background: var(--surface);
+        -webkit-font-smoothing: antialiased;
       }
 
+      ::-webkit-scrollbar { width: 10px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb {
+        background: #d2d9e3;
+        border: 3px solid var(--surface);
+        border-radius: 10px;
+      }
+      ::-webkit-scrollbar-thumb:hover { background: #b8c2cf; }
+
+      /* ============================== Cabeçalho ============================== */
       header {
-        position: sticky; /* o cabeçalho fica fixo no topo; só o resto rola */
+        position: sticky;
         top: 0;
-        z-index: 10;
-        background: var(--bg);
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 14px;
+        background: linear-gradient(135deg, var(--brand), var(--brand-2));
         color: #fff;
-        padding: 12px 14px;
-        /* Separa o cabeçalho do conteúdo que passa por baixo ao rolar. */
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+        box-shadow: 0 2px 10px rgba(4, 60, 120, 0.25);
       }
+      header h1 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: 0.2px; }
+      header p { margin: 1px 0 0; font-size: 10.5px; opacity: 0.85; }
 
-      header h1 {
-        margin: 0;
-        font-size: 15px;
-        font-weight: 700;
-        letter-spacing: 0.2px;
+      /* Chip de estado: bolinha + texto. */
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        max-width: 168px;
+        padding: 4px 10px 4px 8px;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.16);
+        font-size: 10.5px;
+        font-weight: 600;
+        color: #fff;
       }
+      .chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-      header p {
-        margin: 2px 0 0;
-        font-size: 11px;
-        opacity: 0.85;
-      }
-
-      /* Luzinha do status: mesma cor do ponto desenhado no ícone da extensão. */
       .light {
-        display: inline-block;
-        width: 9px;
-        height: 9px;
+        flex: 0 0 auto;
+        width: 8px;
+        height: 8px;
         border-radius: 50%;
-        vertical-align: middle;
-        background: var(--muted);
+        background: #cbd5e1;
         box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
       }
+      .light.capturing { background: #34d399; animation: pulse 1.6s ease-in-out infinite; }
+      .light.ready { background: #fbbf24; }
+      .light.attention { background: #fca5a5; animation: pulse 1.2s ease-in-out infinite; }
 
-      .light.capturing {
-        background: #1f9d55;
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+      @media (prefers-reduced-motion: reduce) {
+        .light { animation: none !important; }
       }
 
-      .light.ready {
-        background: #f0a500;
-      }
+      /* ================================ Base ================================ */
+      main { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
 
-      .light.attention {
-        background: #d93025;
-      }
-
-      main {
-        padding: 10px 10px 10px;
-      }
-
-      .counter {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        background: #fff;
+      .card {
+        padding: 12px;
         border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin-bottom: 12px;
+        border-radius: var(--r-lg);
+        background: var(--card);
+        box-shadow: var(--shadow-sm);
       }
 
-      .counter .value {
-        font-size: 26px;
+      .card-title {
+        display: block;
+        margin: 0 0 8px;
+        font-size: 10.5px;
         font-weight: 700;
-        color: var(--bg-dark);
-        line-height: 1;
-      }
-
-      .counter .label {
-        font-size: 13px;
-        color: var(--muted);
+        letter-spacing: 0.6px;
         text-transform: uppercase;
-        letter-spacing: 0.4px;
-      }
-
-      .counter .lastrun {
-        display: block;
-        margin-top: 8px;
-        font-size: 10px;
         color: var(--muted);
       }
 
-      button {
+      /* ========================= Resumo (hero card) ========================= */
+      .hero { display: flex; flex-direction: column; gap: 5px; }
+      .hero-top { display: flex; align-items: baseline; gap: 8px; }
+      .hero .value { font-size: 30px; font-weight: 800; line-height: 1; color: var(--brand-2); }
+      .hero .hero-label {
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .hero .summary { font-size: 12px; line-height: 1.45; color: var(--warn); }
+      .hero .summary:empty { display: none; }
+      .hero .lastrun { font-size: 10.5px; color: var(--muted); }
+      .hero .empty {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 4px 0 0;
+        font-size: 11.5px;
+        line-height: 1.45;
+        color: var(--muted);
+      }
+      .hero .empty svg { flex: 0 0 auto; color: #b8c6d8; }
+
+      /* ============================ Faixa da fila =========================== */
+      .runinfo {
         display: block;
+        border-left: 3px solid var(--brand);
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--brand-2);
+      }
+
+      /* ================================ Cotas =============================== */
+      .quota { font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+      /* ============================== Avisos =============================== */
+      .status {
+        padding: 9px 11px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        background: var(--card);
+        font-size: 11px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+      .status.ok { border-color: #bfe6cd; background: var(--ok-soft); color: var(--ok); }
+      .status.warn { border-color: #f3ddab; background: var(--warn-soft); color: var(--warn); }
+      .status.error { border-color: #f3c4c4; background: var(--danger-soft); color: var(--danger); }
+      #guard-info, #help-info { margin: 0; }
+
+      /* =============================== Botões ============================== */
+      button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
         width: 100%;
         padding: 10px 12px;
-        margin-bottom: 8px;
-        border: none;
-        border-radius: 6px;
-        font-size: 13px;
-        font-weight: 600;
+        border: 1px solid transparent;
+        border-radius: var(--r-md);
+        font-family: inherit;
+        font-size: 12.5px;
+        font-weight: 650;
         cursor: pointer;
-        transition: background 0.15s ease, opacity 0.15s ease;
+        transition: background 0.15s ease, border-color 0.15s ease, transform 0.06s ease;
       }
+      button svg { flex: 0 0 auto; }
+      button:active:not(:disabled) { transform: translateY(1px); }
+      button:disabled { opacity: 0.45; cursor: not-allowed; }
+      button:focus-visible { outline: none; box-shadow: var(--ring); }
 
-      button:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-      }
-
-      #btn-start {
-        background: var(--bg);
-        color: #fff;
-      }
-      #btn-start:hover:not(:disabled) {
-        background: var(--bg-dark);
-      }
-
-      #btn-stop {
-        background: #e2e8f0;
-        color: #334155;
-      }
-      #btn-stop:hover:not(:disabled) {
-        background: #cbd5e1;
-      }
-
-      #btn-skip {
-        background: #fef3c7;
-        color: #92651d;
-      }
-      #btn-skip:hover:not(:disabled) {
-        background: #fde68a;
-      }
-
-      #btn-export {
-        background: var(--ok);
-        color: #fff;
-      }
-      #btn-export:hover:not(:disabled) {
-        background: #167a41;
-      }
-
-      #btn-clear {
+      .btn.primary { background: var(--brand); color: #fff; box-shadow: 0 2px 8px rgba(10, 102, 194, 0.3); }
+      .btn.primary:hover:not(:disabled) { background: var(--brand-2); }
+      .btn.secondary { background: #e9eef5; color: #334155; }
+      .btn.secondary:hover:not(:disabled) { background: #dbe3ec; }
+      .btn.warn { background: var(--warn-soft); color: var(--warn); border-color: #f0d9a4; }
+      .btn.warn:hover:not(:disabled) { background: #fde9b8; }
+      .btn.ghost { background: var(--card); color: var(--brand-2); border-color: var(--line); }
+      .btn.ghost:hover:not(:disabled) { background: var(--brand-soft); border-color: #c7dbf3; }
+      .btn.danger-ghost {
         background: transparent;
-        color: var(--muted);
-        font-weight: 500;
-        font-size: 11px;
-        padding: 6px;
-        margin-bottom: 0;
-      }
-      #btn-clear:hover:not(:disabled) {
-        color: var(--error);
-      }
-
-      .status {
-        margin-top: 10px;
-        padding: 8px 10px;
-        border-radius: 6px;
-        font-size: 11px;
-        line-height: 1.4;
-        background: #eef2f7;
-        color: var(--muted);
-        min-height: 18px;
-      }
-
-      .status.ok {
-        background: #e6ffed;
-        color: var(--ok);
-      }
-      .status.warn {
-        background: #fffaf0;
-        color: var(--warn);
-      }
-      .status.error {
-        background: #fff5f5;
-        color: var(--error);
-      }
-
-      details.settings {
-        background: #fff;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 8px 10px;
-        margin-bottom: 10px;
-      }
-
-      details.settings > summary {
-        cursor: pointer;
+        color: var(--danger);
+        border-color: transparent;
         font-weight: 600;
-        font-size: 12px;
-        color: var(--bg-dark);
+      }
+      .btn.danger-ghost:hover:not(:disabled) { background: var(--danger-soft); }
+
+      .actions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .actions-grid .span-2 { grid-column: 1 / -1; }
+
+      /* Barra de ações fixa (Iniciar/Parar/Pular sempre à mão). */
+      .actionbar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 30;
+        display: flex;
+        gap: 8px;
+        padding: 10px 12px;
+        border-top: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.94);
+        backdrop-filter: blur(8px);
+      }
+      .actionbar .btn { width: auto; }
+      .actionbar .btn.primary { flex: 1 1 auto; }
+
+      /* ============================== Campos =============================== */
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        background: #fff;
+        font-family: inherit;
+        font-size: 12.5px;
+        color: var(--text);
+      }
+      input:focus,
+      textarea:focus,
+      select:focus {
+        outline: none;
+        border-color: var(--brand);
+        box-shadow: var(--ring);
+      }
+      textarea { resize: vertical; min-height: 58px; }
+
+      /* ============================= Configurações ========================= */
+      details.settings {
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        background: var(--card);
+        box-shadow: var(--shadow-sm);
+        overflow: hidden;
+      }
+      details.settings > summary {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px;
+        cursor: pointer;
         list-style: none;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--brand-2);
       }
-
-      details.settings > summary::-webkit-details-marker {
-        display: none;
-      }
-
-      details.settings > summary::before {
-        content: "▸ ";
-      }
-      details.settings[open] > summary::before {
-        content: "▾ ";
-      }
+      details.settings > summary::-webkit-details-marker { display: none; }
+      details.settings > summary svg { color: var(--muted); transition: transform 0.15s ease; }
+      details.settings[open] > summary svg { transform: rotate(90deg); }
+      details.settings > summary svg.spark { color: var(--brand); }
+      .settings-body { padding: 0 12px 12px; }
 
       details.settings label {
         display: block;
-        margin: 8px 0 3px;
+        margin: 9px 0 3px;
         font-size: 11px;
         color: var(--muted);
       }
-
-      details.settings input,
-      details.settings textarea,
-      details.settings select {
-        width: 100%;
-        padding: 6px 8px;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        font-family: inherit;
-        font-size: 12px;
-        color: var(--text);
+      /* Switch (substitui os antigos checkboxes) */
+      details.settings .switch {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin: 10px 0;
+        cursor: pointer;
+      }
+      details.settings .switch input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        position: relative;
+        flex: 0 0 auto;
+        width: 34px;
+        height: 20px;
+        margin: 1px 0 0;
+        padding: 0;
+        border: none;
+        border-radius: 999px;
+        background: #cbd5e1;
+        cursor: pointer;
+        transition: background 0.18s ease;
+      }
+      details.settings .switch input[type="checkbox"]::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
         background: #fff;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.3);
+        transition: transform 0.18s ease;
       }
+      details.settings .switch input[type="checkbox"]:checked { background: var(--brand); }
+      details.settings .switch input[type="checkbox"]:checked::after { transform: translateX(14px); }
+      details.settings .switch input[type="checkbox"]:focus-visible { box-shadow: var(--ring); }
+      details.settings .switch > span { font-size: 12px; line-height: 1.45; color: var(--text); }
 
-      details.settings input:focus,
-      details.settings textarea:focus {
-        outline: none;
-        border-color: var(--bg);
+      .group { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+      .group > strong {
+        display: block;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: var(--brand-2);
       }
+      .sub { display: block; margin: 10px 0 3px; font-size: 11px; color: var(--muted); }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 
-      details.settings textarea {
-        resize: vertical;
-        min-height: 56px;
-      }
-
-      .hint {
-        margin: 6px 0 0;
-        font-size: 10px;
+      .days { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+      details.settings .days label {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin: 0;
+        padding: 4px 8px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        font-size: 10.5px;
         color: var(--muted);
+        cursor: pointer;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
       }
-
-      .hint.ok {
-        color: var(--ok);
+      details.settings .days label:has(input:checked) {
+        border-color: #c7dbf3;
+        background: var(--brand-soft);
+        color: var(--brand-2);
+        font-weight: 600;
       }
-      .hint.error {
-        color: var(--error);
-      }
-
-      /* Vale para os elementos que o JS esconde via .hidden: sem isso o
-         display: block/flex do CSS venceria o atributo. */
-      [hidden] {
-        display: none !important;
-      }
-
+      .days input[type="checkbox"] { width: auto; margin: 0; padding: 0; accent-color: var(--brand); }
       .terms-preview {
         display: flex;
         flex-wrap: wrap;
@@ -314,365 +371,294 @@
         padding: 0;
         list-style: none;
       }
-
-      .terms-preview:empty {
-        display: none;
-      }
-
+      .terms-preview:empty { display: none; }
       .terms-preview li {
-        padding: 2px 6px;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        background: #eef2f7;
-        font-size: 10px;
-        color: var(--text);
+        padding: 3px 8px;
+        border: 1px solid #d9e6f6;
+        border-radius: 999px;
+        background: var(--brand-soft);
+        font-size: 10.5px;
+        color: var(--brand-2);
       }
+      .terms-preview li b { font-weight: 700; }
 
-      .terms-preview li b {
-        font-weight: 600;
-        color: var(--bg-dark);
-      }
-
-      .counter .runinfo {
-        display: block;
-        margin-top: 2px;
-        font-size: 10px;
-        font-weight: 600;
-        color: var(--bg-dark);
-      }
-
-      .counter .quota {
-        display: block;
-        margin-top: 2px;
-        font-size: 10px;
-        color: var(--muted);
-      }
-
-      .counter .summary {
-        display: block;
-        margin-top: 2px;
-        font-size: 10px;
-        color: var(--warn);
-      }
-
-      #guard-info {
-        margin: 0 0 12px;
-      }
-
-      #help-info {
-        margin: 0 0 12px;
-      }
-
-      .group {
-        margin-top: 12px;
-        padding-top: 10px;
-        border-top: 1px dashed var(--line);
-      }
-
-      .group > strong {
-        display: block;
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-        color: var(--bg-dark);
-      }
-
-      details.settings .sub {
-        display: block;
-        margin: 8px 0 3px;
-        font-size: 11px;
-        color: var(--muted);
-      }
-
-      details.settings label.inline {
-        display: flex;
-        align-items: flex-start;
-        gap: 6px;
-        margin: 8px 0 0;
-        font-size: 11px;
-        color: var(--text);
-      }
-
-      details.settings label.inline input[type="checkbox"] {
-        width: auto;
-        flex: 0 0 auto;
-        margin: 1px 0 0;
-        padding: 0;
-      }
-
-      .grid2,
-      .grid3 {
-        display: grid;
-        gap: 6px;
-      }
-
-      .grid2 {
-        grid-template-columns: 1fr 1fr;
-      }
-
-      .grid3 {
-        grid-template-columns: 1fr 1fr 1fr;
-      }
-
-      .days {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-        margin-top: 4px;
-      }
-
-      .days label {
-        display: inline-flex;
-        align-items: center;
-        gap: 3px;
-        margin: 0;
-        padding: 3px 6px;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        background: #fff;
-        font-size: 10px;
-        color: var(--text);
-        cursor: pointer;
-      }
-
-      .days input[type="checkbox"] {
-        width: auto;
-        margin: 0;
-        padding: 0;
-      }
+      .hint { margin: 6px 0 0; font-size: 10.5px; line-height: 1.5; color: var(--muted); }
+      .hint.ok { color: var(--ok); }
+      .hint.error { color: var(--danger); }
     </style>
   </head>
   <body>
     <header>
-      <h1>
-        PegaVaga
-        <span class="light" id="status-light" role="status" title=""></span>
-      </h1>
-      <p>Rastreamento de vagas do LinkedIn</p>
+      <div>
+        <h1>PegaVaga</h1>
+        <p>Rastreamento de vagas do LinkedIn</p>
+      </div>
+      <span class="chip" id="run-chip" title="">
+        <span class="light" id="status-light" role="status"></span>
+        <span class="chip-text" id="status-text">Pronta</span>
+      </span>
     </header>
 
     <main>
-      <div class="counter">
-        <div>
+      <section class="card hero">
+        <div class="hero-top">
           <span class="value" id="count">0</span>
-          <span class="label">&nbsp;vagas capturadas</span>
-          <span class="lastrun" id="last-run">Nenhuma varredura realizada</span>
-          <span class="runinfo" id="run-info" hidden></span>
-          <span class="summary" id="apply-summary"></span>
-          <span class="quota" id="quota-info"></span>
+          <span class="hero-label">vagas capturadas</span>
         </div>
-      </div>
+        <span class="summary" id="apply-summary"></span>
+        <span class="lastrun" id="last-run">Nenhuma varredura realizada</span>
+        <p class="empty" id="empty-state" hidden>
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
+            <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+            <circle cx="11" cy="14" r="2.4" />
+            <path d="M12.8 15.8 15 18" />
+          </svg>
+          <span>
+            Ainda não capturei nenhuma vaga. Clique em <b>Iniciar</b> para começar a
+            varredura.
+          </span>
+        </p>
+      </section>
+
+      <div class="card runinfo" id="run-info" hidden></div>
+      <section class="card quota" id="quota-info"></section>
 
       <div class="status warn" id="guard-info" hidden></div>
       <div class="status warn" id="help-info" hidden></div>
 
       <details class="settings" id="settings">
-        <summary>⚙ Configurações</summary>
-
-        <label for="base-url">URL de busca ou perfil</label>
-        <input
-          id="base-url"
-          type="text"
-          spellcheck="false"
-          placeholder="https://www.linkedin.com/jobs/search/"
-        />
-
-        <label for="location">Localização (opcional)</label>
-        <input id="location" type="text" placeholder="Ex.: Brasil, São Paulo, Remoto" />
-
-        <label for="terms">Termos de vaga (vários, separados por vírgula ou um por linha)</label>
-        <textarea
-          id="terms"
-          rows="4"
-          spellcheck="false"
-          placeholder="desenvolvedor frontend, react, node.js"
-        ></textarea>
-        <ol class="terms-preview" id="terms-preview"></ol>
-        <p class="hint" id="terms-queue"></p>
-
-        <div class="group">
-          <strong>Candidaturas</strong>
-
-          <label class="inline">
-            <input type="checkbox" id="easy-apply-only" />
-            <span>Pesquisar somente vagas com Candidatura Simplificada</span>
-          </label>
-
-          <label class="inline">
-            <input type="checkbox" id="apply-enabled" />
-            <span>Candidatar-se sozinho pela Candidatura Simplificada</span>
-          </label>
-
-          <label class="inline">
-            <input type="checkbox" id="apply-help-stuck" />
-            <span>
-              Pedir a minha ajuda (notificação na área de trabalho) quando uma vaga
-              travar num campo que só eu posso preencher, em vez de descartá-la
-            </span>
-          </label>
-
-          <div class="grid3">
-            <div>
-              <label for="apply-per-term">Por termo</label>
-              <input id="apply-per-term" type="number" min="1" max="500" step="1" />
-            </div>
-            <div>
-              <label for="apply-hour">Por hora</label>
-              <input id="apply-hour" type="number" min="1" max="1000" step="1" />
-            </div>
-            <div>
-              <label for="apply-24h">Por 24 h</label>
-              <input id="apply-24h" type="number" min="1" max="2000" step="1" />
-            </div>
-          </div>
-
-          <div class="grid2">
-            <div>
-              <label for="apply-day">Por dia (0 = sem limite)</label>
-              <input id="apply-day" type="number" min="0" max="5000" step="1" />
-            </div>
-            <div>
-              <label for="apply-scan">Máx. vagas por termo</label>
-              <input id="apply-scan" type="number" min="1" max="500" step="1" />
-            </div>
-          </div>
-
-          <p class="hint">
-            Cotas dinâmicas: ao estourar uma delas o PegaVaga pausa e volta sozinho
-            quando a próxima vaga liberar.
-          </p>
-
-          <span class="sub">Formulário (perguntas e popups do LinkedIn)</span>
-
-          <label class="inline">
-            <input type="checkbox" id="apply-fill-required" />
-            <span>
-              Responder sozinho perguntas obrigatórias (Sim/Não, listas e números)
-            </span>
-          </label>
-
-          <div class="grid2">
-            <div>
-              <label for="apply-answer-yes">Em Sim/Não, responder</label>
-              <select id="apply-answer-yes">
-                <option value="yes">Sim</option>
-                <option value="no">Não</option>
-              </select>
-            </div>
-            <div>
-              <label for="apply-answer-number">Número (anos, quantidade)</label>
-              <input id="apply-answer-number" type="number" min="0" max="200" step="1" />
-            </div>
-          </div>
-
-          <label for="apply-answer-text">Texto livre (ex.: cidade)</label>
+        <summary>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+          Configurações
+        </summary>
+        <div class="settings-body">
+          <label for="base-url">URL de busca ou perfil</label>
           <input
-            id="apply-answer-text"
+            id="base-url"
             type="text"
-            placeholder="Vazio = não inventa resposta"
+            spellcheck="false"
+            placeholder="https://www.linkedin.com/jobs/search/"
           />
 
-          <p class="hint">
-            O que o LinkedIn não respondeu vira estas respostas; deixar o texto livre
-            vazio evita respostas inventadas. Popups de avaliação ou pesquisa que
-            aparecem depois de candidatar são fechados sozinhos.
-          </p>
-        </div>
+          <label for="location">Localização (opcional)</label>
+          <input id="location" type="text" placeholder="Ex.: Brasil, São Paulo, Remoto" />
 
-        <div class="group">
-          <strong>Furtividade e segurança</strong>
+          <label for="terms">Termos de vaga (vários, separados por vírgula ou um por linha)</label>
+          <textarea
+            id="terms"
+            rows="4"
+            spellcheck="false"
+            placeholder="desenvolvedor frontend, react, node.js"
+          ></textarea>
+          <ol class="terms-preview" id="terms-preview"></ol>
+          <p class="hint" id="terms-queue"></p>
 
-          <label class="inline">
-            <input type="checkbox" id="apply-respect-user" />
-            <span>
-              Ceder a vez para mim: enquanto eu mexo na página, a automação espera em
-              vez de clicar ou rolar por cima
-            </span>
-          </label>
+          <div class="group">
+            <strong>Candidaturas</strong>
 
-          <label class="inline">
-            <input type="checkbox" id="apply-breaks" />
-            <span>Fazer pausas longas de tempos em tempos (ritmo de gente)</span>
-          </label>
+            <label class="switch">
+              <input type="checkbox" id="easy-apply-only" />
+              <span>Pesquisar somente vagas com Candidatura Simplificada</span>
+            </label>
 
-          <div class="grid2">
-            <div>
-              <label for="apply-delay-min">Intervalo mínimo (s)</label>
-              <input id="apply-delay-min" type="number" min="1" max="600" step="1" />
+            <label class="switch">
+              <input type="checkbox" id="apply-enabled" />
+              <span>Candidatar-se sozinho pela Candidatura Simplificada</span>
+            </label>
+
+            <label class="switch">
+              <input type="checkbox" id="apply-help-stuck" />
+              <span>
+                Pedir a minha ajuda (notificação na área de trabalho) quando uma vaga
+                travar num campo que só eu posso preencher, em vez de descartá-la
+              </span>
+            </label>
+
+            <div class="grid3">
+              <div>
+                <label for="apply-per-term">Por termo</label>
+                <input id="apply-per-term" type="number" min="1" max="500" step="1" />
+              </div>
+              <div>
+                <label for="apply-hour">Por hora</label>
+                <input id="apply-hour" type="number" min="1" max="1000" step="1" />
+              </div>
+              <div>
+                <label for="apply-24h">Por 24 h</label>
+                <input id="apply-24h" type="number" min="1" max="2000" step="1" />
+              </div>
             </div>
-            <div>
-              <label for="apply-delay-max">Intervalo máximo (s)</label>
-              <input id="apply-delay-max" type="number" min="1" max="600" step="1" />
+
+            <div class="grid2">
+              <div>
+                <label for="apply-day">Por dia (0 = sem limite)</label>
+                <input id="apply-day" type="number" min="0" max="5000" step="1" />
+              </div>
+              <div>
+                <label for="apply-scan">Máx. vagas por termo</label>
+                <input id="apply-scan" type="number" min="1" max="500" step="1" />
+              </div>
             </div>
+
+            <p class="hint">
+              Cotas dinâmicas: ao estourar uma delas o PegaVaga pausa e volta sozinho
+              quando a próxima vaga liberar.
+            </p>
+
+            <span class="sub">Formulário (perguntas e popups do LinkedIn)</span>
+
+            <label class="switch">
+              <input type="checkbox" id="apply-fill-required" />
+              <span>
+                Responder sozinho perguntas obrigatórias (Sim/Não, listas e números)
+              </span>
+            </label>
+
+            <div class="grid2">
+              <div>
+                <label for="apply-answer-yes">Em Sim/Não, responder</label>
+                <select id="apply-answer-yes">
+                  <option value="yes">Sim</option>
+                  <option value="no">Não</option>
+                </select>
+              </div>
+              <div>
+                <label for="apply-answer-number">Número (anos, quantidade)</label>
+                <input id="apply-answer-number" type="number" min="0" max="200" step="1" />
+              </div>
+            </div>
+
+            <label for="apply-answer-text">Texto livre (ex.: cidade)</label>
+            <input
+              id="apply-answer-text"
+              type="text"
+              placeholder="Vazio = não inventa resposta"
+            />
+
+            <p class="hint">
+              O que o LinkedIn não respondeu vira estas respostas; deixar o texto livre
+              vazio evita respostas inventadas. Popups de avaliação ou pesquisa que
+              aparecem depois de candidatar são fechados sozinhos.
+            </p>
+          </div>
+          <div class="group">
+            <strong>Furtividade e segurança</strong>
+
+            <label class="switch">
+              <input type="checkbox" id="apply-respect-user" />
+              <span>
+                Ceder a vez para mim: enquanto eu mexo na página, a automação espera em
+                vez de clicar ou rolar por cima
+              </span>
+            </label>
+
+            <label class="switch">
+              <input type="checkbox" id="apply-breaks" />
+              <span>Fazer pausas longas de tempos em tempos (ritmo de gente)</span>
+            </label>
+
+            <div class="grid2">
+              <div>
+                <label for="apply-delay-min">Intervalo mínimo (s)</label>
+                <input id="apply-delay-min" type="number" min="1" max="600" step="1" />
+              </div>
+              <div>
+                <label for="apply-delay-max">Intervalo máximo (s)</label>
+                <input id="apply-delay-max" type="number" min="1" max="600" step="1" />
+              </div>
+            </div>
+
+            <div class="grid2">
+              <div>
+                <label for="apply-break-every">Vagas entre pausas</label>
+                <input id="apply-break-every" type="number" min="1" max="100" step="1" />
+              </div>
+              <div>
+                <label for="apply-break-seconds">Duração da pausa (s)</label>
+                <input id="apply-break-seconds" type="number" min="10" max="600" step="5" />
+              </div>
+            </div>
+
+            <p class="hint">
+              Os intervalos variam sozinhos (±30%), há pausas de "leitura" da vaga e, se
+              o LinkedIn pedir verificação ou avisar de limite de uso, o PegaVaga para
+              tudo por 1 h para proteger a sua conta.
+            </p>
           </div>
 
-          <div class="grid2">
-            <div>
-              <label for="apply-break-every">Vagas entre pausas</label>
-              <input id="apply-break-every" type="number" min="1" max="100" step="1" />
+          <div class="group">
+            <strong>Agendador</strong>
+
+            <label class="switch">
+              <input type="checkbox" id="schedule-enabled" />
+              <span>Iniciar e parar sozinho nos horários abaixo</span>
+            </label>
+
+            <div class="grid2">
+              <div>
+                <label for="schedule-start">Começa às</label>
+                <input id="schedule-start" type="time" />
+              </div>
+              <div>
+                <label for="schedule-stop">Para às</label>
+                <input id="schedule-stop" type="time" />
+              </div>
             </div>
-            <div>
-              <label for="apply-break-seconds">Duração da pausa (s)</label>
-              <input id="apply-break-seconds" type="number" min="10" max="600" step="5" />
-            </div>
+
+            <span class="sub">Dias da semana</span>
+            <div class="days" id="schedule-days"></div>
+
+            <label class="switch">
+              <input type="checkbox" id="schedule-autostart" />
+              <span>Começar sozinho quando o horário abrir</span>
+            </label>
+
+            <label class="switch">
+              <input type="checkbox" id="schedule-focus" />
+              <span>
+                Trazer a aba para frente (o Chrome pausa os timers de abas em segundo
+                plano)
+              </span>
+            </label>
+
+            <p class="hint" id="schedule-hint">Agendador desativado.</p>
           </div>
-
-          <p class="hint">
-            Os intervalos variam sozinhos (±30%), há pausas de "leitura" da vaga e, se
-            o LinkedIn pedir verificação ou avisar de limite de uso, o PegaVaga para
-            tudo por 1 h para proteger a sua conta.
-          </p>
+          <p class="hint" id="settings-hint">Salvo automaticamente.</p>
         </div>
-
-        <div class="group">
-          <strong>Agendador</strong>
-
-          <label class="inline">
-            <input type="checkbox" id="schedule-enabled" />
-            <span>Iniciar e parar sozinho nos horários abaixo</span>
-          </label>
-
-          <div class="grid2">
-            <div>
-              <label for="schedule-start">Começa às</label>
-              <input id="schedule-start" type="time" />
-            </div>
-            <div>
-              <label for="schedule-stop">Para às</label>
-              <input id="schedule-stop" type="time" />
-            </div>
-          </div>
-
-          <span class="sub">Dias da semana</span>
-          <div class="days" id="schedule-days"></div>
-
-          <label class="inline">
-            <input type="checkbox" id="schedule-autostart" />
-            <span>Começar sozinho quando o horário abrir</span>
-          </label>
-
-          <label class="inline">
-            <input type="checkbox" id="schedule-focus" />
-            <span>
-              Trazer a aba para frente (o Chrome pausa os timers de abas em segundo
-              plano)
-            </span>
-          </label>
-
-          <p class="hint" id="schedule-hint">Agendador desativado.</p>
-        </div>
-
-        <p class="hint" id="settings-hint">Salvo automaticamente.</p>
       </details>
 
-      <button id="btn-start" type="button">▶ Iniciar Busca e Varredura</button>
-      <button id="btn-stop" type="button" disabled>■ Parar Varredura</button>
-      <button id="btn-skip" type="button" disabled>⏭ Pular vaga atual</button>
-      <button id="btn-export" type="button">⬇ Exportar para Excel (CSV)</button>
-      <button id="btn-export-failures" type="button">
-        ⚠ Exportar não candidatadas (CSV)
-      </button>
-      <button id="btn-clear" type="button">🗑 Limpar vagas capturadas</button>
+      <section class="card">
+        <span class="card-title">Relatório</span>
+        <div class="actions-grid">
+          <button id="btn-export" class="btn ghost" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3v12" /><path d="m7 11 5 5 5-5" /><path d="M4 21h16" />
+            </svg>
+            Exportar (CSV)
+          </button>
+          <button id="btn-export-failures" class="btn ghost" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+              <path d="M12 9v4" /><path d="M12 17h.01" />
+            </svg>
+            Não candidatadas
+          </button>
+          <button id="btn-clear" class="btn danger-ghost span-2" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="m5 6 1 14h12l1-14" />
+            </svg>
+            Limpar vagas capturadas
+          </button>
+        </div>
+      </section>
 
       <div class="status" id="status">
         Clique em iniciar: o PegaVaga abre a busca do LinkedIn com os seus termos,
@@ -681,6 +667,27 @@
         sai também o motivo de cada vaga que não deu para candidatar.
       </div>
     </main>
+
+    <div class="actionbar">
+      <button id="btn-start" class="btn primary" type="button" title="Iniciar Busca e Varredura">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+        Iniciar
+      </button>
+      <button id="btn-stop" class="btn secondary" type="button" disabled title="Parar Varredura">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <rect x="6" y="6" width="12" height="12" rx="2" />
+        </svg>
+        Parar
+      </button>
+      <button id="btn-skip" class="btn warn" type="button" disabled title="Pular vaga atual">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M6 5l8 7-8 7V5z" /><path d="M16 5h2v14h-2z" />
+        </svg>
+        Pular
+      </button>
+    </div>
 
     <script src="shared.js"></script>
     <script src="popup.js"></script>
