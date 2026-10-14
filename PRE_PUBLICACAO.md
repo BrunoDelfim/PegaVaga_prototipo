@@ -4,7 +4,7 @@ Plano de trabalho para sair da beta e publicar na **Chrome Web Store**.
 Cada item diz **por quê** e **como fazer**; ao concluir, troque `[ ]` por `[x]` e
 preencha a linha **Feito em** com a versão e o commit.
 
-**Progresso:** 6 de 14 itens · **Versão:** a que está no `manifest.json`
+**Progresso:** 8 de 14 itens · **Versão:** a que está no `manifest.json`
 
 Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
@@ -88,18 +88,40 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   não precisa de cache. Selo de status no topo do README. **A versão não subiu:**
   é infraestrutura, não muda nada da extensão.
 
-- [ ] **7. Botão “copiar diagnóstico”**
+- [x] **7. Botão “copiar diagnóstico”**
   Sem isso, reportar bug é chato. Hoje há **24 `catch` silenciosos** no
   `content.js`, então o erro desaparece sem deixar rastro.
   *Como:* guardar os erros num buffer (últimos ~50), somar versão + configuração
   e copiar para a área de transferência.
-  *Feito em:* —
+  *Feito em:* `0.7.5` (commit `28923ca`) — o `content.js` ganhou
+  **`noteError(onde, erro)`**: cada `catch` registra **hora + trecho + mensagem**
+  num buffer de **50** (`SHARED.ERROR_KEEP`), gravado em `pegavaga_errors` (junto
+  da gravação das vagas e, sozinho, quando o erro vem da própria gravação — sem
+  laço). Dos **34 `catch`**, **32 registram**; os **2 que ficam mudos** (avisar o
+  pop-up fechado e navegador sem captura passiva) são casos **normais e
+  previsíveis**, com o motivo escrito no código — e um **teste reprova se
+  aparecer catch mudo novo**. O pop-up ganhou **Configurações → Diagnóstico →
+  “Copiar diagnóstico”**: `SHARED.buildDiagnostics()` (função pura, com 14
+  verificações) monta versão, navegador, configuração, fila, bloqueio, modo
+  simulação, tema e os últimos erros; a cópia usa `navigator.clipboard` **com
+  queda para o `textarea` clássico**, e o texto avisa que ele traz a sua
+  configuração (para conferir antes de colar em público).
 
-- [ ] **8. Modo simulação (dry-run)**
+- [x] **8. Modo simulação (dry-run)**
   Varre e preenche o formulário, mas **não clica em enviar**. Deixa a primeira
   experiência segura (e é um bom argumento na descrição da loja).
   *Como:* opção em Candidaturas; no `runApplyFlow`, parar antes do envio.
-  *Feito em:* —
+  *Feito em:* `0.7.5` (commit `28923ca`) — interruptor **“Modo simulação”** nas
+  Candidaturas, **desligado por padrão** (de propósito: não muda o comportamento
+  de quem já usa — quem quer a primeira vez segura liga o interruptor, e o item 4
+  pode citar isso na descrição da loja). No `runApplyFlow`, quando o próximo
+  passo seria o **envio** (`action.kind === 'submit'`), o dry-run **fecha o
+  formulário e sai com `simulada`**: nada é clicado, o rascunho continua salvo no
+  LinkedIn e o novo desfecho **`Simulada (não enviada)`** entra no
+  relatório/donut como não candidatada, **com motivo próprio no CSV**. A
+  **cota não é consumida** (só `enviada` empurra para o histórico — confirmei que
+  o `state.apps.push` está dentro desse ramo, com teste) e a barra da fila avisa
+  **“modo simulação (não envio)”**.
 
 - [ ] **9. Backup/restauração da configuração**
   Hoje, limpar ou reinstalar perde tudo. Exportar/importar um JSON resolve.
@@ -170,4 +192,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 13/10/2026 | 10. Empacotamento (zip + tag `v0.7.4`) | `0.7.4` | `fdf9efa` |
 | 13/10/2026 | 13. Roteiro de smoke test | — (docs) | `caee973` |
 | 13/10/2026 | 2. Política de privacidade | — (docs) | `5231400` |
+| 13/10/2026 | 7. Copiar diagnóstico e 8. Modo simulação | `0.7.5` | `28923ca` |
 
