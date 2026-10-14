@@ -325,7 +325,64 @@ ok('ERROR_KEEP em faixa util', S.ERROR_KEEP >= 20 && S.ERROR_KEEP <= 200);
 ok('popup tem o botao de diagnostico', popupHtml.includes('id="btn-diag"'));
 ok('popup copia o diagnostico', popupJs.includes('buildDiagnostics') && popupJs.includes('navigator.clipboard.writeText'));
 
-section('16. Espera por evento (assincrono)');
+section('16. Backup e restauracao da configuracao');
+const cfgBackup = S.parseSettings({
+  baseUrl: 'https://www.linkedin.com/jobs/search/',
+  terms: 'react, node.js, react',
+  apply: { perHour: 4, dryRun: true, answers: { cidade: 'Recife' } },
+  schedule: { enabled: true, startTime: '08:00', stopTime: '18:00' },
+});
+const backup = S.buildSettingsBackup(cfgBackup, {
+  version: '1.2.3',
+  exportedAt: '2026-10-13T10:00:00.000Z',
+});
+const backupJson = JSON.parse(backup);
+eq('backup tem cabecalho proprio', [backupJson.app, backupJson.kind, backupJson.version], ['pegavaga', 'config', '1.2.3']);
+eq('backup leva as buscas sem repeticao', backupJson.settings.terms, ['react', 'node.js']);
+eq('backup leva as respostas do formulario', backupJson.settings.apply.answers.cidade, 'Recife');
+eq('backup leva o modo simulacao', backupJson.settings.apply.dryRun, true);
+ok('backup e um JSON legivel (2 espacos + quebra final)', backup.includes('\n  "app"') && backup.endsWith('\n'));
+
+const volta = S.parseSettingsBackup(backup);
+eq('ida e volta preserva as buscas', volta.settings.terms, ['react', 'node.js']);
+eq('ida e volta preserva o dry-run', volta.settings.apply.dryRun, true);
+eq('ida e volta preserva as respostas', volta.settings.apply.answers.cidade, 'Recife');
+eq('ida e volta preserva o agendador', [volta.settings.schedule.enabled, volta.settings.schedule.startTime], [true, '08:00']);
+eq('ida e volta lembra de onde veio', [volta.version, volta.exportedAt], ['1.2.3', '2026-10-13T10:00:00.000Z']);
+
+const cru = S.parseSettingsBackup(JSON.stringify({ terms: 'python' }));
+eq('aceita configuracao crua (sem cabecalho)', cru.settings.terms, ['python']);
+eq('cru sem versao fica vazio', cru.version, '');
+
+const clampado = S.parseSettingsBackup(JSON.stringify({ apply: { perHour: 99999, perTerm: 'x' } }));
+eq('restauracao passa pelo parseSettings (clampa)', clampado.settings.apply.perHour, 1000);
+eq('restauracao corrige valor invalido', clampado.settings.apply.perTerm, S.DEFAULT_SETTINGS.apply.perTerm);
+
+const recusados = [];
+['', 'nao e json', '[]', '"texto"', 'null', '{"foo": 1}', '{"settings": null}'].forEach((t) => {
+  try {
+    S.parseSettingsBackup(t);
+    recusados.push('passou: ' + t);
+  } catch (error) {
+    if (!/JSON válido|configuração/.test(error.message)) recusados.push('msg: ' + error.message);
+  }
+});
+eq('arquivo que nao serve e recusado com mensagem', recusados, []);
+
+ok('popup tem salvar e restaurar', ['id="btn-backup"', 'id="btn-restore"', 'id="input-restore"', 'id="btn-restore-go"', 'id="btn-restore-cancel"'].every((t) => popupHtml.includes(t)));
+ok('popup usa os helpers puros do backup', popupJs.includes('buildSettingsBackup') && popupJs.includes('parseSettingsBackup'));
+const trechoEscolher = popupJs.slice(
+  popupJs.indexOf('async function onRestoreFile'),
+  popupJs.indexOf('async function onRestoreConfirm')
+);
+ok(
+  'escolher o arquivo nao grava nada',
+  trechoEscolher.includes('restoreCheck.hidden = false') && !trechoEscolher.includes('storage.local.set')
+);
+ok('restauracao grava e repoe a tela depois de confirmar', /async function onRestoreConfirm[\s\S]{0,600}storage\.local\.set[\s\S]{0,200}loadSettingsToForm[\s\S]{0,200}saveSettingsFromForm/.test(popupJs));
+ok('download aceita tipo proprio', popupJs.includes('function downloadFile(content, filename, type)'));
+
+section('17. Espera por evento (assincrono)');
 (async () => {
   const sig = S.createSignal();
   eq('waitUntil imediato', await S.waitUntil(sig, () => 42, 100, 0), 42);

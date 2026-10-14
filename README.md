@@ -42,7 +42,7 @@ A versão vive no `manifest.json` (campo `version`). A regra de avanço é:
 Em resumo: o **último número** é o contador do dia a dia (0–9) e o **do meio** só
 muda quando ele estoura.
 
-Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.6`) — é ela que o
+Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.7`) — é ela que o
 script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
@@ -323,6 +323,24 @@ houve (só dois, de condições normais e previsíveis, ficam de fora de propós
 > O texto inclui a sua configuração e as respostas do formulário — **confira
 > antes de publicar** num lugar público.
 
+### Backup da configuração
+
+Na aba **Configurações → Backup da configuração**:
+
+- **Salvar (JSON)** baixa `pegavaga_config_AAAA-MM-DD_HH-MM-SS.json` com as
+  buscas, as cotas, o agendador, o ritmo, o modo simulação e **as respostas do
+  formulário** (é o que dói mais perder). As vagas capturadas **não** entram aqui
+  — elas saem pela exportação em CSV.
+- **Restaurar de arquivo** lê esse JSON, **mostra o que veio** (versão e data de
+  quando foi salvo) e **só grava depois que você confirma** — escolher o arquivo
+  não mexe em nada. O conteúdo passa pelo `parseSettings`: número fora de faixa
+  vira o padrão, termo repetido é limpo e **JSON que não é do PegaVaga é
+  recusado** com aviso: importar um arquivo qualquer não pode zerar a sua
+  configuração.
+
+> Serve para reinstalar sem reconfigurar tudo: salve o JSON, reinstale a
+> extensão, restaure.
+
 ### Arquivos gerados
 
 **CSV completo** — nome `pegavaga_AAAA-MM-DD_HH-MM-SS.csv`:
@@ -388,7 +406,7 @@ item.
 
 ```bash
 bash tools/empacotar.sh          # empacota o commit atual (HEAD)
-bash tools/empacotar.sh v0.7.6   # empacota uma tag — é o que se publica
+bash tools/empacotar.sh v0.7.7   # empacota uma tag — é o que se publica
 ```
 
 O script roda os testes antes (não gera zip com teste vermelho), monta

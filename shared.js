@@ -1415,6 +1415,76 @@ globalThis.PegaVagaShared = (() => {
     return linhas.join('\n');
   }
 
+  /**
+   * Serializa a configuração num JSON de backup. Puro (testável): o pop-up só
+   * dispara o download. Leva `answers` junto — é o que dói mais perder.
+   * @param {Object} settings configuração já normalizada
+   * @param {Object} [options] { version, exportedAt }
+   * @returns {string}
+   */
+  function buildSettingsBackup(settings, options) {
+    const o = options || {};
+
+    return (
+      JSON.stringify(
+        {
+          app: 'pegavaga',
+          kind: 'config',
+          version: o.version || '',
+          exportedAt: o.exportedAt || new Date().toISOString(),
+          settings: settings || {},
+        },
+        null,
+        2
+      ) + '\n'
+    );
+  }
+
+  /**
+   * Lê um backup de configuração: aceita o arquivo que `buildSettingsBackup`
+   * gerou e também um objeto de configuração "cru" (útil para quem edita o JSON
+   * na mão). Devolve a configuração **já validada** por `parseSettings`, então
+   * número fora de faixa vira o padrão e termo repetido é limpo.
+   * Joga `Error` com mensagem clara quando o arquivo não serve.
+   * @param {string} text conteúdo do arquivo
+   * @returns {{ settings: Object, version: string, exportedAt: string }}
+   */
+  function parseSettingsBackup(text) {
+    let data;
+
+    try {
+      data = JSON.parse(String(text == null ? '' : text));
+    } catch (error) {
+      throw new Error('o arquivo não é um JSON válido');
+    }
+
+    const bruto =
+      data && typeof data === 'object' && !Array.isArray(data) && data.settings
+        ? data.settings
+        : data;
+
+    if (!bruto || typeof bruto !== 'object' || Array.isArray(bruto)) {
+      throw new Error('o arquivo não tem uma configuração dentro');
+    }
+
+    // Um JSON qualquer (planilha, backup de outro app) não pode passar: importar
+    // lixo aqui apagaria a configuração de verdade e deixaria só os padrões.
+    const campos = ['baseUrl', 'location', 'easyApplyOnly', 'terms', 'apply', 'schedule'];
+    const pareceConfig = campos.some((campo) =>
+      Object.prototype.hasOwnProperty.call(bruto, campo)
+    );
+
+    if (!pareceConfig) {
+      throw new Error('o arquivo não parece uma configuração do PegaVaga');
+    }
+
+    return {
+      settings: parseSettings(bruto),
+      version: (data && data.version) || '',
+      exportedAt: (data && data.exportedAt) || '',
+    };
+  }
+
   return {
     STORAGE,
     MSG,
@@ -1430,6 +1500,8 @@ globalThis.PegaVagaShared = (() => {
     trimJobs,
     ERROR_KEEP,
     buildDiagnostics,
+    buildSettingsBackup,
+    parseSettingsBackup,
     HOUR_MS,
     DAY_MS,
     HISTORY_LIMIT,

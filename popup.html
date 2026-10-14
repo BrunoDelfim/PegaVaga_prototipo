@@ -1103,6 +1103,50 @@
             <p class="hint" id="schedule-hint">Agendador desativado.</p>
           </div>
           <div class="group">
+            <strong>Backup da configuração</strong>
+
+            <p class="hint">
+              Salve a configuração num JSON para não perdê-la ao limpar os dados ou
+              reinstalar. O arquivo leva as buscas, as cotas, o agendador, o ritmo e
+              as respostas do formulário (as vagas capturadas saem pela exportação em
+              CSV).
+            </p>
+
+            <div class="grid2">
+              <button id="btn-backup" class="btn ghost" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 3v12" />
+                  <path d="M7 10l5 5 5-5" />
+                  <path d="M5 21h14" />
+                </svg>
+                Salvar (JSON)
+              </button>
+              <button id="btn-restore" class="btn ghost" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 21V9" />
+                  <path d="M7 14l5-5 5 5" />
+                  <path d="M5 3h14" />
+                </svg>
+                Restaurar de arquivo
+              </button>
+            </div>
+
+            <input id="input-restore" type="file" accept=".json,application/json" hidden />
+
+            <div class="hint warn" id="restore-check" hidden>
+              <p id="restore-text"></p>
+              <div class="grid2">
+                <button id="btn-restore-go" class="btn secondary" type="button">
+                  Restaurar agora
+                </button>
+                <button id="btn-restore-cancel" class="btn ghost" type="button">Cancelar</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="group">
             <strong>Diagnóstico</strong>
 
             <p class="hint">

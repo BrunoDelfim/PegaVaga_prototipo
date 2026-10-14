@@ -198,6 +198,22 @@ fim — e não siga adiante antes de entender a falha.
 - [ ] O próprio texto avisa que ele **inclui a sua configuração e as respostas do
       formulário** — é o lembrete para conferir antes de colar em público.
 
+### Q. Backup da configuração
+- [ ] **Salvar (JSON)** baixa `pegavaga_config_….json`; abra num editor e confira
+      `app`, `version`, `exportedAt` e `settings` com buscas, cotas, agendador e
+      as **respostas do formulário**.
+- [ ] Mude algo na configuração (ex.: acrescente um termo) e clique em
+      **Restaurar de arquivo** escolhendo o JSON salvo → aparece o **aviso com a
+      versão e a data** do arquivo; **Cancelar** não grava nada (o termo novo
+      continua lá).
+- [ ] **Restaurar agora** repõe a configuração do arquivo: os campos voltam ao
+      que estava salvo e a fila de termos é redesenhada.
+- [ ] Escolha um **JSON que não é do PegaVaga** (qualquer outro arquivo) → aviso
+      de erro e **nada é perdido**.
+- [ ] O teste que importa — **reinstale a extensão** (remova e carregue de novo),
+      restaure o JSON e confirme que a configuração volta completa, **inclusive
+      as respostas do formulário**.
+
 ## Antes de publicar (teste final)
 
 1. Rode **este roteiro inteiro num perfil limpo** do Chrome (item 5 do checklist).

@@ -74,6 +74,7 @@ let settings = SHARED.parseSettings(null);
 let appsCache = [];
 let runCache = null;
 let breakCache = null;
+let pendingRestore = null; // configuração lida de um arquivo, esperando a confirmação
 let guardCache = null; // proteção da conta em vigor (ou null)
 let scanCache = false; // o content script está varrendo agora?
 
@@ -159,6 +160,13 @@ function cacheElements() {
   els.termSparkTotal = document.getElementById('term-spark-total');
   els.btnExportFailures = document.getElementById('btn-export-failures');
   els.btnDiag = document.getElementById('btn-diag');
+  els.btnBackup = document.getElementById('btn-backup');
+  els.btnRestore = document.getElementById('btn-restore');
+  els.inputRestore = document.getElementById('input-restore');
+  els.restoreCheck = document.getElementById('restore-check');
+  els.restoreText = document.getElementById('restore-text');
+  els.btnRestoreGo = document.getElementById('btn-restore-go');
+  els.btnRestoreCancel = document.getElementById('btn-restore-cancel');
   els.scheduleEnabled = document.getElementById('schedule-enabled');
   els.scheduleStart = document.getElementById('schedule-start');
   els.scheduleStop = document.getElementById('schedule-stop');
@@ -196,6 +204,13 @@ function bindEvents() {
   els.btnExportFailures.addEventListener('click', onExportFailuresClick);
   els.btnClear.addEventListener('click', onClearClick);
   if (els.btnDiag) els.btnDiag.addEventListener('click', onCopyDiagnostics);
+
+  // Backup da configuração: salvar, escolher arquivo, confirmar ou desistir.
+  els.btnBackup.addEventListener('click', onBackupClick);
+  els.btnRestore.addEventListener('click', () => els.inputRestore.click());
+  els.inputRestore.addEventListener('change', onRestoreFile);
+  els.btnRestoreGo.addEventListener('click', onRestoreConfirm);
+  els.btnRestoreCancel.addEventListener('click', onRestoreCancel);
 
   // A configuração é salva sozinha alguns instantes após a digitação parar.
   const textInputs = [els.baseUrl, els.location, els.terms];
@@ -507,6 +522,82 @@ async function onCopyDiagnostics() {
       : 'Não consegui copiar o diagnóstico — veja o console do pop-up.',
     copiou ? 'ok' : 'error'
   );
+}
+
+/**
+ * Salva a configuração num JSON, para o usuário guardar fora do navegador.
+ * Leva as respostas do formulário junto — é o que dói mais perder.
+ */
+function onBackupClick() {
+  const nome = 'pegavaga_config_' + timestampForFilename() + '.json';
+
+  downloadFile(
+    SHARED.buildSettingsBackup(settings, { version: chrome.runtime.getManifest().version }),
+    nome,
+    'application/json'
+  );
+
+  setStatus('Configuração salva em ' + nome + '.', 'ok');
+}
+
+/**
+ * Lê o arquivo escolhido e **pede confirmação** antes de mexer em nada — o
+ * backup pode ser de outra pessoa/computador, e restaurar por cima apaga o que
+ * está aqui. Nada é gravado nesta etapa.
+ */
+async function onRestoreFile(event) {
+  const input = event.target;
+  const file = input.files && input.files[0];
+  input.value = ''; // permite escolher o mesmo arquivo de novo depois
+  if (!file) return;
+
+  try {
+    pendingRestore = SHARED.parseSettingsBackup(await file.text());
+  } catch (error) {
+    pendingRestore = null;
+    els.restoreCheck.hidden = true;
+    setStatus('Não consegui usar esse arquivo: ' + error.message + '.', 'error');
+    return;
+  }
+
+  const quando = pendingRestore.exportedAt ? new Date(pendingRestore.exportedAt) : null;
+
+  els.restoreText.textContent =
+    'Substituir a configuração atual pela de ' +
+    file.name +
+    (pendingRestore.version ? ' (versão ' + pendingRestore.version + ')' : '') +
+    (quando && !isNaN(quando.getTime()) ? ', salva em ' + quando.toLocaleString('pt-BR') : '') +
+    '? A atual será perdida.';
+  els.restoreCheck.hidden = false;
+}
+
+/** Confirma a restauração: grava, repõe a tela e avisa. */
+async function onRestoreConfirm() {
+  if (!pendingRestore) return;
+
+  const importado = pendingRestore;
+  pendingRestore = null;
+  els.restoreCheck.hidden = true;
+
+  // Grava direto e depois repõe o formulário: assim o que aparece na tela é
+  // exatamente o que ficou salvo (e o save normal cuida do resto: normalizar os
+  // termos, redesenhar a fila e as cotas).
+  await chrome.storage.local.set({ [STORAGE_SETTINGS_KEY]: importado.settings });
+  await loadSettingsToForm();
+  await saveSettingsFromForm({ silent: true });
+
+  setStatus(
+    'Configuração restaurada' +
+      (importado.version ? ' (o arquivo era da versão ' + importado.version + ')' : '') +
+      '.',
+    'ok'
+  );
+}
+
+function onRestoreCancel() {
+  pendingRestore = null;
+  els.restoreCheck.hidden = true;
+  setStatus('Restauração cancelada.', 'warn');
 }
 
 async function onClearClick() {
@@ -1615,8 +1706,8 @@ function formatDate(isoString) {
 /* Download                                                                    */
 /* -------------------------------------------------------------------------- */
 
-function downloadFile(content, filename) {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+function downloadFile(content, filename, type) {
+  const blob = new Blob([content], { type: type || 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
 
   const anchor = document.createElement('a');
