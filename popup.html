@@ -128,18 +128,8 @@
       }
 
       /* ========================= Resumo (hero card) ========================= */
-      .hero { display: flex; flex-direction: column; gap: 5px; }
-      .hero-top { display: flex; align-items: baseline; gap: 8px; }
-      .hero .value { font-size: 30px; font-weight: 800; line-height: 1; color: var(--brand-2); }
-      .hero .hero-label {
-        font-size: 10.5px;
-        font-weight: 700;
-        letter-spacing: 0.4px;
-        text-transform: uppercase;
-        color: var(--muted);
-      }
-      .hero .summary { font-size: 12px; line-height: 1.45; color: var(--warn); }
-      .hero .summary:empty { display: none; }
+      .hero { display: flex; flex-direction: column; gap: 6px; }
+      .hero-top { display: flex; align-items: center; gap: 14px; }
       .hero .lastrun { font-size: 10.5px; color: var(--muted); }
       .hero .empty {
         display: flex;
@@ -152,6 +142,45 @@
       }
       .hero .empty svg { flex: 0 0 auto; color: #b8c6d8; }
 
+      /* Donut do resumo */
+      .donut-wrap { position: relative; flex: 0 0 auto; width: 92px; height: 92px; }
+      .donut { display: block; width: 92px; height: 92px; }
+      .donut circle { fill: none; stroke-width: 11; }
+      .donut-track { stroke: #eef2f7; }
+      .donut-seg { transition: stroke-dasharray 0.3s ease, stroke-dashoffset 0.3s ease; }
+      .donut-center {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        pointer-events: none;
+      }
+      .donut-center #count { font-size: 24px; font-weight: 800; color: var(--brand-2); }
+      .donut-center small {
+        margin-top: 2px;
+        font-size: 9px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      /* Legenda do donut */
+      .legend {
+        flex: 1 1 auto;
+        display: grid;
+        gap: 5px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .legend:empty { display: none; }
+      .legend li { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--text); }
+      .legend i { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; }
+      .legend b { font-weight: 750; }
+
       /* ============================ Faixa da fila =========================== */
       .runinfo {
         display: block;
@@ -163,6 +192,42 @@
 
       /* ================================ Cotas =============================== */
       .quota { font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+      .qbar { display: grid; gap: 4px; margin-bottom: 9px; }
+      .qbar:last-child { margin-bottom: 0; }
+      .qbar-top { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+      .qbar-top b { font-weight: 700; color: var(--text); }
+      .qbar-track { height: 6px; border-radius: 99px; background: #eef2f7; overflow: hidden; }
+      .qbar-fill {
+        display: block;
+        height: 100%;
+        width: 0;
+        border-radius: 99px;
+        background: var(--brand);
+        transition: width 0.3s ease;
+      }
+      .qbar-fill.full { background: var(--danger); }
+
+      /* Progresso do termo atual */
+      .progress {
+        height: 5px;
+        margin-top: 8px;
+        border-radius: 99px;
+        background: #e9eef5;
+        overflow: hidden;
+      }
+      .progress > span {
+        display: block;
+        height: 100%;
+        width: 0;
+        border-radius: 99px;
+        background: var(--brand);
+        transition: width 0.3s ease;
+      }
+
+      /* Mini-gráfico: candidaturas por hora (24 h) */
+      .spark { display: block; width: 100%; height: 44px; margin-top: 2px; }
+      .spark rect { fill: var(--brand); opacity: 0.85; }
+      .spark rect.now { fill: var(--brand-2); opacity: 1; }
       /* ============================== Avisos =============================== */
       .status {
         padding: 9px 11px;
@@ -402,10 +467,23 @@
     <main>
       <section class="card hero">
         <div class="hero-top">
-          <span class="value" id="count">0</span>
-          <span class="hero-label">vagas capturadas</span>
+          <div class="donut-wrap">
+            <svg class="donut" viewBox="0 0 96 96" role="img" aria-label="Vagas por situação">
+              <g transform="rotate(-90 48 48)">
+                <circle class="donut-track" cx="48" cy="48" r="38"></circle>
+                <circle class="donut-seg" id="seg-applied" cx="48" cy="48" r="38"></circle>
+                <circle class="donut-seg" id="seg-already" cx="48" cy="48" r="38"></circle>
+                <circle class="donut-seg" id="seg-failed" cx="48" cy="48" r="38"></circle>
+                <circle class="donut-seg" id="seg-pending" cx="48" cy="48" r="38"></circle>
+              </g>
+            </svg>
+            <div class="donut-center">
+              <span id="count">0</span>
+              <small>vagas</small>
+            </div>
+          </div>
+          <ul class="legend" id="apply-summary"></ul>
         </div>
-        <span class="summary" id="apply-summary"></span>
         <span class="lastrun" id="last-run">Nenhuma varredura realizada</span>
         <p class="empty" id="empty-state" hidden>
           <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -422,8 +500,18 @@
         </p>
       </section>
 
-      <div class="card runinfo" id="run-info" hidden></div>
+      <section class="card" id="run-card" hidden>
+        <span class="runinfo" id="run-info"></span>
+        <div class="progress"><span id="term-progress"></span></div>
+      </section>
+
       <section class="card quota" id="quota-info"></section>
+
+      <section class="card" id="spark-card" hidden>
+        <span class="card-title">Candidaturas nas últimas 24 h</span>
+        <svg class="spark" id="spark" viewBox="0 0 320 44" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <p class="hint" id="spark-hint"></p>
+      </section>
 
       <div class="status warn" id="guard-info" hidden></div>
       <div class="status warn" id="help-info" hidden></div>

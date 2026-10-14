@@ -130,6 +130,11 @@ function cacheElements() {
   els.runChip = document.getElementById('run-chip');
   els.statusText = document.getElementById('status-text');
   els.emptyState = document.getElementById('empty-state');
+  els.runCard = document.getElementById('run-card');
+  els.termProgress = document.getElementById('term-progress');
+  els.spark = document.getElementById('spark');
+  els.sparkCard = document.getElementById('spark-card');
+  els.sparkHint = document.getElementById('spark-hint');
   els.btnExportFailures = document.getElementById('btn-export-failures');
   els.scheduleEnabled = document.getElementById('schedule-enabled');
   els.scheduleStart = document.getElementById('schedule-start');
@@ -665,6 +670,7 @@ async function refresh() {
   els.btnExport.disabled = jobs.length === 0;
   renderApplySummary(jobs);
   renderQuota();
+  renderSpark();
 }
 
 /**
@@ -673,11 +679,10 @@ async function refresh() {
  * as não candidatadas.
  */
 function renderApplySummary(jobs) {
-  if (!els.applySummary) return;
-
   const summary = SHARED.summarizeApply(jobs, { applyEnabled: settings.apply.enabled });
 
-  els.applySummary.textContent = SHARED.describeApplySummary(summary);
+  renderDonut(summary);
+  renderLegend(summary);
 
   if (els.btnExportFailures) {
     els.btnExportFailures.disabled = summary.failed + summary.pending === 0;
@@ -685,6 +690,52 @@ function renderApplySummary(jobs) {
       ? summary.failed + ' vaga(s) definitivamente não candidatada(s)'
       : 'Vagas que ainda não foram candidatadas';
   }
+}
+
+/** Situações do resumo, na ordem em que aparecem no donut e na legenda. */
+const SUMMARY_PARTS = [
+  { key: 'applied', label: 'nesta sessão', color: 'var(--ok)' },
+  { key: 'already', label: 'antes', color: 'var(--brand)' },
+  { key: 'failed', label: 'não candidatada(s)', color: 'var(--danger)' },
+  { key: 'pending', label: 'na fila', color: '#94a3b8' },
+];
+
+/** Pinta os anéis do donut conforme o resumo (arcos empilhados). */
+function renderDonut(summary) {
+  const total = summary.total || 0;
+  const circumference = 2 * Math.PI * 38;
+  let offset = 0;
+
+  for (const part of SUMMARY_PARTS) {
+    const seg = document.getElementById('seg-' + part.key);
+    if (!seg) continue;
+
+    const length = total ? (summary[part.key] / total) * circumference : 0;
+    seg.setAttribute('stroke', part.color);
+    seg.setAttribute('stroke-dasharray', length + ' ' + (circumference - length));
+    seg.setAttribute('stroke-dashoffset', String(-offset));
+    offset += length;
+  }
+}
+
+/** Legenda do donut: um item por situação (só as que têm vaga). */
+function renderLegend(summary) {
+  if (!els.applySummary) return;
+
+  els.applySummary.innerHTML = SUMMARY_PARTS.filter((part) => summary[part.key] > 0)
+    .map(
+      (part) =>
+        '<li><i style="background:' +
+        part.color +
+        '"></i><b>' +
+        summary[part.key] +
+        '</b> ' +
+        part.label +
+        '</li>'
+    )
+    .join('');
+
+  els.applySummary.title = SHARED.describeApplySummary(summary);
 }
 
 /** Faixa de aviso quando a proteção da conta (limite do LinkedIn) está ligada. */
@@ -749,7 +800,86 @@ function renderQuota() {
     (runCache && runCache.appliedInTerm) || 0
   );
 
-  els.quotaInfo.textContent = SHARED.describeQuota(quota);
+  // Barras: usadas/limite de cada janela (a que estourou fica vermelha).
+  const rows = [
+    { label: 'Nesta sessão (termo)', used: quota.used.term, limit: quota.limits.term },
+    { label: 'Última hora', used: quota.used.hour, limit: quota.limits.hour },
+    { label: 'Últimas 24 h', used: quota.used.day24, limit: quota.limits.day24 },
+    { label: 'Hoje', used: quota.used.day, limit: quota.limits.day },
+  ].filter((row) => Number.isFinite(row.limit));
+
+  els.quotaInfo.innerHTML = rows
+    .map((row) => {
+      const pct = row.limit > 0 ? Math.min(100, Math.round((row.used / row.limit) * 100)) : 0;
+      return (
+        '<div class="qbar">' +
+        '<div class="qbar-top"><span>' +
+        row.label +
+        '</span><b>' +
+        row.used +
+        '/' +
+        row.limit +
+        '</b></div>' +
+        '<div class="qbar-track"><span class="qbar-fill' +
+        (pct >= 100 ? ' full' : '') +
+        '" style="width:' +
+        pct +
+        '%"></span></div>' +
+        '</div>'
+      );
+    })
+    .join('');
+
+  els.quotaInfo.title = SHARED.describeQuota(quota);
+}
+
+/**
+ * Mini-gráfico de barras: candidaturas enviadas por hora nas últimas 24 h.
+ * Sai de `appsCache` (os timestamps que já guardamos para as cotas).
+ */
+function renderSpark() {
+  if (!els.sparkCard || !els.spark) return;
+
+  const now = Date.now();
+  const buckets = new Array(24).fill(0);
+
+  for (const ts of appsCache) {
+    const age = now - ts;
+    if (age < 0 || age >= 24 * 3600000) continue;
+
+    const index = 23 - Math.floor(age / 3600000);
+    if (index >= 0 && index < 24) buckets[index] += 1;
+  }
+
+  const total = buckets.reduce((sum, n) => sum + n, 0);
+  const max = Math.max(1, ...buckets);
+  const barWidth = 320 / 24;
+
+  els.spark.innerHTML = buckets
+    .map((count, i) => {
+      const height = count ? Math.max(3, Math.round((count / max) * 40)) : 2;
+      const cls = i === 23 ? ' class="now"' : '';
+
+      return (
+        '<rect' +
+        cls +
+        ' x="' +
+        (i * barWidth + 1.5).toFixed(1) +
+        '" y="' +
+        (44 - height) +
+        '" width="' +
+        (barWidth - 3).toFixed(1) +
+        '" height="' +
+        height +
+        '" rx="1.5"></rect>'
+      );
+    })
+    .join('');
+
+  els.sparkCard.hidden = total === 0;
+  els.sparkHint.textContent = total
+    ? total + ' candidatura(s) nas últimas 24 h (' + max + ' na hora de pico).'
+    : '';
 }
 
 /** Explica o agendador: janela, próxima abertura ou pausa por cota. */
@@ -815,11 +945,17 @@ function renderRun(run, totalFallback, breakUntil) {
     }
 
     els.runInfo.textContent = info;
-    els.runInfo.hidden = false;
+    if (els.runCard) els.runCard.hidden = false;
+
+    // Barra de progresso da fila (termo 1 de N).
+    if (els.termProgress) {
+      const pct = total > 1 ? Math.round((((run.index || 0) + 1) / total) * 100) : 100;
+      els.termProgress.style.width = pct + '%';
+    }
     return;
   }
 
-  els.runInfo.hidden = true;
+  if (els.runCard) els.runCard.hidden = true;
   els.runInfo.textContent = '';
 }
 
@@ -1057,6 +1193,7 @@ function onStorageChanged(changes, areaName) {
   if (changes[STORAGE_APPS_KEY]) {
     const list = changes[STORAGE_APPS_KEY].newValue;
     appsCache = Array.isArray(list) ? list.filter((ts) => Number.isFinite(ts)) : [];
+    renderSpark();
   }
 
   if (
