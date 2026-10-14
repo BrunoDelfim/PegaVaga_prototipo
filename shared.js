@@ -1041,11 +1041,14 @@ globalThis.PegaVagaShared = (() => {
     schedule: 'janela do agendador',
   };
 
-  /** As três luzinhas: verde capturando, azul pronta, vermelha atenção. */
+  /**
+   * As três luzinhas: verde capturando, azul pronta, vermelha atenção. Estas
+   * cores valem no ícone da extensão (o ponto é desenhado com um anel branco por
+   * cima do logo) e o pop-up mostra a mesma leitura no chip do cabeçalho.
+   */
   const STATUS_LIGHTS = {
     capturing: { key: 'capturing', color: '#1f9d55', label: 'Capturando' },
-    // No ícone (fundo azul) o "pronta" fica âmbar: azul sumiria no logo.
-    ready: { key: 'ready', color: '#f0a500', label: 'Pronta' },
+    ready: { key: 'ready', color: '#3b9dff', label: 'Pronta' },
     attention: { key: 'attention', color: '#d93025', label: 'Precisa de atenção' },
   };
 
