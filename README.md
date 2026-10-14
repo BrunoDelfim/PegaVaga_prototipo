@@ -382,9 +382,10 @@ instalado** — o próprio git monta o zip. O `dist/` é ignorado pelo git.
 ## Antes de publicar
 
 O que falta para sair da beta está em **[`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)**:
-checklist com bloqueadores (política de privacidade, material da
-loja), itens fortes (CI, diagnóstico, dry-run, empacotamento) e polimento.
-Cada item tem **por quê**, **como fazer** e uma caixinha que vai sendo marcada.
+checklist com bloqueadores (material da loja e o smoke test em perfil limpo) e
+itens fortes (diagnóstico, dry-run, backup da configuração) e polimento. Cada
+item tem **por quê**, **como fazer** e uma caixinha que vai sendo marcada — as
+concluídas apontam a versão e o commit.
 
 ## Privacidade
 

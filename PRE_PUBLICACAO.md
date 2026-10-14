@@ -4,7 +4,7 @@ Plano de trabalho para sair da beta e publicar na **Chrome Web Store**.
 Cada item diz **por quê** e **como fazer**; ao concluir, troque `[ ]` por `[x]` e
 preencha a linha **Feito em** com a versão e o commit.
 
-**Progresso:** 5 de 14 itens · **Versão:** a que está no `manifest.json`
+**Progresso:** 6 de 14 itens · **Versão:** a que está no `manifest.json`
 
 Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
@@ -30,12 +30,23 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   isso o teto também protege a velocidade. O contador zera junto com as vagas no
   **Limpar** (`0.7.3`), senão o aviso apareceria num banco vazio.
 
-- [ ] **2. Política de privacidade + declaração de uso de dados**
+- [x] **2. Política de privacidade + declaração de uso de dados**
   A Chrome Web Store exige a política **e** o preenchimento do formulário de
   “Data usage”. O texto é simples: tudo fica em `chrome.storage.local` do
   próprio navegador; nada é enviado para servidor nenhum.
   *Como:* criar `PRIVACY.md` e linkar no item da loja.
-  *Feito em:* —
+  *Feito em:* `0.7.4` (commit `5231400`, documentação — sem bump) —
+  [`PRIVACY.md`](PRIVACY.md) é a política pública (pt-BR + resumo em inglês) e
+  [`LOJA.md`](LOJA.md) é a cola do painel: **URL da política**, **propósito
+  único**, respostas do formulário de **Data usage** (nenhuma categoria marcada —
+  a loja só considera “coletado” o que sai do dispositivo — e as três
+  certificações) e a **justificativa de cada permissão**.
+  *Antes de escrever, conferi o código:* não há `storage.sync`, `XMLHttpRequest`,
+  `WebSocket`, `sendBeacon`, script remoto nem URL externa além do próprio
+  `linkedin.com`; o único `fetch` é de um ícone da extensão. **Sete guardas
+  novos** no teste transformam isso em CI: se alguém introduzir qualquer um
+  desses, o teste falha (conferi que os guardas reprovam de verdade, com exemplos
+  violando).
 
 - [x] **3. Aviso de risco/beta dentro da extensão**
   O README tem o aviso (“área cinzenta do LinkedIn; use por sua conta e risco”),
@@ -143,7 +154,7 @@ no app, CI, empacotamento/tag e checklist atualizado).
 
 **Se der, incluir o `8` (dry-run)** — é o que mais reduz surpresa no primeiro uso.
 
-**Depois:** `2` e `4` (material da loja) ficam mais fáceis quando os recursos
+**Depois:** o `4` (material da loja) fica mais fácil quando os recursos
 estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 
 ---
@@ -158,4 +169,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 13/10/2026 | 6. CI no GitHub Actions | — (infra) | `cda8e02` |
 | 13/10/2026 | 10. Empacotamento (zip + tag `v0.7.4`) | `0.7.4` | `fdf9efa` |
 | 13/10/2026 | 13. Roteiro de smoke test | — (docs) | `caee973` |
+| 13/10/2026 | 2. Política de privacidade | — (docs) | `5231400` |
 
