@@ -54,7 +54,9 @@ muda quando ele estoura.
 
 1. Clique no ícone da extensão: o pop-up abre na aba **Início**, com as abas
    **Início** e **Configurações** no topo (o cabeçalho e as abas ficam fixos,
-   só o conteúdo rola). O visual acompanha o tema do sistema (**claro ou escuro**).
+   só o conteúdo rola). A **lâmpada** no cabeçalho alterna o tema — **apagada =
+   claro, acesa = escuro** — e guarda a sua escolha; sem escolha salva, o pop-up
+   segue o tema do sistema.
 2. Na aba **Configurações**, em **busca**, preencha:
    - **URL de busca ou perfil**: por padrão
      `https://www.linkedin.com/jobs/search/`. Também funciona colando a URL de

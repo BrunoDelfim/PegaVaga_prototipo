@@ -22,6 +22,7 @@ const STORAGE_SETTINGS_KEY = SHARED.STORAGE.settings;
 const STORAGE_RUN_KEY = SHARED.STORAGE.run;
 const STORAGE_APPS_KEY = SHARED.STORAGE.apps;
 const STORAGE_GUARD_KEY = SHARED.STORAGE.guard;
+const STORAGE_THEME_KEY = SHARED.STORAGE.theme;
 
 const CSV_HEADERS = [
   'ID',
@@ -90,6 +91,8 @@ async function init() {
   await loadGuard();
   await syncScanningState();
 
+  await initTheme();
+
   chrome.runtime.onMessage.addListener(onRuntimeMessage);
   chrome.storage.onChanged.addListener(onStorageChanged);
 }
@@ -138,6 +141,7 @@ function cacheElements() {
   els.runChip = document.getElementById('run-chip');
   els.statusText = document.getElementById('status-text');
   els.emptyState = document.getElementById('empty-state');
+  els.themeToggle = document.getElementById('theme-toggle');
   els.runCard = document.getElementById('run-card');
   els.termProgress = document.getElementById('term-progress');
   els.spark = document.getElementById('spark');
@@ -181,6 +185,7 @@ function bindEvents() {
   els.btnStart.addEventListener('click', onStartClick);
   els.btnStop.addEventListener('click', onStopClick);
   els.btnSkip.addEventListener('click', onSkipClick);
+  els.themeToggle.addEventListener('click', toggleTheme);
   els.btnExport.addEventListener('click', onExportClick);
   els.btnExportFailures.addEventListener('click', onExportFailuresClick);
   els.btnClear.addEventListener('click', onClearClick);
@@ -613,6 +618,66 @@ async function saveSettingsFromForm(options) {
   }
 
   return parsed;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tema claro / escuro (a lâmpada do cabeçalho)                                */
+/* -------------------------------------------------------------------------- */
+
+/** O sistema está em modo escuro? */
+function prefersDark() {
+  try {
+    return Boolean(
+      window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * Aplica o tema (`light` | `dark`) no `html` e na lâmpada: acesa = escuro, com
+ * um brilho quentinho; apagada = claro.
+ */
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+
+  if (!els.themeToggle) return;
+
+  const dark = theme === 'dark';
+  els.themeToggle.setAttribute('aria-pressed', dark ? 'true' : 'false');
+  els.themeToggle.title = dark ? 'Mudar para o tema claro' : 'Mudar para o tema escuro';
+}
+
+/**
+ * Tema ao abrir: usa a escolha salva da lâmpada; se nunca escolheu nada, segue
+ * o tema do sistema.
+ */
+async function initTheme() {
+  let saved = null;
+
+  try {
+    const data = await chrome.storage.local.get(STORAGE_THEME_KEY);
+    saved = data[STORAGE_THEME_KEY] || null;
+  } catch (error) {
+    saved = null;
+  }
+
+  applyTheme(saved ? (saved === 'dark' ? 'dark' : 'light') : prefersDark() ? 'dark' : 'light');
+}
+
+/** Clique na lâmpada: alterna o tema e guarda a escolha. */
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+
+  applyTheme(next);
+
+  try {
+    chrome.storage.local.set({ [STORAGE_THEME_KEY]: next }).catch(() => {});
+  } catch (error) {
+    /* sem storage: o tema vale só enquanto o pop-up estiver aberto */
+  }
 }
 
 function openSettings() {

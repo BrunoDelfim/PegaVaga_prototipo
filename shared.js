@@ -17,6 +17,7 @@ globalThis.PegaVagaShared = (() => {
     run: 'pegavaga_run', // fila de termos em andamento
     apps: 'pegavaga_apps', // timestamps (ms) das candidaturas enviadas
     guard: 'pegavaga_guard', // bloqueio temporário detectado (proteção da conta)
+    theme: 'pegavaga_theme', // 'light' | 'dark' escolhido na lâmpada do cabeçalho
   };
 
   /* Tipos de mensagem trocadas entre pop-up, content script e agendador. */

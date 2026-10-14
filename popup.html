@@ -6,8 +6,8 @@
     <style>
       /* ============================ Design system ============================ */
       :root {
-        /* Sem isto o Chrome desenha a moldura/scrollbar do popup em modo escuro. */
-        color-scheme: light dark;
+        /* A lâmpada do cabeçalho decide o tema; começa claro até o JS resolver. */
+        color-scheme: light;
 
         --brand: #0a66c2;
         --brand-2: #04559f;
@@ -123,6 +123,29 @@
         color: #fff;
       }
       .chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      /* Lâmpada: alterna claro/escuro (acesa = tema escuro). */
+      .head-actions { display: flex; align-items: center; gap: 8px; }
+
+      .lamp {
+        flex: 0 0 auto;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+      }
+      .lamp:hover:not(:disabled) { background: rgba(255, 255, 255, 0.24); }
+      .lamp-on { display: none; color: #fde68a; }
+      html[data-theme="dark"] .lamp-off { display: none; }
+      html[data-theme="dark"] .lamp-on { display: block; }
+      html[data-theme="dark"] .lamp {
+        border-color: rgba(253, 230, 138, 0.4);
+        background: rgba(253, 230, 138, 0.18);
+        box-shadow: 0 0 10px rgba(253, 230, 138, 0.35);
+      }
 
       .light {
         flex: 0 0 auto;
@@ -569,44 +592,51 @@
       .hint.ok { color: var(--ok); }
       .hint.error { color: var(--danger); }
 
-      /* ============================ Modo escuro ============================= */
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --brand: #3b8fe0;
-          --brand-2: #8ec5f7;
-          --brand-soft: #16283c;
-          --ok: #4ade80;
-          --ok-soft: #12251b;
-          --warn: #fbbf24;
-          --warn-soft: #2b2410;
-          --danger: #f87171;
-          --danger-soft: #2b1516;
-          --text: #e2e8f0;
-          --muted: #94a3b8;
-          --line: #1e293b;
-          --surface: #0b1220;
-          --card: #111a2b;
-          --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
-        }
+      /* ============================ Modo escuro =============================
+         Ligado por `html[data-theme="dark"]`: a lâmpada do cabeçalho troca e, ao
+         abrir, o pop-up segue o tema do sistema (o script do pop-up resolve). */
+      html[data-theme="dark"] {
+        color-scheme: dark;
 
-        input,
-        textarea,
-        select { background: #0f172a; border-color: var(--line); }
-        input::placeholder,
-        textarea::placeholder { color: #64748b; }
-        .btn.secondary { background: #1e2b3d; color: #cbd5e1; }
-        .btn.secondary:hover:not(:disabled) { background: #27354a; }
-        .donut-track { stroke: #1e293b; }
-        .qbar-track,
-        .progress { background: #1e293b; }
-        .term-bar { background: #1e293b; }
-        .term-row[aria-pressed="true"] { box-shadow: inset 0 0 0 1px #1e3a5f; }
-        .days label { background: var(--card); }
-        .terms-preview li { border-color: #1e3a5f; }
-        #settings .switch input[type="checkbox"] { background: #334155; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-color: var(--surface); }
-        .actionbar { background: rgba(17, 26, 43, 0.94); }
+        --brand: #3b8fe0;
+        --brand-2: #8ec5f7;
+        --brand-soft: #16283c;
+        --ok: #4ade80;
+        --ok-soft: #12251b;
+        --warn: #fbbf24;
+        --warn-soft: #2b2410;
+        --danger: #f87171;
+        --danger-soft: #2b1516;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --line: #1e293b;
+        --surface: #0b1220;
+        --card: #111a2b;
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
       }
+
+      html[data-theme="dark"] input,
+      html[data-theme="dark"] textarea,
+      html[data-theme="dark"] select { background: #0f172a; border-color: var(--line); }
+      html[data-theme="dark"] input::placeholder,
+      html[data-theme="dark"] textarea::placeholder { color: #64748b; }
+      html[data-theme="dark"] .btn.secondary { background: #1e2b3d; color: #cbd5e1; }
+      html[data-theme="dark"] .btn.secondary:hover:not(:disabled) { background: #27354a; }
+      html[data-theme="dark"] .donut-track { stroke: #1e293b; }
+      html[data-theme="dark"] .qbar-track,
+      html[data-theme="dark"] .progress { background: #1e293b; }
+      html[data-theme="dark"] .term-bar { background: #1e293b; }
+      html[data-theme="dark"] .term-row[aria-pressed="true"] {
+        box-shadow: inset 0 0 0 1px #1e3a5f;
+      }
+      html[data-theme="dark"] .days label { background: var(--card); }
+      html[data-theme="dark"] .terms-preview li { border-color: #1e3a5f; }
+      html[data-theme="dark"] #settings .switch input[type="checkbox"] { background: #334155; }
+      html[data-theme="dark"] ::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-color: var(--surface);
+      }
+      html[data-theme="dark"] .actionbar { background: rgba(17, 26, 43, 0.94); }
 
       /* Quem prefere menos movimento não recebe transições nem animações. */
       @media (prefers-reduced-motion: reduce) {
@@ -621,10 +651,31 @@
           <h1>PegaVaga</h1>
           <p>Rastreamento de vagas do LinkedIn</p>
         </div>
-        <span class="chip" id="run-chip" title="">
-          <span class="light" id="status-light" role="status"></span>
-          <span class="chip-text" id="status-text">Pronta</span>
-        </span>
+
+        <div class="head-actions">
+          <button id="theme-toggle" class="lamp" type="button" aria-pressed="false"
+            title="Mudar para o tema escuro">
+            <svg class="lamp-off" width="17" height="17" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3a6 6 0 0 0-3.6 10.8c.5.4.9 1 1 1.7l.2 2.5h4.8l.2-2.5c.1-.7.5-1.3 1-1.7A6 6 0 0 0 12 3z" />
+              <path d="M9.6 21h4.8" />
+            </svg>
+            <svg class="lamp-on" width="17" height="17" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3a6 6 0 0 0-3.6 10.8c.5.4.9 1 1 1.7l.2 2.5h4.8l.2-2.5c.1-.7.5-1.3 1-1.7A6 6 0 0 0 12 3z"
+                fill="currentColor" />
+              <path d="M9.6 21h4.8" />
+              <path d="M12 1.5v1.6M4.7 4.7l1.1 1.1M2 12h1.6M20.4 12H22M18.2 4.7l1.1 1.1" />
+            </svg>
+          </button>
+
+          <span class="chip" id="run-chip" title="">
+            <span class="light" id="status-light" role="status"></span>
+            <span class="chip-text" id="status-text">Pronta</span>
+          </span>
+        </div>
       </header>
 
       <nav class="tabs" role="tablist" aria-label="Seções">
