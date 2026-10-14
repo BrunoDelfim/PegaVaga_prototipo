@@ -85,6 +85,9 @@ ok('zip empacota os arquivos da extensao', ['manifest.json', 'shared.js', 'backg
 const packBlock = packSh.slice(packSh.indexOf('FILES=('), packSh.indexOf(')', packSh.indexOf('FILES=(')));
 ok('pacote nao inclui tests/.github/.md', !/tests|\.github|\.md/.test(packBlock), packBlock);
 ok('git archive sem --prefix (manifest na raiz)', !/git archive[^\n]*--prefix/.test(packSh));
+const smoke = read('tests/SMOKE_TEST.md');
+ok('smoke test cita a interface nova', ['Início', 'Configurações', 'lâmpada', 'donut', 'toast'].every((t) => smoke.includes(t)));
+ok('smoke test cita os avisos do app', smoke.includes('conta e risco') && smoke.includes('Descartei'));
 
 section('5. Numeros e termos');
 eq('num normal', S.num('5', 1, 10, 3), 5);
