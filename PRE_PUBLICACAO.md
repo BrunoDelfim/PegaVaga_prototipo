@@ -4,7 +4,7 @@ Plano de trabalho para sair da beta e publicar na **Chrome Web Store**.
 Cada item diz **por quê** e **como fazer**; ao concluir, troque `[ ]` por `[x]` e
 preencha a linha **Feito em** com a versão e o commit.
 
-**Progresso:** 10 de 14 itens · **Versão:** a que está no `manifest.json`
+**Progresso:** 11 de 14 itens · **Versão:** a que está no `manifest.json`
 
 Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
@@ -160,9 +160,21 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
 ## 🟢 Polimento (depois que a base estiver no ar)
 
-- [ ] **11. Badge no ícone com as candidaturas do dia**
+- [x] **11. Badge no ícone com as candidaturas do dia**
   O ícone já tem a luzinha de status; o badge mostraria o total do dia.
-  *Feito em:* —
+  *Feito em:* `0.7.9` (commit `766618f`, tag **`v0.7.9`**) — o badge mostra o
+  **total de candidaturas de hoje**, e some quando o dia está zerado (o ícone
+  fica só com a luz). Duas funções **puras** no `shared.js`:
+  `countAppsToday()` (dia local) e `badgeText()` (vazio ou `99+`).
+  *Detalhes que valem nota:* no caminho normal a luz vai **desenhada no próprio
+  logo**, então o badge estava livre para o número; no **plano B sem
+  `OffscreenCanvas`** é o badge que carrega a luz — ali ele passou a carregar os
+  dois (a **cor** segue dizendo o status e o **número** entra por cima), em vez de
+  perder o recado. Um **teste** me pegou uma semântica errada: carimbo no
+  **futuro** (relógio torto) contava como “de hoje” — corrigi com limite superior.
+  E um **alarme que se remarca sozinho na virada do dia** zera o contador, para o
+  ícone não amanhecer com o número de ontem. Modo simulação não conta (nada foi
+  enviado).
 
 - [x] **12. Notificação ao terminar a varredura**
   Hoje só existe a notificação de “preciso de ajuda”. Avisar quando a fila
@@ -227,4 +239,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 13/10/2026 | 7. Copiar diagnóstico e 8. Modo simulação | `0.7.6` | `28923ca`, `19733de` |
 | 13/10/2026 | 9. Backup da configuração em JSON | `0.7.7` | `6441de6` |
 | 13/10/2026 | 12. Notificação de fim de varredura | `0.7.8` | `8333ea0` |
+| 13/10/2026 | 11. Badge com as candidaturas do dia | `0.7.9` | `766618f` |
 
