@@ -938,6 +938,14 @@
             </label>
 
             <label class="switch">
+              <input type="checkbox" id="apply-dry-run" />
+              <span>
+                <b>Modo simulação</b>: preencher o formulário, mas <b>não enviar</b> a
+                candidatura (recomendado no primeiro uso)
+              </span>
+            </label>
+
+            <label class="switch">
               <input type="checkbox" id="apply-help-stuck" />
               <span>
                 Pedir a minha ajuda (notificação na área de trabalho) quando uma vaga
@@ -1094,6 +1102,26 @@
 
             <p class="hint" id="schedule-hint">Agendador desativado.</p>
           </div>
+          <div class="group">
+            <strong>Diagnóstico</strong>
+
+            <p class="hint">
+              Deu problema? Este botão copia a versão, a configuração, a fila e os
+              últimos erros registrados — cole no relato do problema. Confira o texto
+              antes de publicar: ele inclui a sua configuração e as respostas do
+              formulário.
+            </p>
+
+            <button id="btn-diag" class="btn ghost" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="11" height="11" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              Copiar diagnóstico
+            </button>
+          </div>
+
           <p class="hint" id="settings-hint">Salvo automaticamente.</p>
         </div>
       </div>

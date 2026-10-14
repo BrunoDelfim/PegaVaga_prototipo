@@ -23,6 +23,7 @@ const STORAGE_RUN_KEY = SHARED.STORAGE.run;
 const STORAGE_APPS_KEY = SHARED.STORAGE.apps;
 const STORAGE_GUARD_KEY = SHARED.STORAGE.guard;
 const STORAGE_THEME_KEY = SHARED.STORAGE.theme;
+const STORAGE_ERRORS_KEY = SHARED.STORAGE.errors;
 
 const CSV_HEADERS = [
   'ID',
@@ -119,6 +120,7 @@ function cacheElements() {
   els.settingsHint = document.getElementById('settings-hint');
   els.scheduleHint = document.getElementById('schedule-hint');
   els.applyEnabled = document.getElementById('apply-enabled');
+  els.applyDryRun = document.getElementById('apply-dry-run');
   els.applyHelpStuck = document.getElementById('apply-help-stuck');
   els.applyPerTerm = document.getElementById('apply-per-term');
   els.applyHour = document.getElementById('apply-hour');
@@ -156,6 +158,7 @@ function cacheElements() {
   els.termSparkName = document.getElementById('term-spark-name');
   els.termSparkTotal = document.getElementById('term-spark-total');
   els.btnExportFailures = document.getElementById('btn-export-failures');
+  els.btnDiag = document.getElementById('btn-diag');
   els.scheduleEnabled = document.getElementById('schedule-enabled');
   els.scheduleStart = document.getElementById('schedule-start');
   els.scheduleStop = document.getElementById('schedule-stop');
@@ -192,6 +195,7 @@ function bindEvents() {
   els.btnExport.addEventListener('click', onExportClick);
   els.btnExportFailures.addEventListener('click', onExportFailuresClick);
   els.btnClear.addEventListener('click', onClearClick);
+  if (els.btnDiag) els.btnDiag.addEventListener('click', onCopyDiagnostics);
 
   // A configuração é salva sozinha alguns instantes após a digitação parar.
   const textInputs = [els.baseUrl, els.location, els.terms];
@@ -216,6 +220,7 @@ function bindEvents() {
 
   [
     els.applyEnabled,
+    els.applyDryRun,
     els.applyHelpStuck,
     els.applyRespectUser,
     els.applyBreaks,
@@ -420,6 +425,90 @@ async function onSkipClick() {
   }
 }
 
+/** Linha do navegador (versão do Chrome + sistema) para o diagnóstico. */
+function browserLine() {
+  const ua = navigator.userAgent || '';
+  const chrome = (ua.match(/Chrome\/[\d.]+/) || [''])[0];
+  const sistema = ((ua.match(/\(([^)]+)\)/) || ['', ''])[1] || 'sistema não identificado')
+    .slice(0, 60);
+
+  return (chrome || 'navegador não identificado') + ' · ' + sistema;
+}
+
+/**
+ * Copia texto para a área de transferência. A API moderna exige janela em foco
+ * (o pop-up está), mas quando ela falha caímos no velho textarea + execCommand.
+ */
+async function copyText(texto) {
+  try {
+    await navigator.clipboard.writeText(texto);
+    return true;
+  } catch (error) {
+    /* segue para o plano B */
+  }
+
+  try {
+    const area = document.createElement('textarea');
+    area.value = texto;
+    area.setAttribute('readonly', 'readonly');
+    area.style.position = 'fixed';
+    area.style.top = '-1000px';
+    document.body.appendChild(area);
+    area.select();
+    const copiou = document.execCommand('copy');
+    document.body.removeChild(area);
+    return copiou;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * Copia um diagnóstico para a área de transferência: versão, configuração, fila,
+ * bloqueio e os últimos erros que o content.js registrou. É o que transforma
+ * "não funcionou" num relato que dá para investigar de verdade.
+ */
+async function onCopyDiagnostics() {
+  const [jobs, meta, dados] = await Promise.all([
+    getJobsArray(),
+    getMeta(),
+    chrome.storage.local.get([
+      STORAGE_ERRORS_KEY,
+      STORAGE_APPS_KEY,
+      STORAGE_RUN_KEY,
+      STORAGE_GUARD_KEY,
+    ]),
+  ]);
+
+  const apps = Array.isArray(dados[STORAGE_APPS_KEY]) ? dados[STORAGE_APPS_KEY] : [];
+  const ultima = meta && meta.lastRun ? new Date(meta.lastRun) : null;
+
+  const texto = SHARED.buildDiagnostics({
+    version: chrome.runtime.getManifest().version,
+    ua: browserLine(),
+    when: new Date().toLocaleString('pt-BR'),
+    count: jobs.length,
+    dropped: meta ? meta.dropped : 0,
+    lastRun: ultima && !isNaN(ultima.getTime()) ? ultima.toLocaleString('pt-BR') : '',
+    apps: apps.length,
+    run: dados[STORAGE_RUN_KEY] || null,
+    guard: dados[STORAGE_GUARD_KEY] || null,
+    dryRun: Boolean(settings.apply && settings.apply.dryRun),
+    theme: document.documentElement.getAttribute('data-theme') || 'light',
+    settings,
+    errors: dados[STORAGE_ERRORS_KEY] || [],
+  });
+
+  const copiou = await copyText(texto);
+
+  setStatus(
+    copiou
+      ? 'Diagnóstico copiado. Cole no relato do problema (confira antes).'
+      : 'Não consegui copiar o diagnóstico — veja o console do pop-up.',
+    copiou ? 'ok' : 'error'
+  );
+}
+
 async function onClearClick() {
   await chrome.storage.local.remove(STORAGE_RUN_KEY);
 
@@ -452,6 +541,7 @@ async function loadSettingsToForm() {
   els.terms.value = settings.terms.join('\n');
 
   els.applyEnabled.checked = settings.apply.enabled;
+  els.applyDryRun.checked = settings.apply.dryRun;
   els.applyHelpStuck.checked = settings.apply.helpOnStuck;
   els.applyPerTerm.value = String(settings.apply.perTerm);
   els.applyHour.value = String(settings.apply.perHour);
@@ -566,6 +656,7 @@ async function saveSettingsFromForm(options) {
     terms: els.terms.value,
     apply: {
       enabled: els.applyEnabled.checked,
+      dryRun: els.applyDryRun.checked,
       helpOnStuck: els.applyHelpStuck.checked,
       perTerm: els.applyPerTerm.value,
       perHour: els.applyHour.value,
@@ -1324,6 +1415,7 @@ function renderRun(run, totalFallback, breakUntil) {
 
     if (settings.apply.enabled) {
       info += ` · ${run.appliedInTerm || 0} candidatura(s) neste termo`;
+      if (settings.apply.dryRun) info += ' · modo simulação (não envio)';
     }
 
     if (run.paused && run.resumeAt) {

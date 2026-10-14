@@ -261,7 +261,71 @@ eq('trimJobs vaga sem capturedAt e a mais antiga', Object.keys(S.trimJobs({ novo
 ok('teto de vagas definido', S.MAX_JOBS >= 1000);
 ok('limite de descricao definido', S.DESC_MAX_CHARS >= 2000);
 
-section('14. Espera por evento (assincrono)');
+section('14. Modo simulacao (dry-run)');
+const contentJs = read('content.js');
+ok('dryRun desligado por padrao', S.DEFAULT_SETTINGS.apply.dryRun === false);
+ok('dryRun aceita true', S.parseSettings({ apply: { dryRun: true } }).apply.dryRun === true);
+ok('dryRun recusa valor solto', S.parseSettings({ apply: { dryRun: 'sim' } }).apply.dryRun === false);
+ok('desfecho simulada registrado', Boolean(S.APPLY_OUTCOMES.simulada));
+ok('simulada nao e "enviada" nem "ja candidatada"', S.APPLY_OUTCOMES.simulada.failure === true && !S.APPLY_OUTCOMES.simulada.already);
+eq('rotulo da simulada', S.applyOutcomeLabel('simulada'), S.APPLY_OUTCOMES.simulada.label);
+ok('motivo da simulada explica que nao enviou', /simula/i.test(S.APPLY_OUTCOMES.simulada.reason));
+
+const resumoDry = S.summarizeApply(
+  [{ id: 'a', applyStatus: 'simulada' }, { id: 'b', applyStatus: 'enviada' }],
+  { applyEnabled: true }
+);
+eq('simulada nao conta como enviada', resumoDry.applied, 1);
+eq('simulada entra nas nao candidatadas', resumoDry.failed, 1);
+ok('resumo cita a simulada', /simulada/i.test(S.describeApplySummary(resumoDry)));
+eq('relatorio da vaga simulada', S.describeApplyFailure({ applyStatus: 'simulada' }).code, 'simulada');
+
+ok('a extensao para antes do envio', /if \(action\.kind === 'submit' && cfg\.dryRun\)/.test(contentJs));
+ok('dry-run fecha o formulario sem enviar', /cfg\.dryRun\)[\s\S]{0,160}closeModal\(modal, true\)[\s\S]{0,80}status: 'simulada'/.test(contentJs));
+ok('so "enviada" consome cota', /result\.status === 'enviada'[\s\S]{0,160}state\.apps\.push/.test(contentJs));
+ok('popup tem o interruptor do modo simulacao', popupHtml.includes('id="apply-dry-run"'));
+ok('popup le e grava o dryRun', popupJs.includes('settings.apply.dryRun') && popupJs.includes('dryRun: els.applyDryRun.checked'));
+ok('fila avisa que esta em simulacao', popupJs.includes('modo simulação (não envio)'));
+
+section('15. Diagnostico (relato de problema)');
+const diag = S.buildDiagnostics({
+  version: '9.9.9',
+  ua: 'Chrome/1 · Linux',
+  when: '13/10/2026, 10:00',
+  count: 7,
+  dropped: 2,
+  lastRun: '13/10/2026, 09:00',
+  apps: 3,
+  run: { running: true, term: 'react', appliedInTerm: 2, appliedTotal: 4, terms: ['react', 'node'] },
+  guard: { blockedUntil: seg1200.getTime(), reason: 'verificacao' },
+  dryRun: true,
+  theme: 'dark',
+  settings: { terms: ['react'] },
+  errors: [{ at: '13/10/2026, 09:59', where: 'clicar', message: 'elemento sumiu' }],
+});
+ok('diagnostico comeca pelo cabecalho', diag.startsWith('PegaVaga — diagnóstico'));
+ok('diagnostico traz versao e navegador', diag.includes('9.9.9') && diag.includes('Chrome/1'));
+ok('diagnostico traz as contagens', diag.includes('Vagas: 7') && diag.includes('descartadas por espaço: 2') && diag.includes('Candidaturas registradas: 3'));
+ok('diagnostico descreve a fila', diag.includes('rodando') && diag.includes('"react"') && diag.includes('2 termo(s) na fila'));
+ok('diagnostico mostra o bloqueio', /Bloqueio: até/.test(diag));
+ok('diagnostico mostra o modo simulacao', diag.includes('Modo simulação: ligado'));
+ok('diagnostico embute a configuracao', diag.includes('"terms"') && diag.includes('react'));
+ok('diagnostico lista o erro com rotulo', diag.includes('clicar') && diag.includes('elemento sumiu'));
+ok('diagnostico avisa para conferir antes de colar', /confira antes de colar/.test(diag));
+ok('diagnostico vazio nao quebra', ['Fila: parada', 'Modo simulação: desligado', '(nenhum registrado)'].every((t) => S.buildDiagnostics({}).includes(t)));
+ok('diagnostico tolera entrada invalida', S.buildDiagnostics(null).includes('PegaVaga — diagnóstico') && S.buildDiagnostics({ count: 'x' }).includes('Vagas: 0'));
+const muitos = S.buildDiagnostics({ errors: Array.from({ length: 80 }, (_, i) => ({ where: 'e' + i, message: 'x' })) });
+ok('diagnostico corta nos ultimos ' + S.ERROR_KEEP, muitos.includes('Últimos ' + S.ERROR_KEEP + ' erro(s):') && !muitos.includes('e0:'));
+
+const catchesMudos = (contentJs.match(/\}\s*catch\s*\([^)]*\)\s*\{\s*(?:\/\*[^*]*\*\/\s*)?\}/g) || []);
+ok('so 2 catches mudos de proposito', catchesMudos.length <= 2, catchesMudos.length + ' mudos');
+ok('content.js registra os erros', (contentJs.match(/noteError\('/g) || []).length >= 30);
+ok('um unico catch realmente mudo', (contentJs.match(/\.catch\(\(\)\s*=>\s*\{\s*\}\)/g) || []).length <= 1);
+ok('ERROR_KEEP em faixa util', S.ERROR_KEEP >= 20 && S.ERROR_KEEP <= 200);
+ok('popup tem o botao de diagnostico', popupHtml.includes('id="btn-diag"'));
+ok('popup copia o diagnostico', popupJs.includes('buildDiagnostics') && popupJs.includes('navigator.clipboard.writeText'));
+
+section('16. Espera por evento (assincrono)');
 (async () => {
   const sig = S.createSignal();
   eq('waitUntil imediato', await S.waitUntil(sig, () => 42, 100, 0), 42);

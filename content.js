@@ -51,6 +51,10 @@
   const STORAGE_APPS_KEY = STORAGE.apps || 'pegavaga_apps';
   const STORAGE_SETTINGS_KEY = STORAGE.settings || 'pegavaga_settings';
   const STORAGE_GUARD_KEY = STORAGE.guard || 'pegavaga_guard';
+  const STORAGE_ERRORS_KEY = STORAGE.errors || 'pegavaga_errors';
+
+  // Quantos erros ficam guardados para o "copiar diagnóstico" do pop-up.
+  const ERROR_KEEP = SHARED.ERROR_KEEP || 50;
 
   // Teto do banco de vagas: corta descrição gigante e descarta as vagas mais
   // antigas quando passa do limite (regra pura no shared.js, coberta por testes).
@@ -274,6 +278,8 @@
   const state = {
     jobs: {}, // { [jobId]: { id, title, company, link, description, ... } }
     dropped: 0, // vagas antigas já descartadas pelo teto de armazenamento
+    errors: [], // últimos erros (base do "copiar diagnóstico"); persiste em pegavaga_errors
+    errorsTimer: null, // agrupa gravações de erro
     scanning: false,
     abort: false,
     lastRun: null,
@@ -456,6 +462,7 @@
         const url = new URL(link);
         link = url.origin + url.pathname;
       } catch (error) {
+        noteError('ler o link do card', error);
         /* mantém o link original */
       }
     }
@@ -599,19 +606,58 @@
     };
 
     return chrome.storage.local
-      .set({ [STORAGE_JOBS_KEY]: state.jobs, [STORAGE_META_KEY]: meta })
-      .catch(() => {});
+      .set({
+        [STORAGE_JOBS_KEY]: state.jobs,
+        [STORAGE_META_KEY]: meta,
+        [STORAGE_ERRORS_KEY]: state.errors, // vão junto: já estão na memória
+      })
+      .catch((error) => noteError('gravar vagas', error));
+  }
+
+  /**
+   * Guarda um erro no buffer do diagnóstico (últimos ERROR_KEEP) e grava a
+   * lista. Antes disso os `catch` do arquivo engoliam o erro sem deixar rastro
+   * — era impossível descobrir por que uma vaga falhou. Nunca chama persist()
+   * (evitaria laço quando a própria gravação falha).
+   */
+  function noteError(where, error) {
+    const motivo =
+      (error && (error.message || error.reason)) || error || 'erro sem mensagem';
+
+    state.errors.push({
+      at: new Date().toLocaleString('pt-BR'),
+      where: String(where || '?'),
+      message: String(motivo).slice(0, 300),
+    });
+
+    if (state.errors.length > ERROR_KEEP) {
+      state.errors = state.errors.slice(-ERROR_KEEP);
+    }
+
+    clearTimeout(state.errorsTimer);
+    state.errorsTimer = setTimeout(() => {
+      // Último recurso: se nem gravar os erros der certo, não há mais onde registrar.
+      chrome.storage.local.set({ [STORAGE_ERRORS_KEY]: state.errors }).catch(() => {});
+    }, CONFIG.persistDebounceMs);
   }
 
   async function loadState() {
     try {
-      const data = await chrome.storage.local.get([STORAGE_JOBS_KEY, STORAGE_META_KEY]);
+      const data = await chrome.storage.local.get([
+        STORAGE_JOBS_KEY,
+        STORAGE_META_KEY,
+        STORAGE_ERRORS_KEY,
+      ]);
       state.jobs = data[STORAGE_JOBS_KEY] || {};
       const meta = data[STORAGE_META_KEY] || {};
       state.lastRun = meta.lastRun || null;
       state.dropped = Number(meta.dropped) || 0;
+      state.errors = Array.isArray(data[STORAGE_ERRORS_KEY])
+        ? data[STORAGE_ERRORS_KEY].slice(-ERROR_KEEP)
+        : [];
     } catch (error) {
       state.jobs = {};
+      noteError('ler o que estava salvo', error);
     }
   }
 
@@ -724,6 +770,7 @@
       const data = await chrome.storage.local.get(STORAGE_SETTINGS_KEY);
       return parseSettings(data[STORAGE_SETTINGS_KEY]);
     } catch (error) {
+      noteError('ler a configuração', error);
       return parseSettings(null);
     }
   }
@@ -735,6 +782,7 @@
       const list = data[STORAGE_APPS_KEY];
       state.apps = Array.isArray(list) ? list.filter((ts) => Number.isFinite(ts)) : [];
     } catch (error) {
+      noteError('ler as candidaturas', error);
       state.apps = [];
     }
 
@@ -744,7 +792,7 @@
   function persistApps() {
     const list = state.apps.slice(-HISTORY_LIMIT);
     state.apps = list;
-    return chrome.storage.local.set({ [STORAGE_APPS_KEY]: list }).catch(() => {});
+    return chrome.storage.local.set({ [STORAGE_APPS_KEY]: list }).catch((error) => noteError('gravar candidaturas', error));
   }
 
   /** Quanto ainda cabe agora (hora / 24 h / dia / termo). */
@@ -847,6 +895,7 @@
     try {
       box = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
     } catch (error) {
+      noteError('medir o elemento na tela', error);
       box = null;
     }
 
@@ -882,6 +931,7 @@
       target.dispatchEvent(event);
       return true;
     } catch (error) {
+      noteError('simular o mouse', error);
       return false;
     }
   }
@@ -919,6 +969,7 @@
         el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       }
     } catch (error) {
+      noteError('clicar com mouse humanizado', error);
       /* elemento sem scrollIntoView: segue o jogo */
     }
 
@@ -933,6 +984,7 @@
     try {
       el.click();
     } catch (error) {
+      noteError('clicar com mouse humanizado', error);
       return false;
     }
 
@@ -956,6 +1008,7 @@
       const text = normalize(pageText());
       if (RATE_LIMIT_RE.test(text)) return 'Aviso de limite de uso na página do LinkedIn';
     } catch (error) {
+      noteError('checar o aviso de limite do LinkedIn', error);
       return null;
     }
 
@@ -975,6 +1028,7 @@
       const guard = data[STORAGE_GUARD_KEY] || null;
       state.guard = guard && guard.blockedUntil > Date.now() ? guard : null;
     } catch (error) {
+      noteError('ler o bloqueio salvo', error);
       state.guard = null;
     }
 
@@ -995,7 +1049,7 @@
       at: new Date().toISOString(),
     };
 
-    await chrome.storage.local.set({ [STORAGE_GUARD_KEY]: state.guard }).catch(() => {});
+    await chrome.storage.local.set({ [STORAGE_GUARD_KEY]: state.guard }).catch((error) => noteError('gravar o bloqueio', error));
     broadcastProgress();
   }
 
@@ -1276,6 +1330,7 @@
     try {
       return await closePopup(popup);
     } catch (error) {
+      noteError('fechar o popup que entrou na tela', error);
       return false;
     } finally {
       state.interruptBusy = false;
@@ -1288,7 +1343,7 @@
 
     state.interruptTimer = setTimeout(() => {
       state.interruptTimer = null;
-      handleInterrupt().catch(() => {});
+      handleInterrupt().catch((error) => noteError('fechar o popup (agendado)', error));
     }, CONFIG.interruptDebounceMs);
   }
 
@@ -1336,6 +1391,7 @@
           new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true })
         );
       } catch (error) {
+        noteError('fechar o popup', error);
         /* sem KeyboardEvent: seguimos tentando pelo botão de fechar */
       }
     }
@@ -1349,6 +1405,7 @@
         new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true })
       );
     } catch (error) {
+      noteError('fechar o popup', error);
       /* ignoramos */
     }
 
@@ -1544,6 +1601,7 @@
           (field.getAttribute && field.getAttribute('placeholder'))
       );
     } catch (error) {
+      noteError('ler o rótulo do campo', error);
       direct = '';
     }
 
@@ -1552,6 +1610,7 @@
     try {
       if (field.labels && field.labels.length) return clean(field.labels[0].textContent).slice(0, 60);
     } catch (error) {
+      noteError('ler o rótulo do campo', error);
       /* sem labels: tentamos o container abaixo */
     }
 
@@ -1564,6 +1623,7 @@
 
       if (container) return clean(container.textContent).slice(0, 60);
     } catch (error) {
+      noteError('ler o rótulo do campo', error);
       /* sem closest: desistimos do rótulo */
     }
 
@@ -1585,6 +1645,7 @@
         modal.querySelectorAll('input, select, textarea, fieldset legend, [role="combobox"]')
       );
     } catch (error) {
+      noteError('descrever o que travou', error);
       return labels;
     }
 
@@ -1762,6 +1823,7 @@
       try {
         field.dispatchEvent(new Event(type, { bubbles: true }));
       } catch (error) {
+        noteError('avisar o campo do valor', error);
         /* sem Event: o LinkedIn não reage a este campo */
       }
     });
@@ -1782,6 +1844,7 @@
         return;
       }
     } catch (error) {
+      noteError('preencher o campo', error);
       /* sem descritor: cai no value direto */
     }
 
@@ -1797,6 +1860,7 @@
         'input[type="radio"][name="' + String(field.name).replace(/"/g, '\\"') + '"]';
       return Array.from(dialog.querySelectorAll(selector)).filter((input) => !input.disabled);
     } catch (error) {
+      noteError('agrupar as opções do campo', error);
       return [field];
     }
   }
@@ -1888,6 +1952,7 @@
     try {
       fields = Array.from(dialog.querySelectorAll('input, select, textarea'));
     } catch (error) {
+      noteError('responder os campos pendentes', error);
       return filled;
     }
 
@@ -2199,6 +2264,16 @@
         }
       }
 
+      // Modo simulação (dry-run): o formulário está todo preenchido e o próximo
+      // passo seria ENVIAR — paramos aqui, sem clicar em nada. Fechamos o
+      // formulário (o rascunho continua salvo no LinkedIn) e a vaga entra no
+      // relatório como "Simulada (não enviada)". Nada é enviado e nenhuma cota
+      // é consumida.
+      if (action.kind === 'submit' && cfg.dryRun) {
+        await closeModal(modal, true);
+        return { status: 'simulada', filled, steps };
+      }
+
       const before = scopeSignature(modal);
       humanClick(action.button);
       steps += 1;
@@ -2378,18 +2453,19 @@
       const data = await chrome.storage.local.get(STORAGE_RUN_KEY);
       return data[STORAGE_RUN_KEY] || null;
     } catch (error) {
+      noteError('ler a fila', error);
       return null;
     }
   }
 
   function saveRun(run) {
-    return chrome.storage.local.set({ [STORAGE_RUN_KEY]: run }).catch(() => {});
+    return chrome.storage.local.set({ [STORAGE_RUN_KEY]: run }).catch((error) => noteError('gravar a fila', error));
   }
 
   function clearRun() {
     state.run = null;
     clearResumeTimer();
-    return chrome.storage.local.remove(STORAGE_RUN_KEY).catch(() => {});
+    return chrome.storage.local.remove(STORAGE_RUN_KEY).catch((error) => noteError('limpar a fila', error));
   }
 
   function clearResumeTimer() {
@@ -2575,7 +2651,7 @@
 
     const delay = Math.max(1000, Math.min(atMs - Date.now(), CONFIG.resumeTimerCapMs));
     state.resumeTimer = setTimeout(() => {
-      resumeNow().catch(() => {});
+      resumeNow().catch((error) => noteError('retomar a varredura', error));
     }, delay);
   }
 
@@ -2932,13 +3008,13 @@
           clearResumeTimer();
         }
         sendResponse({ ok: true, started: true });
-        startScan().catch(() => {});
+        startScan().catch((error) => noteError('iniciar/retomar a varredura', error));
         break;
 
       case MSG.RESUME:
         // O agendador (background.js) cutuca a aba quando a cota libera.
         sendResponse({ ok: true, resuming: true });
-        resumeNow().catch(() => {});
+        resumeNow().catch((error) => noteError('iniciar/retomar a varredura', error));
         break;
 
       case MSG.SKIP:
@@ -3007,6 +3083,6 @@
     await startScan();
   }
 
-  init().catch(() => {});
+  init().catch((error) => noteError('inicializar', error));
 })();
 

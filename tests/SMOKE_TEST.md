@@ -112,6 +112,12 @@ fim — e não siga adiante antes de entender a falha.
 ### G. Candidatura automática (Candidatura Simplificada)
 - [ ] **“Candidatar-se sozinho pela Candidatura Simplificada”** vem **ligado por
       padrão**; desligado, a extensão só rastreia vagas (não candidata).
+- [ ] **Modo simulação** (ligue o interruptor e rode): a extensão busca, abre o
+      formulário e **preenche**, mas **não envia** — no relatório a vaga aparece
+      como **`Simulada (não enviada)`**, o formulário é fechado sozinho e a
+      **cota não é consumida** (confira o card de cotas e “Candidaturas
+      registradas”, que não sobem). A barra da fila mostra **“modo simulação (não
+      envio)”**. Desligue depois para voltar a candidatar de verdade.
 - [ ] Com **“Responder sozinho perguntas obrigatórias”** ligado, as perguntas
       Sim/Não, listas e números são respondidas (Sim/1) e a candidatura é
       **enviada**. Desligado (padrão), pergunta personalizada cai no pedido de ajuda.
@@ -176,6 +182,21 @@ fim — e não siga adiante antes de entender a falha.
 - [ ] Enquanto você usa a página (mouse/teclado/rolagem), a automação **espera**
       em vez de clicar por cima.
 - [ ] Pausas longas acontecem de tempos em tempos (configurável).
+
+### P. Diagnóstico (relato de problema)
+- [ ] Em **Configurações → Diagnóstico**, **Copiar diagnóstico** mostra o toast de
+      sucesso (e nada é copiado se o clique falhar — aí aparece o aviso de erro).
+- [ ] Cole num editor e confira o conteúdo: **versão** (igual à do
+      `manifest.json`), navegador, data, **vagas**, **descartadas por espaço**,
+      **candidaturas registradas**, **estado da fila**, **bloqueio**, **modo
+      simulação**, **tema**, a **configuração** em JSON e a lista de erros.
+- [ ] Sem erro registrado, a lista diz **“(nenhum registrado)”**.
+- [ ] Provoque um erro de verdade (ex.: desconecte a internet no meio de uma
+      candidatura) e confira que ele aparece na lista **com a hora e o trecho**
+      onde aconteceu.
+- [ ] Com muitos erros acumulados, a lista guarda **só os 50 últimos**.
+- [ ] O próprio texto avisa que ele **inclui a sua configuração e as respostas do
+      formulário** — é o lembrete para conferir antes de colar em público.
 
 ## Antes de publicar (teste final)
 

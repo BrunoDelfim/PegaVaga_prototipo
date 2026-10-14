@@ -1,6 +1,6 @@
 # Política de Privacidade — PegaVaga
 
-**Última atualização:** 13 de outubro de 2026 · **Versão da extensão:** 0.7.4
+**Última atualização:** 13 de outubro de 2026
 
 O PegaVaga é uma extensão de navegador que ajuda a **encontrar vagas no LinkedIn,
 candidatar-se pela Candidatura Simplificada dentro das cotas que você escolher e

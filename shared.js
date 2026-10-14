@@ -18,6 +18,7 @@ globalThis.PegaVagaShared = (() => {
     apps: 'pegavaga_apps', // timestamps (ms) das candidaturas enviadas
     guard: 'pegavaga_guard', // bloqueio temporário detectado (proteção da conta)
     theme: 'pegavaga_theme', // 'light' | 'dark' escolhido na lâmpada do cabeçalho
+    errors: 'pegavaga_errors', // últimos erros registrados (base do "copiar diagnóstico")
   };
 
   /* Tipos de mensagem trocadas entre pop-up, content script e agendador. */
@@ -44,6 +45,8 @@ globalThis.PegaVagaShared = (() => {
   // passando do limite de vagas, as mais antigas saem. Ver trimJobs().
   const MAX_JOBS = 5000;
   const DESC_MAX_CHARS = 6000;
+
+  const ERROR_KEEP = 50; // erros guardados para o "copiar diagnóstico"
   const HOUR_MS = 3600000;
   const DAY_MS = 86400000;
   const HISTORY_LIMIT = 500; // candidaturas guardadas (base das cotas móveis)
@@ -59,6 +62,7 @@ globalThis.PegaVagaShared = (() => {
     terms: [],
     apply: {
       enabled: true, // candidatar-se sozinho (padrão: ligado)
+      dryRun: false, // modo simulação: preenche o formulário e NÃO envia
       perTerm: 8, // candidaturas por termo de busca
       perHour: 6, // janela móvel de 60 min
       per24h: 25, // janela móvel de 24 h
@@ -318,6 +322,7 @@ globalThis.PegaVagaShared = (() => {
       terms: normalizeTerms(value.terms),
       apply: {
         enabled: apply.enabled !== false,
+        dryRun: apply.dryRun === true, // padrão desligado: envia de verdade
         perTerm: num(apply.perTerm, 1, 500, defApply.perTerm),
         perHour: num(apply.perHour, 1, 1000, defApply.perHour),
         per24h: num(apply.per24h, 1, 2000, defApply.per24h),
@@ -505,6 +510,12 @@ globalThis.PegaVagaShared = (() => {
       label: 'Enviada',
       failure: false,
       reason: '',
+    },
+    simulada: {
+      label: 'Simulada (não enviada)',
+      failure: true, // não foi candidatada: o modo simulação estava ligado
+      reason:
+        'O modo simulação estava ligado: o formulário foi todo preenchido, mas a candidatura NÃO foi enviada de propósito.',
     },
     externa: {
       label: 'Externa (site da empresa)',
@@ -1323,6 +1334,87 @@ globalThis.PegaVagaShared = (() => {
     return { jobs: changed ? out : list, dropped: dropped };
   }
 
+  /** Inteiro >= 0 no diagnóstico (nunca sai "undefined"/"NaN"). */
+  function diagCount(value) {
+    const parsed = Math.round(Number(value));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }
+
+  /** Linha do estado da fila no diagnóstico. */
+  function diagRun(run) {
+    if (!run || !run.running) return 'parada';
+
+    const termo = run.term ? '"' + run.term + '"' : 'página atual';
+    const estado = run.paused
+      ? 'pausada (' + (PAUSE_REASON_LABELS[run.pauseReason] || run.pauseReason || 'sem motivo') + ')'
+      : 'rodando';
+    const total = Array.isArray(run.terms) && run.terms.length ? run.terms.length : 1;
+
+    return (
+      estado +
+      ' · termo ' + termo +
+      ' · ' + diagCount(run.appliedInTerm) + ' candidatura(s) no termo' +
+      ' · ' + diagCount(run.appliedTotal) + ' na execução' +
+      ' · ' + total + ' termo(s) na fila' +
+      (run.problem ? ' · problema: ' + run.problem : '')
+    );
+  }
+
+  /**
+   * Monta o texto do "copiar diagnóstico" (relato de problema). Função pura:
+   * recebe dados já lidos do storage e devolve o texto que vai para a área de
+   * transferência — os erros vêm do buffer que o content.js mantém.
+   * @param {Object} dados { version, ua, when, count, dropped, lastRun, apps, run, guard, dryRun, theme, settings, errors }
+   * @returns {string}
+   */
+  function buildDiagnostics(dados) {
+    const d = dados || {};
+    const errors = (Array.isArray(d.errors) ? d.errors : []).slice(-ERROR_KEEP);
+    const guard = d.guard || null;
+    const linhas = [];
+
+    linhas.push('PegaVaga — diagnóstico');
+    linhas.push('Versão ' + (d.version || '?') + ' · ' + (d.ua || 'navegador não identificado'));
+    linhas.push('Gerado em ' + (d.when || new Date().toLocaleString('pt-BR')));
+    linhas.push('(confira antes de colar: o texto inclui a sua configuração e os últimos erros)');
+    linhas.push('');
+    linhas.push(
+      'Vagas: ' +
+        diagCount(d.count) +
+        ' · descartadas por espaço: ' +
+        diagCount(d.dropped) +
+        ' · última varredura: ' +
+        (d.lastRun || 'nenhuma')
+    );
+    linhas.push('Candidaturas registradas: ' + diagCount(d.apps));
+    linhas.push('Fila: ' + diagRun(d.run));
+    linhas.push(
+      'Bloqueio: ' +
+        (guard && guard.blockedUntil
+          ? 'até ' +
+            new Date(guard.blockedUntil).toLocaleString('pt-BR') +
+            ' (' + (guard.reason || 'sem motivo') + ')'
+          : 'nenhum')
+    );
+    linhas.push('Modo simulação: ' + (d.dryRun ? 'ligado (não envia candidaturas)' : 'desligado'));
+    linhas.push('Tema: ' + (d.theme || 'claro'));
+    linhas.push('');
+    linhas.push('Configuração:');
+    linhas.push(JSON.stringify(d.settings || {}, null, 2));
+    linhas.push('');
+    linhas.push('Últimos ' + errors.length + ' erro(s):');
+
+    if (!errors.length) linhas.push('(nenhum registrado)');
+
+    for (const item of errors) {
+      linhas.push(
+        '- ' + (item.at || '?') + ' · ' + (item.where || '?') + ': ' + (item.message || '')
+      );
+    }
+
+    return linhas.join('\n');
+  }
+
   return {
     STORAGE,
     MSG,
@@ -1336,6 +1428,8 @@ globalThis.PegaVagaShared = (() => {
     MAX_JOBS,
     DESC_MAX_CHARS,
     trimJobs,
+    ERROR_KEEP,
+    buildDiagnostics,
     HOUR_MS,
     DAY_MS,
     HISTORY_LIMIT,

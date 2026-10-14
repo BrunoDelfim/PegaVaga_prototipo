@@ -42,7 +42,7 @@ A versão vive no `manifest.json` (campo `version`). A regra de avanço é:
 Em resumo: o **último número** é o contador do dia a dia (0–9) e o **do meio** só
 muda quando ele estoura.
 
-Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.4`) — é ela que o
+Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.5`) — é ela que o
 script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
@@ -87,6 +87,12 @@ seguimos abaixo de 1.
    - **“Candidatar-se sozinho pela Candidatura Simplificada”** — **ligado por
      padrão** (desligue para só rastrear vagas, sem candidatar). Com ele ligado,
      ajuste as cotas:
+   - **“Modo simulação”** — **desligado por padrão**: ligado, a extensão faz tudo
+     igual (busca, abre o formulário e **preenche**), mas **para antes do clique
+     de enviar**. A vaga entra no relatório como `Simulada (não enviada)`, o
+     formulário é fechado (o rascunho fica salvo no LinkedIn) e **nenhuma cota é
+     consumida**. É a forma segura de ver o que a extensão faria antes de deixar
+     ela candidatar de verdade.
    - **Por termo** — quantas candidaturas fazer em cada termo. Ao atingir,
      o PegaVaga **passa para o próximo termo** e zera essa cota.
    - **Por hora** — janela móvel de 60 min.
@@ -301,6 +307,22 @@ PegaVaga:
 > Desligue **“Pedir a minha ajuda”** para voltar ao comportamento antigo:
 > descarta a vaga e segue em frente sozinho.
 
+### Deu problema? Copiar diagnóstico
+
+Na aba **Configurações**, no fim, o botão **“Copiar diagnóstico”** põe na área de
+transferência um texto pronto para colar num relato de problema: **versão**,
+navegador, **configuração** completa, estado da **fila**, **bloqueio**/**descarte**
+e os **últimos 50 erros** que a automação registrou — cada um com a hora e com o
+trecho onde aconteceu (ex.: `clicar com mouse humanizado: Cannot read properties
+of null`).
+
+Antes eram `catch` mudos: o erro desaparecia sem deixar rastro e não havia como
+saber por que uma vaga falhou. Agora todo `catch` do `content.js` registra o que
+houve (só dois, de condições normais e previsíveis, ficam de fora de propósito).
+
+> O texto inclui a sua configuração e as respostas do formulário — **confira
+> antes de publicar** num lugar público.
+
 ### Arquivos gerados
 
 **CSV completo** — nome `pegavaga_AAAA-MM-DD_HH-MM-SS.csv`:
@@ -315,7 +337,7 @@ PegaVaga:
 - `Motivo da nao candidatura` fica **vazio** quando a candidatura foi enviada.
 
 Valores possíveis de `Status da candidatura`: `Enviada`,
-`Já candidatada antes`, `Externa (site da empresa)`,
+`Simulada (não enviada)`, `Já candidatada antes`, `Externa (site da empresa)`,
 `Botão de candidatura não reconhecido`,
 `Sem botão de candidatura`, `Formulário não abriu`,
 `Travada em campo obrigatório`, `Formulário incompleto`, `Interrompida (Parar)`,
@@ -328,6 +350,7 @@ Exemplos de motivo gravado:
 | ---------------------------------- | ------------------------------------------------------------------------------- |
 | `Externa (site da empresa)`        | A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então ela é pulada. `Botão "Candidatar-se no site da empresa", que aponta para careers.acme.com.` |
 | `Já candidatada antes`             | O LinkedIn mostra que você já se candidatou a esta vaga antes; a candidatura não foi enviada de novo. |
+| `Simulada (não enviada)`           | O modo simulação estava ligado: o formulário foi todo preenchido, mas a candidatura NÃO foi enviada de propósito. |
 | `Botão de candidatura não reconhecido` | Não identifiquei a Candidatura Simplificada nesta vaga; para não sair do LinkedIn, não cliquei. |
 | `Sem botão de candidatura`         | A página da vaga não oferece botão de candidatura.                               |
 | `Travada em campo obrigatório`     | …+ `Campos não preenchidos: Telefone. Respondi sozinho: Sim.`                    |
@@ -365,7 +388,7 @@ item.
 
 ```bash
 bash tools/empacotar.sh          # empacota o commit atual (HEAD)
-bash tools/empacotar.sh v0.7.4   # empacota uma tag — é o que se publica
+bash tools/empacotar.sh v0.7.5   # empacota uma tag — é o que se publica
 ```
 
 O script roda os testes antes (não gera zip com teste vermelho), monta
