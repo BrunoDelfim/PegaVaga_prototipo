@@ -165,15 +165,30 @@ globalThis.PegaVagaShared = (() => {
 
   /**
    * Traduz um valor que caiu dentro de um marcador (ex.: o motivo da pausa em
-   * `Pausada por { motivo } até …`). Só casamento direto, de propósito: evita
-   * recursão entre `translate()` e `t()`.
+   * `Pausada por { motivo } até …`). Olha o dicionário direto e depois os
+   * padrões — **uma passada só**, sem recursão, para `translate()` e `t()` não
+   * ficarem se chamando.
    */
   function translateValue(valor, idioma) {
     const lang = normalizeLocale(idioma) || locale();
     const texto = String(valor == null ? '' : valor);
 
     if (lang !== 'en') return texto;
-    return UI_EN[texto] != null ? UI_EN[texto] : texto;
+    if (UI_EN[texto] != null) return UI_EN[texto];
+
+    for (const padrao of uiPatternsList()) {
+      const achado = texto.match(padrao.regex);
+      if (!achado) continue;
+
+      const subs = {};
+      padrao.sentinelas.forEach((nome, i) => {
+        subs[nome] = achado[i + 1];
+      });
+
+      return t(padrao.chave, subs, 'en');
+    }
+
+    return texto;
   }
 
   /**
@@ -239,6 +254,11 @@ globalThis.PegaVagaShared = (() => {
   /** Idioma em uso agora. */
   function locale() {
     return chosenLocale || browserLocale();
+  }
+
+  /** Etiqueta de idioma para formatar data/hora (`toLocaleString`). */
+  function dateLocale() {
+    return locale() === 'en' ? 'en-GB' : 'pt-BR';
   }
 
   /**
@@ -469,7 +489,7 @@ globalThis.PegaVagaShared = (() => {
     'termos': 'terms',
     'Última varredura: {quando}': 'Last scan: {quando}',
     ': a automação está descansando até': ': the automation is resting until',
-    'O LinkedIn sinalizou limite de uso: a automação fica parada até': 'LinkedIn flagged a usage limit: the automation stays stopped until',
+    'O LinkedIn sinalizou limite de uso: a automação fica parada até {hora}.': 'LinkedIn flagged a usage limit: the automation stays stopped until {hora}.',
     'Nesta sessão (termo)': 'In this session (term)',
     'Pausado por': 'Paused by',
     '· {n} candidatura(s) neste termo': '· {n} application(s) in this term',
@@ -478,7 +498,88 @@ globalThis.PegaVagaShared = (() => {
     '✋ PegaVaga precisa de ajuda: não consegui preencher': '✋ PegaVaga needs your help: I could not fill',
     'Nenhuma vaga capturada ainda. Rode a varredura primeiro.': 'No jobs captured yet. Run the scan first.',
     'Todas as vagas capturadas foram candidatadas. Nada a relatar.': 'All captured jobs were applied to. Nothing to report.',
-    'Falha ao gerar o arquivo: ': 'Failed to generate the file: ',
+    'Falha ao gerar o arquivo: {motivo}': 'Failed to generate the file: {motivo}',
+
+    /* Cotas, agendador e janelas de horário */
+    'Candidaturas — {hora} na hora · {dia24} em 24 h': 'Applications — {hora} per hour · {dia24} in 24 h',
+    ' · {dia} hoje': ' · {dia} today',
+    ' · {termo} neste termo': ' · {termo} in this term',
+    'todos os dias': 'every day',
+    'nenhum dia': 'no day',
+    'Dom': 'Sun',
+    'Seg': 'Mon',
+    'Ter': 'Tue',
+    'Qua': 'Wed',
+    'Qui': 'Thu',
+    'Sex': 'Fri',
+    'Sáb': 'Sat',
+    'Janela: {janela} · próxima: {quando}.': 'Window: {janela} · next: {quando}.',
+    /* Os padrões mais específicos vêm **antes**: `{ x }` casa com qualquer
+       trecho, então `Janela: {janela}.` pegaria a frase longa pela metade. */
+    'Janela ativa: {janela}.': 'Window open: {janela}.',
+    'Janela: {janela}.': 'Window: {janela}.',
+    'por termo': 'per term',
+    'por hora': 'per hour',
+    'em 24 h': 'in 24 h',
+    'no dia': 'per day',
+    'Pausado por {motivo} até {hora}. {agenda}': 'Paused by {motivo} until {hora}. {agenda}',
+    'Última hora': 'Last hour',
+    'Últimas 24 h': 'Last 24 h',
+    'Hoje': 'Today',
+    '{rotulo}: {usado} de {limite} usadas': '{rotulo}: {usado} of {limite} used',
+    '{n} candidatura(s) nas últimas 24 h (pico de {max} em uma hora) · barra clara = ontem.': '{n} application(s) in the last 24 h (peak of {max} in one hour) · light bar = yesterday.',
+
+    /* Fila de execução */
+    'Termo: {termo}.': 'Term: {termo}.',
+    '{n} termos em loop ({lista}).': '{n} terms in a loop ({lista}).',
+    'Termo {posicao} de {total}: {rotulo}': 'Term {posicao} of {total}: {rotulo}',
+    'Buscando {rotulo}': 'Searching {rotulo}',
+    '· modo simulação (não envio)': '· simulation mode (no sending)',
+    'sem termo': 'no term',
+
+    /* Backup, restauração e afins */
+    'Configuração salva em {arquivo}.': 'Configuration saved to {arquivo}.',
+    'Não consegui usar esse arquivo: {motivo}.': 'Could not use that file: {motivo}.',
+    'Configuração restaurada.': 'Configuration restored.',
+    'Configuração restaurada (o arquivo era da versão {versao}).': 'Configuration restored (the file was from version {versao}).',
+    'o arquivo não é um JSON válido': 'the file is not valid JSON',
+    'o arquivo não tem uma configuração dentro': 'the file has no configuration inside',
+    'o arquivo não parece uma configuração do PegaVaga': 'the file does not look like a PegaVaga configuration',
+    'Aguardando a cota de candidaturas liberar.': 'Waiting for the application quota to free up.',
+    'Vaga capturada sem a descrição completa.': 'Job captured without the full description.',
+    'Candidatura automática desligada.': 'Automatic applying is off.',
+    'Vagas que ainda não foram candidatadas': 'Jobs not applied to yet',
+
+    /* Motivos do relatório (aparecem nas dicas do pop-up; no CSV saem em pt) */
+    'O modo simulação estava ligado: o formulário foi todo preenchido, mas a candidatura NÃO foi enviada de propósito.': 'Simulation mode was on: the form was fully filled but the application was deliberately NOT sent.',
+    'A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então ela é pulada.': 'This job does not use Easy Apply: the button leads to the company site, so it is skipped.',
+    'Não identifiquei a Candidatura Simplificada nesta vaga; para não sair do LinkedIn, não cliquei.': 'I could not identify Easy Apply on this job; so as not to leave LinkedIn, I did not click.',
+    'O LinkedIn mostra que você já se candidatou a esta vaga antes; a candidatura não foi enviada de novo.': 'LinkedIn shows you already applied to this job before; the application was not sent again.',
+    'O formulário parou numa pergunta obrigatória que a extensão não conseguiu responder (mesmo preenchendo as anteriores).': 'The form stopped on a required question the extension could not answer (even after filling the previous ones).',
+    'O formulário não foi concluído dentro do tempo e do número de etapas permitidos.': 'The form was not completed within the allowed time and number of steps.',
+    'O LinkedIn pediu verificação ou limite de uso: a automação parou para proteger a sua conta.': 'LinkedIn asked for verification or warned about usage limits: the automation stopped to protect your account.',
+    'A página da vaga não oferece botão de candidatura.': 'The job page offers no apply button.',
+    'O botão foi clicado, mas o formulário de candidatura não abriu.': 'The button was clicked but the application form did not open.',
+    'A candidatura foi abandonada porque você pediu para parar.': 'The application was abandoned because you asked to stop.',
+    'Houve um erro inesperado durante a automação da candidatura.': 'An unexpected error happened while automating the application.',
+
+    /* Avisos e faixas (frases inteiras, com os valores dentro) */
+    'Navegando para a primeira busca e iniciando a varredura…': 'Opening the first search and starting the scan…',
+    'Navegando para a primeira busca ({fila}) e iniciando a varredura…': 'Opening the first search ({fila}) and starting the scan…',
+    'Abrindo a busca do LinkedIn em uma nova aba…': 'Opening the LinkedIn search in a new tab…',
+    'Abrindo a busca do LinkedIn em uma nova aba ({fila})…': 'Opening the LinkedIn search in a new tab ({fila})…',
+    'A varredura já está em andamento.': 'The scan is already running.',
+    'Varredura em andamento. O PegaVaga avança pelos termos sozinho.': 'Scan running. PegaVaga moves through the terms on its own.',
+    'Varredura em andamento: {fila}. O PegaVaga avança pelos termos sozinho.': 'Scan running: {fila}. PegaVaga moves through the terms on its own.',
+    'Descartei {n} vaga(s) antiga(s) para o armazenamento não encher (guardo as {max} mais recentes). Exporte a planilha de vez em quando para não perder nada.': 'I dropped {n} old job(s) so storage does not fill up (I keep the {max} most recent). Export the spreadsheet now and then so you lose nothing.',
+    '✋ PegaVaga precisa de ajuda: não consegui preencher {campo}. Abra a aba do LinkedIn e complete — ou clique em "Pular vaga atual".': '✋ PegaVaga needs your help: I could not fill {campo}. Open the LinkedIn tab and complete it — or click "Skip current job".',
+    'um campo obrigatório': 'a required field',
+    'Não encontrei a lista de vagas nesta página.': 'I could not find the job list on this page.',
+    ' (versão {versao})': ' (version {versao})',
+    ', salva em {quando}': ', saved on {quando}',
+    'Substituir a configuração atual pela de {arquivo}{versao}{quando}? A atual será perdida.': 'Replace the current configuration with the one from {arquivo}{versao}{quando}? The current one will be lost.',
+    '⛔ LinkedIn sinalizou limite de uso ({motivo}): a automação está descansando até {hora}. Aproveite para revisar as vagas já capturadas.': '⛔ LinkedIn flagged a usage limit ({motivo}): the automation is resting until {hora}. Good time to review the jobs you captured.',
+    '⛔ LinkedIn sinalizou limite de uso: a automação está descansando até {hora}. Aproveite para revisar as vagas já capturadas.': '⛔ LinkedIn flagged a usage limit: the automation is resting until {hora}. Good time to review the jobs you captured.',
   };
 
   /* ------------------------------------------------------------------------ */
@@ -612,9 +713,9 @@ globalThis.PegaVagaShared = (() => {
 
   function formatDays(days) {
     const list = normalizeDays(days);
-    if (list.length === 7) return 'todos os dias';
-    if (!list.length) return 'nenhum dia';
-    return list.map((day) => WEEKDAYS[day]).join(', ');
+    if (list.length === 7) return t('todos os dias');
+    if (!list.length) return t('nenhum dia');
+    return list.map((day) => t(WEEKDAYS[day])).join(', ');
   }
 
   function startOfDayMs(ts) {
@@ -1402,15 +1503,18 @@ globalThis.PegaVagaShared = (() => {
     const used = quota.used;
     const limits = quota.limits;
 
-    let text =
-      'Candidaturas — ' +
-      formatCount(used.hour, limits.hour) +
-      ' na hora · ' +
-      formatCount(used.day24, limits.day24) +
-      ' em 24 h';
+    let text = t('Candidaturas — {hora} na hora · {dia24} em 24 h', {
+      hora: formatCount(used.hour, limits.hour),
+      dia24: formatCount(used.day24, limits.day24),
+    });
 
-    if (limits.day !== Infinity) text += ' · ' + formatCount(used.day, limits.day) + ' hoje';
-    if (limits.term !== Infinity) text += ' · ' + formatCount(used.term, limits.term) + ' neste termo';
+    if (limits.day !== Infinity) {
+      text += t(' · {dia} hoje', { dia: formatCount(used.day, limits.day) });
+    }
+
+    if (limits.term !== Infinity) {
+      text += t(' · {termo} neste termo', { termo: formatCount(used.term, limits.term) });
+    }
 
     return text;
   }
@@ -1426,7 +1530,7 @@ globalThis.PegaVagaShared = (() => {
     const next = nextScheduleStart(now || new Date(), cfg);
     if (!next) return 'Janela: ' + window + '.';
 
-    const stamp = next.toLocaleString('pt-BR', {
+    const stamp = next.toLocaleString(dateLocale(), {
       weekday: 'short',
       hour: '2-digit',
       minute: '2-digit',
@@ -1930,7 +2034,7 @@ globalThis.PegaVagaShared = (() => {
     try {
       data = JSON.parse(String(text == null ? '' : text));
     } catch (error) {
-      throw new Error('o arquivo não é um JSON válido');
+      throw new Error(t('o arquivo não é um JSON válido'));
     }
 
     const bruto =
@@ -1939,7 +2043,7 @@ globalThis.PegaVagaShared = (() => {
         : data;
 
     if (!bruto || typeof bruto !== 'object' || Array.isArray(bruto)) {
-      throw new Error('o arquivo não tem uma configuração dentro');
+      throw new Error(t('o arquivo não tem uma configuração dentro'));
     }
 
     // Um JSON qualquer (planilha, backup de outro app) não pode passar: importar
@@ -1950,7 +2054,7 @@ globalThis.PegaVagaShared = (() => {
     );
 
     if (!pareceConfig) {
-      throw new Error('o arquivo não parece uma configuração do PegaVaga');
+      throw new Error(t('o arquivo não parece uma configuração do PegaVaga'));
     }
 
     return {
@@ -1983,6 +2087,7 @@ globalThis.PegaVagaShared = (() => {
     LOCALES,
     DEFAULT_LOCALE,
     locale,
+    dateLocale,
     setLocale,
     normalizeLocale,
     t,

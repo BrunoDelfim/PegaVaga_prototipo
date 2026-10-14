@@ -242,11 +242,15 @@ fim — e não siga adiante antes de entender a falha.
       contador volta a zero **sozinho**.
 
 ### T. Idioma (português / English)
-- [ ] Em **Configurações → Idioma**, escolha **English**: o pop-up inteiro vira
-      inglês (abas, grupos, botões, dicas e títulos dos campos).
+- [ ] Selecione **English**: o pop-up inteiro vira
+      inglês (abas, grupos, botões, dicas e títulos dos campos) — inclusive o
+      **primeiro grupo** (Idioma), que também **não** deve ter traço de separação
+      em cima, e o **select** precisa de um respiro depois do título do grupo.
 - [ ] Os pedaços que o app **desenha depois** também: fila de termos, donut,
-      resumo, card de cotas, barras de 24 h, faixa de ajuda e o toast — inclusive
-      **com números** (ex.: `128 jobs captured`).
+      resumo, **card de cotas** (rótulos e as dicas ao passar o mouse), barras de
+      24 h, **linha do agendador**, faixa de ajuda, aviso de limite de uso,
+      **aviso de descarte** e o toast — inclusive **com números** (ex.:
+      `128 jobs captured`).
 - [ ] Passe o mouse no **ícone da extensão**: o tooltip sai em inglês.
 - [ ] Termine uma varredura curta com a janela em segundo plano: a
       **notificação** sai em inglês.

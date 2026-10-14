@@ -482,7 +482,112 @@ eq('marcadores batem nos dois idiomas', Object.entries(S.UI_EN).filter((par) => 
 eq('nenhuma traducao vazia', Object.entries(S.UI_EN).filter((par) => !String(par[1]).trim()).map((par) => par[0]), []);
 ok('dicionario tem volume util', Object.keys(S.UI_EN).length >= 120);
 
-// Frases montadas em código (não estão no HTML): lista de regressão.
+// Garantia de cobertura: varre o código atrás de texto de interface sem
+// tradução. Antes disso o teste só olhava o HTML, e foi assim que frases
+// montadas em código (e depois compostas) ficaram em português.
+const IGNORAR_I18N = [
+  /^[a-z0-9_.:-]+$/i, /^[.#\[>]/, /^[A-Z_]+$/, /px$|^\d|^\s*$/,
+  /https?:|[<>{}();=]|\\|function |querySelector|classList|use strict|text\/csv/,
+  /^\[PegaVaga\]/, /^(prev|full|light|hint ok|failure)$/, /^[a-z_]+$/,
+  /^(ID|Titulo|Empresa|Link|Descricao|Capturado em|Termo|Tentativas|Candidatado em|Ultima tentativa|Status da candidatura|Motivo da nao candidatura)$/,
+  /(sistema|navegador) não identificado/, // só no diagnóstico, que é em pt
+];
+const REGIOES_PT_I18N = [/function buildDiagnostics/, /function diagRun/, /function safeCount/];
+// Fragmentos que só aparecem **montados**: quem está no dicionário é a frase
+// inteira (ver as verificações de composição logo abaixo).
+const FRAGMENTOS_OK = [
+  'Navegando para a primeira busca',
+  ' e iniciando a varredura…',
+  'Abrindo a busca do LinkedIn em uma nova aba',
+  'Fora da janela do agendador',
+  ': a varredura fica aguardando o horário.',
+  'Varredura em andamento',
+  ' O PegaVaga avança pelos termos sozinho.',
+  'Configuração restaurada',
+  'Configuração salva em ',
+  'Não consegui usar esse arquivo: ',
+  'Termo: ',
+  'Salvo automaticamente às ',
+  'Última varredura: ',
+  'Descartei ',
+  '⛔ LinkedIn sinalizou limite de uso',
+  ': a automação está descansando até ',
+  'O LinkedIn sinalizou limite de uso: a automação fica parada até ',
+  ' até ',
+  'Pausado por ',
+  '✋ PegaVaga precisa de ajuda: não consegui preencher ',
+  'Falha ao gerar o arquivo: ',
+  'Janela ativa: ',
+  'Janela: ',
+  ' · próxima: ',
+  'LinkedIn sinalizou limite de uso',
+  'PegaVaga precisa de ajuda para continuar',
+  'Pausada por ',
+  'Descansando até ',
+  'Capturando vagas — ',
+  'PegaVaga — ',
+  ' na fila',
+  'termo ',
+];
+
+const textosSemTraducao = [];
+const corpoCodigo = ['popup.js', 'shared.js'].map(read);
+
+S.setLocale('en'); // a varredura precisa enxergar o idioma de destino
+
+for (const fonte of corpoCodigo) {
+  const linhas = fonte.split('\n');
+  let noDicionario = false;
+  let emRegiaoPt = null;
+
+  linhas.forEach((linha) => {
+    // Comentário não é interface (e o JSDoc cita trechos de código).
+    const enxuta = linha.trim();
+    if (enxuta.startsWith('*') || enxuta.startsWith('//') || enxuta.startsWith('/*')) return;
+
+    if (/const UI_EN = \{/.test(linha)) noDicionario = true;
+    if (noDicionario) {
+      if (/^  \};/.test(linha)) noDicionario = false;
+      return;
+    }
+
+    const regiao = REGIOES_PT_I18N.find((re) => re.test(linha));
+    if (regiao) emRegiaoPt = regiao;
+    if (emRegiaoPt && /^  \}/.test(linha)) emRegiaoPt = null;
+    if (emRegiaoPt) return;
+
+    const literais = [
+      ...linha.matchAll(/'((?:[^'\\\n]|\\.)*)'/g),
+      ...linha.matchAll(/`([^`]*)`/g),
+    ].map((m) => m[1]);
+
+    for (const texto of literais) {
+      if (texto.length < 4 || !/[A-Za-zÀ-ÿ]{3}/.test(texto)) continue;
+      if (!/\s/.test(texto) && !/[À-ÿ]/.test(texto)) continue;
+      if (IGNORAR_I18N.some((re) => re.test(texto.trim()))) continue;
+      if (FRAGMENTOS_OK.includes(texto)) continue;
+      if (S.translate(texto) !== texto) continue;
+      if (!textosSemTraducao.includes(texto)) textosSemTraducao.push(texto);
+    }
+  });
+}
+
+S.setLocale('en');
+eq('nenhum texto de interface sem traducao', textosSemTraducao, []);
+
+// Composições: aqui é onde estavam os buracos — frase montada por código com
+// valores dentro precisa sair traduzida inteira.
+eq('toast de inicio (com fila)', S.translate('Navegando para a primeira busca (Termo: react.) e iniciando a varredura…'), 'Opening the first search (Term: react.) and starting the scan…');
+eq('aviso de limite de uso', S.translate('⛔ LinkedIn sinalizou limite de uso: a automação está descansando até 14:30. Aproveite para revisar as vagas já capturadas.'), '⛔ LinkedIn flagged a usage limit: the automation is resting until 14:30. Good time to review the jobs you captured.');
+eq('faixa de ajuda', S.translate('✋ PegaVaga precisa de ajuda: não consegui preencher Telefone. Abra a aba do LinkedIn e complete — ou clique em "Pular vaga atual".'), '✋ PegaVaga needs your help: I could not fill Telefone. Open the LinkedIn tab and complete it — or click "Skip current job".');
+eq('aviso de descarte', S.translate('Descartei 3 vaga(s) antiga(s) para o armazenamento não encher (guardo as 5000 mais recentes). Exporte a planilha de vez em quando para não perder nada.'), 'I dropped 3 old job(s) so storage does not fill up (I keep the 5000 most recent). Export the spreadsheet now and then so you lose nothing.');
+eq('dica da barra de cota', S.translate('Última hora: 3 de 6 usadas'), 'Last hour: 3 of 6 used');
+eq('rodape do grafico de 24 h', S.translate('5 candidatura(s) nas últimas 24 h (pico de 2 em uma hora) · barra clara = ontem.'), '5 application(s) in the last 24 h (peak of 2 in one hour) · light bar = yesterday.');
+eq('motivo do relatorio na dica', S.translate('A página da vaga não oferece botão de candidatura.'), 'The job page offers no apply button.');
+eq('linha da fila', S.t('Termo {posicao} de {total}: {rotulo}', { posicao: 2, total: 3, rotulo: '"react"' }), 'Term 2 of 3: "react"');
+eq('motivo de pausa dentro da frase', S.t('· pausado por {motivo} até {hora}', { motivo: S.t('cota de candidaturas'), hora: '14:30' }), '· paused by application quota until 14:30');
+eq('aviso do arquivo de backup', S.t('Não consegui usar esse arquivo: {motivo}.', { motivo: S.t('o arquivo não é um JSON válido') }), 'Could not use that file: the file is not valid JSON.');
+S.setLocale('pt');
 const dinamicasI18n = [
   'Configure uma URL do LinkedIn (ex.: https://www.linkedin.com/jobs/search/).',
   'Varredura interrompida.',
@@ -508,6 +613,11 @@ ok('toggle ligado tem cor propria', /#settings \.switch input\[type="checkbox"\]
 ok('toggle ligado tem cor propria no tema escuro', /html\[data-theme="dark"\] #settings \.switch input\[type="checkbox"\]:checked \{\s*\n\s*background: #1f9d55/.test(popupHtml));
 ok('override do escuro vale so para o desligado', popupHtml.includes('html[data-theme="dark"] #settings .switch input[type="checkbox"]:not(:checked)'));
 ok('nao sobrou override do escuro sem :not', (popupHtml.match(/html\[data-theme="dark"\] #settings \.switch input\[type="checkbox"\] \{/g) || []).length === 0);
+
+// Papel do primeiro grupo e do select: o grupo do idioma abre o painel, então
+// não pode ter o traço de separação, e o select precisa de ar depois do título.
+ok('primeiro grupo nao tem traco de separacao', /\.settings-body > \.group:first-child \{[^}]*border-top: none/.test(popupHtml));
+ok('select do grupo tem margem no topo', /#settings \.group > select \{[^}]*margin-top/.test(popupHtml));
 ok('popup traduz a tela pelo dicionario', popupJs.includes('function localizeDom') && popupJs.includes('SHARED.syncText(textosOriginais.get(no)') === false && popupJs.includes('SHARED.syncText(atual,') && popupJs.includes('MutationObserver'));
 ok('background usa o idioma no tooltip e nas notificacoes', bgJs.includes('SHARED.translate(light.title)') && bgJs.includes('refreshLocale'));
 

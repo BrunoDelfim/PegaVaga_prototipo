@@ -648,13 +648,18 @@ async function onRestoreFile(event) {
   }
 
   const quando = pendingRestore.exportedAt ? new Date(pendingRestore.exportedAt) : null;
+  const versao = pendingRestore.version
+    ? SHARED.t(' (versão {versao})', { versao: pendingRestore.version })
+    : '';
+  const salvoEm =
+    quando && !isNaN(quando.getTime())
+      ? SHARED.t(', salva em {quando}', { quando: quando.toLocaleString(SHARED.dateLocale()) })
+      : '';
 
-  els.restoreText.textContent =
-    'Substituir a configuração atual pela de ' +
-    file.name +
-    (pendingRestore.version ? ' (versão ' + pendingRestore.version + ')' : '') +
-    (quando && !isNaN(quando.getTime()) ? ', salva em ' + quando.toLocaleString('pt-BR') : '') +
-    '? A atual será perdida.';
+  els.restoreText.textContent = SHARED.t(
+    'Substituir a configuração atual pela de {arquivo}{versao}{quando}? A atual será perdida.',
+    { arquivo: file.name, versao, quando: salvoEm }
+  );
   els.restoreCheck.hidden = false;
 }
 
@@ -1593,27 +1598,36 @@ function renderRun(run, totalFallback, breakUntil) {
       totalFallback || (Array.isArray(run.urls) ? run.urls.length : 1) || 1;
     const label = run.term ? `"${run.term}"` : 'página atual';
 
+    const label = run.term ? `"${run.term}"` : SHARED.t('página atual');
+
     let info =
       total > 1
-        ? `Termo ${(run.index || 0) + 1} de ${total}: ${label}`
-        : `Buscando ${label}`;
+        ? SHARED.t('Termo {posicao} de {total}: {rotulo}', {
+            posicao: (run.index || 0) + 1,
+            total,
+            rotulo: label,
+          })
+        : SHARED.t('Buscando {rotulo}', { rotulo: label });
 
     if (settings.apply.enabled) {
-      info += ` · ${run.appliedInTerm || 0} candidatura(s) neste termo`;
-      if (settings.apply.dryRun) info += ' · modo simulação (não envio)';
+      info += SHARED.t(' · {n} candidatura(s) neste termo', { n: run.appliedInTerm || 0 });
+      if (settings.apply.dryRun) info += SHARED.t('· modo simulação (não envio)');
     }
 
     if (run.paused && run.resumeAt) {
       const why = PAUSE_LABELS[run.pauseReason] || 'cota de candidaturas';
-      info += ` · pausado por ${why} até ${SHARED.formatClock(run.resumeAt)}`;
+      info += SHARED.t('· pausado por {motivo} até {hora}', {
+        motivo: why,
+        hora: SHARED.formatClock(run.resumeAt),
+      });
     }
 
     if (breakCache) {
-      info += ` · descansando até ${SHARED.formatClock(breakCache)}`;
+      info += SHARED.t('· descansando até {hora}', { hora: SHARED.formatClock(breakCache) });
     }
 
     if (run.problem) {
-      info += ` · ⚠ ${run.problem}`; // mesmo aviso da luz vermelha do ícone
+      info += ' · ⚠ ' + SHARED.t(run.problem); // mesmo aviso da luz vermelha do ícone
     }
 
     els.runInfo.textContent = info;

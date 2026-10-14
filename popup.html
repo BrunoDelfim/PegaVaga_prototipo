@@ -577,6 +577,8 @@
       #settings .switch > span { font-size: var(--fs-sm); line-height: 1.45; color: var(--text); }
 
       .group { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+      /* O primeiro grupo do painel não tem nada acima: o traço viraria um risco solto. */
+      .settings-body > .group:first-child { margin-top: 0; padding-top: 0; border-top: none; }
       .group > strong {
         display: block;
         font-size: var(--fs-xs);
@@ -585,6 +587,9 @@
         text-transform: uppercase;
         color: var(--brand-2);
       }
+      /* O select não é `label` nem `switch`: sem isto ele fica colado no título
+         (mesma margem dos `label` do painel, para o ritmo vertical bater). */
+      #settings .group > select { margin-top: 9px; }
       .sub { display: block; margin: 10px 0 3px; font-size: var(--fs-sm); color: var(--muted); }
       .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
       .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
