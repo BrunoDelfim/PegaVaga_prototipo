@@ -265,3 +265,4 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 13/10/2026 | 14. Interface em inglês (i18n pt/en) | `0.7.10`, `0.7.11` | `977397a`, `8987dd3` |
 | 13/10/2026 | Correção da UI: cor do interruptor ligado | `0.7.12` | `bc9291f` |
 | 13/10/2026 | Cobertura do i18n (frases compostas) e ajustes do grupo Idioma | `0.7.13` | `1246d7d` |
+| 13/10/2026 | Correção: `const` duplicado no `renderRun` (o CI pegou; o zip da `0.7.13` foi apagado) | `0.7.14` | `e76f526` |
