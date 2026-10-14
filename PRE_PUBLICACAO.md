@@ -4,7 +4,7 @@ Plano de trabalho para sair da beta e publicar na **Chrome Web Store**.
 Cada item diz **por quê** e **como fazer**; ao concluir, troque `[ ]` por `[x]` e
 preencha a linha **Feito em** com a versão e o commit.
 
-**Progresso:** 2 de 14 itens · **Versão:** a que está no `manifest.json`
+**Progresso:** 3 de 14 itens · **Versão:** a que está no `manifest.json`
 
 Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
@@ -61,11 +61,16 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
 ## 🟠 Fortes (antes ou logo depois de publicar)
 
-- [ ] **6. CI no GitHub Actions**
+- [x] **6. CI no GitHub Actions**
   Rodar `node tests/pegavaga.test.js` a cada push (o teste já sai com código 1
   quando falha). Protege de regressão sem ninguém precisar lembrar.
   *Como:* `.github/workflows/testes.yml` com `node-version: 20`.
-  *Feito em:* —
+  *Feito em:* `0.7.4` (commit `cda8e02`) — workflow **Testes** rodando em **push
+  (qualquer branch)**, **pull request** e **manual** (`workflow_dispatch`): faz
+  `node --check` nos quatro scripts e depois `node tests/pegavaga.test.js`. Não
+  tem `npm install` (o projeto não tem dependências), então a execução é rápida e
+  não precisa de cache. Selo de status no topo do README. **A versão não subiu:**
+  é infraestrutura, não muda nada da extensão.
 
 - [ ] **7. Botão “copiar diagnóstico”**
   Sem isso, reportar bug é chato. Hoje há **24 `catch` silenciosos** no
@@ -130,4 +135,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 13/10/2026 | Checklist criado | `0.6.9` | — |
 | 13/10/2026 | 1. Teto de armazenamento | `0.7.2`–`0.7.3` | `ced7d36` |
 | 13/10/2026 | 3. Aviso de risco no app | `0.7.4` | `6ea0976` |
+| 13/10/2026 | 6. CI no GitHub Actions | — (infra) | `cda8e02` |
 

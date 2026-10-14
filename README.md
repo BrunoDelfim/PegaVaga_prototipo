@@ -1,5 +1,7 @@
 # PegaVaga — Extensão do Chrome (Manifest V3)
 
+![Testes](https://github.com/BrunoDelfim/PegaVaga_prototipo/actions/workflows/testes.yml/badge.svg)
+
 Extensão para automatizar o rastreamento **e as candidaturas** no LinkedIn:
 cadastra uma **URL de busca (ou perfil)** e uma lista de **termos**, varre cada
 termo automaticamente, captura **título, empresa, link e descrição** de
