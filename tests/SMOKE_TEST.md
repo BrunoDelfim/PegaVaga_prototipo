@@ -66,7 +66,7 @@ ser conferido na mão. Use este roteiro depois de qualquer mudança relevante.
       para frente**.
 - [ ] Preenchendo o campo na tela, o LinkedIn reabilita o botão e a extensão
       **retoma sozinha**.
-- [ ] Botão **“Pular vaga”** (na notificação) e **“⏭ Pular vaga travada”**
+- [ ] Botão **“Pular vaga”** (na notificação) e **“⏭ Pular vaga atual”**
       (no popup) **cancelam a vaga atual e avançam**.
 - [ ] Com a opção **desligada**, o comportamento antigo volta (descarta e segue).
 

@@ -261,7 +261,7 @@ PegaVaga:
 4. Quando você preenche o obrigatório, o LinkedIn **reabilita o botão** e o
    PegaVaga **retoma sozinho**, seguindo com a candidatura;
 5. Não quer preencher? Clique em **“Pular vaga”** (na notificação) ou em
-   **“⏭ Pular vaga travada”** (no pop-up): a candidatura atual é cancelada e a
+   **“⏭ Pular vaga atual”** (no pop-up): a candidatura atual é cancelada e a
    varredura segue para a próxima.
 
 > Enquanto uma vaga espera por você, o pop-up mostra a faixa

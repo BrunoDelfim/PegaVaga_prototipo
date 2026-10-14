@@ -373,7 +373,7 @@ async function onStopClick() {
 }
 
 /**
- * "Pular vaga travada": a vaga que está esperando a sua ajuda é cancelada e a
+ * "Pular vaga atual": a vaga que está esperando a sua ajuda é cancelada e a
  * varredura vai para a próxima. O pedido vai pelo service worker, que sabe qual
  * aba do LinkedIn está com o formulário aberto.
  */
@@ -382,9 +382,9 @@ async function onSkipClick() {
     const response = await chrome.runtime.sendMessage({ type: MSG.SKIP });
 
     if (response && response.ok) {
-      setStatus('Pulando a vaga travada: cancelando a atual e indo para a próxima.', 'warn');
+      setStatus('Pulando a vaga atual: cancelando e indo para a próxima.', 'warn');
     } else {
-      setStatus('Nenhuma vaga travada esperando ajuda agora.', 'warn');
+      setStatus('Nenhuma vaga esperando ajuda agora.', 'warn');
     }
   } catch (error) {
     setStatus('Não consegui pular a vaga agora. Tente de novo.', 'error');
@@ -819,7 +819,7 @@ function renderRun(run, totalFallback, breakUntil) {
 
 /**
  * Faixa "PegaVaga precisa de ajuda": aparece quando uma vaga travou num campo
- * que só você preenche. Enquanto isso, o botão "Pular vaga travada" fica ativo.
+ * que só você preenche. Enquanto isso, o botão "Pular vaga atual" fica ativo.
  */
 function renderHelp(run) {
   if (!els.helpInfo) return;
@@ -837,7 +837,7 @@ function renderHelp(run) {
   els.helpInfo.textContent =
     '✋ PegaVaga precisa de ajuda: não consegui preencher ' +
     (run.helpMissing || 'um campo obrigatório') +
-    '. Abra a aba do LinkedIn e complete — ou clique em "Pular vaga travada".';
+    '. Abra a aba do LinkedIn e complete — ou clique em "Pular vaga atual".';
 }
 
 /** Descobre se há varredura em andamento (fila no storage ou ping na aba). */
