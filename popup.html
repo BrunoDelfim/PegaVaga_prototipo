@@ -35,6 +35,11 @@
         --r-lg: 16px;
         --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
         --ring: 0 0 0 3px rgba(10, 102, 194, 0.18);
+
+        /* Cabeçalho: o degradê e o brilho mudam com o tema. */
+        --head-from: #0a66c2;
+        --head-to: #04386e;
+        --head-shadow: 0 2px 10px rgba(4, 60, 120, 0.28);
       }
 
       * { box-sizing: border-box; }
@@ -73,9 +78,10 @@
         justify-content: space-between;
         gap: 8px;
         padding: 10px 14px;
-        background: linear-gradient(135deg, var(--brand), var(--brand-2));
+        /* Degradê e brilho vêm dos tokens do tema (no escuro, mais fundo). */
+        background: linear-gradient(135deg, var(--head-from), var(--head-to));
         color: #fff;
-        box-shadow: 0 2px 10px rgba(4, 60, 120, 0.25);
+        box-shadow: var(--head-shadow);
       }
       header h1 { margin: 0; font-size: var(--fs-lg); font-weight: 700; letter-spacing: 0.2px; }
       header p { margin: 1px 0 0; font-size: var(--fs-xs); opacity: 0.85; }
@@ -613,6 +619,11 @@
         --surface: #0b1220;
         --card: #111a2b;
         --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+
+        /* Cabeçalho mais fundo, para casar com o fundo escuro. */
+        --head-from: #15476f;
+        --head-to: #0a1b2d;
+        --head-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
       }
 
       html[data-theme="dark"] input,
