@@ -4,7 +4,7 @@ Plano de trabalho para sair da beta e publicar na **Chrome Web Store**.
 Cada item diz **por quê** e **como fazer**; ao concluir, troque `[ ]` por `[x]` e
 preencha a linha **Feito em** com a versão e o commit.
 
-**Progresso:** 0 de 14 itens · **Versão atual:** `0.6.8` · **Meta:** `0.7.0`
+**Progresso:** 0 de 14 itens · **Versão:** a que está no `manifest.json`
 
 Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 

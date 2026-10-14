@@ -1041,9 +1041,10 @@ globalThis.PegaVagaShared = (() => {
     schedule: 'janela do agendador',
   };
 
-  /** As três luzinhas: verde capturando, amarela pronta, vermelha atenção. */
+  /** As três luzinhas: verde capturando, azul pronta, vermelha atenção. */
   const STATUS_LIGHTS = {
     capturing: { key: 'capturing', color: '#1f9d55', label: 'Capturando' },
+    // No ícone (fundo azul) o "pronta" fica âmbar: azul sumiria no logo.
     ready: { key: 'ready', color: '#f0a500', label: 'Pronta' },
     attention: { key: 'attention', color: '#d93025', label: 'Precisa de atenção' },
   };
@@ -1051,7 +1052,7 @@ globalThis.PegaVagaShared = (() => {
   /**
    * Traduz o estado da extensão na luzinha do ícone:
    *   capturing (verde)    - está capturando vagas agora;
-   *   ready (amarela)      - pronta ou esperando algo normal (cota, janela do
+   *   ready (azul)        - pronta ou esperando algo normal (cota, janela do
    *                          agendador, descanso, você no navegador): volta só;
    *   attention (vermelha) - proteção da conta ligada (o LinkedIn avisou limite)
    *                          ou varredura que parou com problema.

@@ -169,7 +169,7 @@ muda quando ele estoura.
      (quando a fila está pausada, ela também diz **por quê**: cota, janela,
      proteção do LinkedIn ou “você estava usando o navegador”);
    - o **chip no cabeçalho** (bolinha + texto) — a mesma leitura do ícone da
-     extensão: verde capturando, amarela pronta, vermelha quando precisa de
+     extensão: verde capturando, azul pronta, vermelha quando precisa de
      atenção; passe o mouse para ver o motivo;
    - os avisos e os resultados das ações aparecem num **toast** no rodapé, que
      some sozinho depois de alguns segundos.
