@@ -26,6 +26,7 @@ const STORAGE = SHARED.STORAGE;
 const MSG = SHARED.MSG;
 
 const ALARM_NAME = 'pegavaga-tick';
+const ALARM_BADGE_RESET = 'pegavaga-badge-reset'; // virada do dia: zera o contador
 const TICK_MINUTES = 1;
 const LINKEDIN_TAB_PATTERN = 'https://www.linkedin.com/*';
 
@@ -41,17 +42,28 @@ const ICON_FILES = { 16: 'icons/pg-16.png', 32: 'icons/pg-48.png' };
 chrome.runtime.onInstalled.addListener(() => {
   syncAlarm()
     .then(() => tick())
-    .then(() => refreshStatus());
+    .then(() => refreshStatus())
+    .then(() => refreshBadge())
+    .then(() => scheduleBadgeReset());
 });
 
 chrome.runtime.onStartup.addListener(() => {
   syncAlarm()
     .then(() => tick())
-    .then(() => refreshStatus());
+    .then(() => refreshStatus())
+    .then(() => refreshBadge())
+    .then(() => scheduleBadgeReset());
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm && alarm.name === ALARM_NAME) tick().then(() => refreshStatus());
+  if (!alarm) return;
+
+  if (alarm.name === ALARM_NAME) tick().then(() => refreshStatus());
+
+  // Virada do dia: o contador do badge volta a zero e o alarme é remarcado.
+  if (alarm.name === ALARM_BADGE_RESET) {
+    refreshBadge().then(() => scheduleBadgeReset());
+  }
 });
 
 /* O pop-up e o content script mudam settings/run direto no storage: aqui só
@@ -62,6 +74,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes[STORAGE.settings] || changes[STORAGE.run] || changes[STORAGE.guard]) {
     refreshStatus();
   }
+  // Candidatura nova (ou limpeza de dados): o contador do dia se atualiza aqui.
+  if (changes[STORAGE.apps]) refreshBadge();
 });
 
 /* O content script avisa o andamento mesmo com o pop-up fechado: assim a luz do
@@ -104,9 +118,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false;
 });
 
-/* Ao subir um service worker novo, garante o alarme e a luz certos. */
+/* Ao subir um service worker novo, garante o alarme, a luz e o contador certos. */
 syncAlarm();
 refreshStatus();
+refreshBadge();
+scheduleBadgeReset();
 
 /* -------------------------------------------------------------------------- */
 /* Leitura de estado                                                           */
@@ -141,6 +157,8 @@ function writeRun(run) {
 
 const iconBitmaps = new Map(); // PNGs do logo já decodificados
 let paintedLight = null; // cor que está desenhada no ícone agora
+let lightColor = null; // cor da última luz (fundo do badge do contador)
+let todayCount = 0; // candidaturas de hoje (contador do badge)
 
 /**
  * Acende a luz do ícone. Aceita um `PEGAVAGA_PROGRESS` recém-chegado (mais fresco
@@ -169,22 +187,67 @@ async function refreshStatus(progress) {
 async function applyLight(light) {
   setAction('setTitle', { title: light.title });
 
-  if (paintedLight === light.color) return; // luz já está nesta cor
+  if (paintedLight !== light.color) {
+    const painted = await paintIcon(light.color).catch(() => false);
 
-  const painted = await paintIcon(light.color).catch(() => false);
-
-  if (painted) {
-    paintedLight = light.color;
-    setAction('setBadgeText', { text: '' });
-    return;
+    // Plano B (sem OffscreenCanvas): logo original + selo colorido no canto.
+    paintedLight = painted ? light.color : null;
+    if (!painted) setAction('setIcon', { path: ICON_FILES });
   }
 
-  // Plano B (sem OffscreenCanvas): logo original + selo colorido no canto.
-  paintedLight = null;
-  setAction('setIcon', { path: ICON_FILES });
-  setAction('setBadgeText', { text: ' ' });
-  setAction('setBadgeBackgroundColor', { color: light.color });
+  lightColor = light.color;
+  paintBadge();
+}
+
+/**
+ * Pinta o badge do ícone: o **total de candidaturas de hoje**. Quando não há
+ * nenhuma, o badge fica vazio — no caminho normal a luz do status já vai
+ * desenhada no próprio logo, então o badge é do contador.
+ *
+ * No plano B (sem OffscreenCanvas) é o badge que carrega a luz, então ele volta
+ * a ser o selo colorido quando o dia ainda não tem candidatura: a **cor** segue
+ * dizendo o status e o **número** entra por cima quando existe.
+ */
+function paintBadge() {
+  const text = SHARED.badgeText(todayCount);
+  const selo = paintedLight == null; // sem canvas: a luz mora no badge
+
+  setAction('setBadgeText', { text: text || (selo ? ' ' : '') });
+  setAction('setBadgeBackgroundColor', {
+    color: lightColor || (SHARED.STATUS_LIGHTS.ready && SHARED.STATUS_LIGHTS.ready.color) || '#3b9dff',
+  });
   setAction('setBadgeTextColor', { color: '#ffffff' });
+}
+
+/** Recalcula o contador do dia a partir do histórico e repinta o badge. */
+async function refreshBadge() {
+  try {
+    const data = await chrome.storage.local.get(STORAGE.apps);
+    todayCount = SHARED.countAppsToday(data[STORAGE.apps]);
+  } catch (error) {
+    return; // ícone é enfeite: falhar aqui não pode atrapalhar nada
+  }
+
+  paintBadge();
+}
+
+/**
+ * Marca a virada do dia para o contador voltar a zero sozinho — sem isso o
+ * ícone continuaria mostrando o número de ontem até algo mais acontecer.
+ * O alarme é criado de novo a cada disparo (é assim que ele se mantém vivo).
+ */
+async function scheduleBadgeReset() {
+  const agora = new Date();
+  const virada = new Date(
+    agora.getFullYear(),
+    agora.getMonth(),
+    agora.getDate() + 1,
+    0,
+    0,
+    5
+  );
+
+  await chrome.alarms.create(ALARM_BADGE_RESET, { when: virada.getTime() }).catch(() => {});
 }
 
 /** Chama a API do ícone sem deixar promise solta nem derrubar o worker. */

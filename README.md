@@ -42,7 +42,7 @@ A versão vive no `manifest.json` (campo `version`). A regra de avanço é:
 Em resumo: o **último número** é o contador do dia a dia (0–9) e o **do meio** só
 muda quando ele estoura.
 
-Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.8`) — é ela que o
+Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.9`) — é ela que o
 script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
@@ -414,7 +414,7 @@ item.
 
 ```bash
 bash tools/empacotar.sh          # empacota o commit atual (HEAD)
-bash tools/empacotar.sh v0.7.8   # empacota uma tag — é o que se publica
+bash tools/empacotar.sh v0.7.9   # empacota uma tag — é o que se publica
 ```
 
 O script roda os testes antes (não gera zip com teste vermelho), monta
@@ -533,6 +533,15 @@ relance (a mesma cor nos dois lugares):
 - Quem decide a cor é o `statusLight()` do `shared.js` (função pura e testada), a
   partir do estado gravado no storage e dos `PEGAVAGA_PROGRESS` que o content
   script envia — funciona com o pop-up fechado.
+- O **badge** (o quadradinho no canto do ícone) mostra o **total de candidaturas de
+  hoje**: some quando o dia ainda não tem nenhuma e vira `99+` se passar disso. Sai
+  de `SHARED.countAppsToday()` (dia local, com carimbo no futuro ignorado) e
+  `SHARED.badgeText()`, as duas puras e testadas. Como a luz vai desenhada **no
+  logo**, o badge fica livre para o número — e no plano B **sem canvas** o badge
+  carrega os dois: a **cor** continua dizendo o status e o número entra por cima.
+  Um alarme remarcado a cada disparo zera o contador na **virada do dia**, para o
+  ícone não amanhecer com o número de ontem. O modo simulação não conta (nada foi
+  enviado).
 - A luz só redesenha o ícone quando a **cor muda**; os PNGs do logo ficam em
   cache na memória do worker.
 

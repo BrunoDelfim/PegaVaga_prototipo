@@ -227,6 +227,16 @@ fim — e não siga adiante antes de entender a falha.
       para proteger a sua conta”** e ela **fica na tela** até você vê-la (as
       outras somem sozinhas).
 
+### S. Badge de candidaturas do dia
+- [ ] Depois de uma candidatura (num dia ainda zerado), o **badge do ícone** mostra
+      **1** e sobe a cada nova candidatura enviada.
+- [ ] Com o dia zerado, o badge **não aparece** — o ícone fica só com a luz.
+- [ ] O badge **não** sobe com `Simulada (não enviada)`: modo simulação não conta.
+- [ ] A luz de status continua funcionando com o badge ligado (badge e luz convivem
+      no mesmo ícone).
+- [ ] Se der, deixe passar da meia-noite (ou ajuste o relógio do sistema): o
+      contador volta a zero **sozinho**.
+
 ## Antes de publicar (teste final)
 
 1. Rode **este roteiro inteiro num perfil limpo** do Chrome (item 5 do checklist).

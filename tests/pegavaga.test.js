@@ -411,7 +411,33 @@ ok('background mostra o aviso de fim', bgJs.includes('showRunEndNotification') &
 ok('clique no aviso traz a aba para frente', /DONE_NOTIFICATION_ID\) focusRunTab/.test(bgJs));
 ok('popup tem o interruptor do aviso', popupHtml.includes('id="apply-notify-finish"') && popupJs.includes('notifyOnFinish: els.applyNotifyFinish.checked'));
 
-section('18. Espera por evento (assincrono)');
+section('18. Badge com as candidaturas do dia');
+const agoraBadge = new Date(2026, 9, 13, 15, 30).getTime(); // 13/10/2026 15:30 (local)
+const meiaNoiteHoje = new Date(2026, 9, 13, 0, 0).getTime();
+const ontemBadge = new Date(2026, 9, 12, 23, 59).getTime();
+const amanhaBadge = new Date(2026, 9, 14, 0, 1).getTime();
+
+eq('conta so as de hoje', S.countAppsToday([ontemBadge, meiaNoiteHoje, agoraBadge, amanhaBadge], agoraBadge), 2);
+eq('lista vazia', S.countAppsToday([], agoraBadge), 0);
+eq('lista invalida', S.countAppsToday(null, agoraBadge), 0);
+eq('lixo no historico e ignorado', S.countAppsToday(['x', null, NaN, agoraBadge], agoraBadge), 1);
+eq('meia-noite de hoje conta', S.countAppsToday([meiaNoiteHoje], agoraBadge), 1);
+eq('um segundo antes nao conta', S.countAppsToday([meiaNoiteHoje - 1], agoraBadge), 0);
+
+eq('badge vazio quando nao ha nada', S.badgeText(0), '');
+eq('badge com um digito', S.badgeText(7), '7');
+eq('badge no limite', S.badgeText(99), '99');
+eq('badge acima de 99', S.badgeText(100), '99+');
+eq('badge tolera lixo', S.badgeText('x'), '');
+eq('badge aceita numero em texto', S.badgeText('12'), '12');
+
+ok('background usa o contador no badge', bgJs.includes('SHARED.badgeText(todayCount)') && bgJs.includes("setAction('setBadgeText'"));
+ok('contador acompanha o historico de candidaturas', /changes\[STORAGE\.apps\]\) refreshBadge\(\)/.test(bgJs));
+ok('virada do dia zera e remarca o alarme', /alarm\.name === ALARM_BADGE_RESET[\s\S]{0,120}refreshBadge\(\)\.then\(\(\) => scheduleBadgeReset\(\)\)/.test(bgJs));
+ok('contador aparece tambem ao subir o worker', /refreshStatus\(\);\s*\n\s*refreshBadge\(\)/.test(bgJs));
+ok('plano B mantem o selo colorido da luz', /paintedLight == null/.test(bgJs) && bgJs.includes('setBadgeBackgroundColor'));
+
+section('19. Espera por evento (assincrono)');
 (async () => {
   const sig = S.createSignal();
   eq('waitUntil imediato', await S.waitUntil(sig, () => 42, 100, 0), 42);

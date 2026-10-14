@@ -1337,6 +1337,39 @@ globalThis.PegaVagaShared = (() => {
     return { jobs: changed ? out : list, dropped: dropped };
   }
 
+  /**
+   * Quantas candidaturas foram feitas **hoje** (dia local, 00:00 → agora). Puro:
+   * recebe o histórico de carimbos de tempo e o "agora" — o badge do ícone usa
+   * isso para mostrar o total do dia. Carimbo no futuro (relógio torto, outro
+   * fuso) fica de fora: candidatura feita hoje não pode ter acontecido amanhã.
+   * @param {number[]} apps histórico de candidaturas (epoch ms)
+   * @param {number} [now]
+   * @returns {number}
+   */
+  function countAppsToday(apps, now) {
+    const list = Array.isArray(apps) ? apps : [];
+    const base = new Date(Number.isFinite(now) ? now : Date.now());
+    const start = new Date(base.getFullYear(), base.getMonth(), base.getDate()).getTime();
+    // Tolerância de 1 s: o carimbo e a contagem podem vir de contextos diferentes.
+    const end = base.getTime() + 1000;
+
+    return list.filter((ts) => Number.isFinite(ts) && ts >= start && ts <= end).length;
+  }
+
+  /**
+   * Texto do badge do ícone: vazio quando não há nada hoje (assim o badge não
+   * atrapalha a luz do status) e `99+` quando passa de 99, porque o badge do
+   * Chrome não cabe mais que isso.
+   * @param {number} count
+   * @returns {string}
+   */
+  function badgeText(count) {
+    const n = safeCount(count);
+
+    if (!n) return '';
+    return n > 99 ? '99+' : String(n);
+  }
+
   /** Inteiro >= 0 no diagnóstico (nunca sai "undefined"/"NaN"). */
   function safeCount(value) {
     const parsed = Math.round(Number(value));
@@ -1548,6 +1581,8 @@ globalThis.PegaVagaShared = (() => {
     ERROR_KEEP,
     buildDiagnostics,
     describeRunEnd,
+    countAppsToday,
+    badgeText,
     buildSettingsBackup,
     parseSettingsBackup,
     HOUR_MS,
