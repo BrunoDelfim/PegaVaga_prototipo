@@ -22,6 +22,7 @@ pegavaga_chrome/
 ├── popup.js        # Fila de termos, orquestração da aba e geração do CSV
 ├── content.js      # Scraping do DOM do LinkedIn, candidatura, fila e storage
 ├── README.md
+├── PRE_PUBLICACAO.md  # Checklist do que falta antes de publicar
 └── tests/
     ├── pegavaga.test.js  # Teste automático (estático + unitário)
     └── SMOKE_TEST.md     # Roteiro de teste manual no Chrome
@@ -350,6 +351,13 @@ falhas no fim).
 [`tests/SMOKE_TEST.md`](tests/SMOKE_TEST.md) depois de mudanças relevantes —
 instale pelo `chrome://extensions`, dê **F5** nas abas do LinkedIn e confira cada
 item.
+
+## Antes de publicar
+
+O que falta para sair da beta está em **[`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)**:
+checklist com bloqueadores (risco de storage, política de privacidade, aviso no
+app), itens fortes (CI, diagnóstico, dry-run, empacotamento) e polimento.
+Cada item tem **por quê**, **como fazer** e uma caixinha que vai sendo marcada.
 
 ## Permissões utilizadas
 
