@@ -237,6 +237,24 @@ fim — e não siga adiante antes de entender a falha.
 - [ ] Se der, deixe passar da meia-noite (ou ajuste o relógio do sistema): o
       contador volta a zero **sozinho**.
 
+### T. Idioma (português / English)
+- [ ] Em **Configurações → Idioma**, escolha **English**: o pop-up inteiro vira
+      inglês (abas, grupos, botões, dicas e títulos dos campos).
+- [ ] Os pedaços que o app **desenha depois** também: fila de termos, donut,
+      resumo, card de cotas, barras de 24 h, faixa de ajuda e o toast — inclusive
+      **com números** (ex.: `128 jobs captured`).
+- [ ] Passe o mouse no **ícone da extensão**: o tooltip sai em inglês.
+- [ ] Termine uma varredura curta com a janela em segundo plano: a
+      **notificação** sai em inglês.
+- [ ] Volte para **Português**: tudo volta ao português, sem texto “preso” em
+      inglês.
+- [ ] **Automático (do navegador)**: com o Chrome em inglês o pop-up abre em
+      inglês; em português, em português.
+- [ ] **CSV** e **diagnóstico** continuam em português (é o que o aviso do próprio
+      grupo diz).
+- [ ] Nada do que você **digita** é traduzido: termos, localização e respostas do
+      formulário ficam iguais.
+
 ## Antes de publicar (teste final)
 
 1. Rode **este roteiro inteiro num perfil limpo** do Chrome (item 5 do checklist).

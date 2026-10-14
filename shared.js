@@ -59,6 +59,7 @@ globalThis.PegaVagaShared = (() => {
   const DEFAULT_SETTINGS = {
     baseUrl: LINKEDIN_SEARCH_URL,
     location: '',
+    locale: 'auto', // 'auto' | 'pt' | 'en' — idioma da interface
     easyApplyOnly: true, // busca só vagas com Candidatura Simplificada (filtro f_AL)
     terms: [],
     apply: {
@@ -93,6 +94,356 @@ globalThis.PegaVagaShared = (() => {
       days: [1, 2, 3, 4, 5], // 0 = domingo
       focusTab: true, // trazer a aba para frente (o Chrome pausa abas ocultas)
     },
+  };
+
+  /* ------------------------------------------------------------------------ */
+  /* Idioma (pt-BR / en)                                                       */
+  /* ------------------------------------------------------------------------ */
+
+  const LOCALES = ['pt', 'en'];
+  const DEFAULT_LOCALE = 'pt'; // idioma-fonte: é o texto que aparece no código
+
+  // Idioma escolhido no pop-up ('auto' = segue o navegador).
+  let chosenLocale = null;
+
+  /** 'pt' | 'en' | '' (quando é "auto"/desconhecido). */
+  function normalizeLocale(value) {
+    const raw = String(value == null ? '' : value).trim().toLowerCase();
+
+    if (!raw || raw === 'auto') return '';
+    if (raw.startsWith('pt')) return 'pt';
+    if (raw.startsWith('en')) return 'en';
+
+    return '';
+  }
+
+  /** Idioma do navegador, caindo no padrão quando não é pt nem en. */
+  function browserLocale() {
+    const nav = typeof navigator === 'object' && navigator ? navigator : null;
+    const tag = nav ? nav.language || (nav.languages && nav.languages[0]) : '';
+
+    return normalizeLocale(tag) || DEFAULT_LOCALE;
+  }
+
+  /** Troca o idioma da interface ('auto' volta a seguir o navegador). */
+  function setLocale(value) {
+    chosenLocale = normalizeLocale(value) || null;
+    return locale();
+  }
+
+  /**
+   * Padrões derivados das chaves do dicionário que têm marcadores: `{ n }` vira
+   * um grupo. Servem para traduzir texto **já pronto**, com números dentro — é
+   * o que o pop-up usa para traduzir a tela sem tocar em cada `textContent`.
+   */
+  // Padrões derivados do dicionário. São calculados na **primeira tradução**
+  // (e não no carregamento): o dicionário é declarado mais abaixo no arquivo.
+  let uiPatterns = null;
+
+  function uiPatternsList() {
+    if (uiPatterns) return uiPatterns;
+
+    uiPatterns = Object.keys(UI_EN)
+      .filter((chave) => /\{[a-z0-9_]+\}/i.test(chave))
+      .map((chave) => {
+        const sentinelas = [];
+        const chaveSegura = chave.replace(/\{([a-z0-9_]+)\}/gi, (todo, nome) => {
+          sentinelas.push(nome);
+          return '\u0000' + (sentinelas.length - 1) + '\u0000';
+        });
+
+        const escapado = chaveSegura.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(
+          '^' + escapado.replace(/\u0000(\d+)\u0000/g, () => '([\\s\\S]+?)') + '$'
+        );
+
+        return { chave, regex, sentinelas };
+      });
+
+    return uiPatterns;
+  }
+
+  /**
+   * Traduz um valor que caiu dentro de um marcador (ex.: o motivo da pausa em
+   * `Pausada por { motivo } até …`). Só casamento direto, de propósito: evita
+   * recursão entre `translate()` e `t()`.
+   */
+  function translateValue(valor, idioma) {
+    const lang = normalizeLocale(idioma) || locale();
+    const texto = String(valor == null ? '' : valor);
+
+    if (lang !== 'en') return texto;
+    return UI_EN[texto] != null ? UI_EN[texto] : texto;
+  }
+
+  /**
+   * Decide o que escrever num texto da tela, guardando o original em português.
+   * É o miolo do `localizeDom` do pop-up, puro de propósito: o pop-up só aplica
+   * o resultado, e o teste cobre os casos chatos (texto recém-escrito pelo
+   * render, troca de idioma e ir-e-voltar).
+   *
+   * @param {string} atual texto que está na tela agora
+   * @param {{pt: string, en: string}|null} registro o que já traduzimos antes
+   * @param {string} [idioma]
+   * @returns {{ texto: string, registro: {pt: string, en: string} }}
+   */
+  function syncText(atual, registro, idioma) {
+    const lang = normalizeLocale(idioma) || locale();
+    let reg = registro;
+
+    // Texto novo (o render acabou de escrever) vira o novo original; texto que
+    // é o que nós mesmos escrevemos mantém o registro.
+    if (!reg || (atual !== reg.pt && atual !== reg.en)) {
+      reg = { pt: atual, en: translate(atual, 'en') };
+    }
+
+    return { texto: lang === 'en' ? reg.en : reg.pt, registro: reg };
+  }
+
+  /**
+   * Traduz um texto já montado, preservando os espaços das pontas (texto de
+   * nó do DOM vem com quebras e indentação). Chave direta primeiro; depois as
+   * chaves com marcadores, como `{ n } vagas capturadas`.
+   *
+   * Texto sem tradução volta como veio — nada de `undefined` na tela.
+   */
+  function translate(texto, idioma) {
+    const base = String(texto == null ? '' : texto);
+    const lang = normalizeLocale(idioma) || locale();
+
+    if (lang !== 'en' || !base) return base;
+
+    const antes = (base.match(/^\s*/) || [''])[0];
+    const depois = (base.match(/\s*$/) || [''])[0];
+    const miolo = base.slice(antes.length, base.length - depois.length);
+
+    if (!miolo) return base;
+
+    if (UI_EN[miolo] != null) return antes + UI_EN[miolo] + depois;
+
+    for (const padrao of uiPatternsList()) {
+      const achado = miolo.match(padrao.regex);
+      if (!achado) continue;
+
+      const subs = {};
+      padrao.sentinelas.forEach((nome, i) => {
+        subs[nome] = translateValue(achado[i + 1], 'en');
+      });
+
+      return antes + t(padrao.chave, subs, 'en') + depois;
+    }
+
+    return base;
+  }
+
+  /** Idioma em uso agora. */
+  function locale() {
+    return chosenLocale || browserLocale();
+  }
+
+  /**
+   * Texto de interface no idioma em uso. A **chave é o próprio texto em
+   * português**: assim o que se lê no código é o que o usuário lê na tela, e
+   * texto ainda sem tradução aparece em português (nunca como `undefined`).
+   *
+   * `subs` troca os marcadores `{ nome }`, que são iguais nos dois idiomas. Um
+   * valor que seja, ele mesmo, um texto de interface (o motivo da pausa, por
+   * exemplo) também é traduzido — casamento direto, sem recursão.
+   *
+   * @param {string} texto texto base (pt)
+   * @param {Object} [subs]
+   * @param {string} [idioma] força um idioma (ex.: 'pt' para um arquivo de dados)
+   * @returns {string}
+   */
+  function t(texto, subs, idioma) {
+    const base = String(texto == null ? '' : texto);
+    const lang = normalizeLocale(idioma) || locale();
+    const tabela = lang === 'en' ? UI_EN : null;
+    const escrito = (tabela && tabela[base]) || base;
+
+    if (!subs) return escrito;
+
+    return escrito.replace(/\{([a-z0-9_]+)\}/gi, (todo, nome) =>
+      subs[nome] == null ? todo : translateValue(subs[nome], lang)
+    );
+  }
+
+  /**
+   * Traduções para inglês, com a **chave sendo o texto em português** (o idioma
+   * de origem). Serve aos dois lados: `t()` para o que é montado em código e
+   * `localizeDom()` (no pop-up) para os textos fixos do HTML — que por isso não
+   * precisam de marcação nenhuma.
+   *
+   * Regras: texto ainda sem tradução simplesmente continua em português, e os
+   * marcadores `{ nome }` têm de ser os mesmos dos dois lados (há teste).
+   */
+  const UI_EN = {
+    /* Pop-up: cabeçalho, abas e cards do Início */
+    'Rastreamento de vagas do LinkedIn': 'LinkedIn job tracking',
+    'Início': 'Home',
+    'Configurações': 'Settings',
+    'vagas': 'jobs',
+    'Nenhuma varredura realizada': 'No scan yet',
+    'Ainda não capturei nenhuma vaga. Clique em': "I haven't captured any job yet. Click",
+    'Iniciar': 'Start',
+    'para começar a varredura.': 'to start the scan.',
+    'Candidaturas nas últimas 24 h': 'Applications in the last 24 h',
+    'Vagas por termo': 'Jobs per term',
+    'Números:': 'Numbers:',
+    'vagas capturadas': 'jobs captured',
+    'Ainda não capturei vagas por termo. Rode uma varredura para ver aqui quanto cada termo rendeu.': 'No jobs per term yet. Run a scan to see how much each term brought in.',
+    '· candidatadas. Clique num termo para ver as últimas 24 h dele (barra clara = vagas, escura = candidaturas; em cinza, o que foi de ontem).': '· applied. Click a term to see its last 24 h (light bar = jobs, dark = applications; grey = yesterday).',
+    ': o PegaVaga abre a busca do LinkedIn com os seus termos, varre cada um e, se a candidatura automática estiver ligada, candidata-se respeitando as cotas de hora/24 h/dia, o agendador e o ritmo humano. No CSV sai também o motivo de cada vaga que não deu para candidatar.': ': PegaVaga opens the LinkedIn search with your terms, scans each one and, if automatic applying is on, applies within the hourly/24 h/daily quotas, the scheduler and the human pace. The CSV also carries the reason for every job it could not apply to.',
+    'e age na sua própria sessão do LinkedIn: automatizar candidaturas é uma área cinzenta dos termos de uso, e a conta pode ser limitada. Comece com cotas baixas (ex.: 5/h, 20/dia) e acompanhe as primeiras execuções. Sem vínculo com o LinkedIn.': 'and works on your own LinkedIn session: automating applications is a grey area of the terms of use, and the account may be limited. Start with low quotas (e.g. 5/h, 20/day) and watch the first runs. Not affiliated with LinkedIn.',
+    'Seções': 'Sections',
+    'Vagas por situação': 'Jobs by status',
+    'Relatório': 'Report',
+    'Exportar (CSV)': 'Export (CSV)',
+    'Não candidatadas': 'Not applied',
+    'Limpar vagas capturadas': 'Clear captured jobs',
+    'Como funciona': 'How it works',
+    'Clique em': 'Click',
+    'Use por sua conta e risco.': 'Use at your own risk.',
+    'Está em': 'It is in',
+    'beta': 'beta',
+
+    /* Pop-up: Configurações — busca e candidaturas */
+    'URL de busca ou perfil': 'Search URL or profile',
+    'Localização (opcional)': 'Location (optional)',
+    'Termos de vaga (vários, separados por vírgula ou um por linha)': 'Job terms (several, separated by commas or one per line)',
+    'Ex.: Brasil, São Paulo, Remoto': 'E.g. Brazil, São Paulo, Remote',
+    'desenvolvedor frontend, react, node.js': 'frontend developer, react, node.js',
+    'Candidaturas': 'Applications',
+    'Pesquisar somente vagas com Candidatura Simplificada': 'Search only jobs with Easy Apply',
+    'Candidatar-se sozinho pela Candidatura Simplificada': 'Apply by yourself with Easy Apply',
+    'Modo simulação': 'Simulation mode',
+    ': preencher o formulário, mas': ': fill the form but',
+    'não enviar': 'do not send',
+    'a candidatura (recomendado no primeiro uso)': 'the application (recommended for a first run)',
+    'Pedir a minha ajuda (notificação na área de trabalho) quando uma vaga travar num campo que só eu posso preencher, em vez de descartá-la': 'Ask for my help (desktop notification) when a job gets stuck on a field only I can fill, instead of dropping it',
+    'Avisar na área de trabalho quando a varredura terminar (útil quando você deixa rodando em segundo plano)': 'Notify on the desktop when the scan finishes (handy when you leave it running in the background)',
+    'Por termo': 'Per term',
+    'Por hora': 'Per hour',
+    'Por 24 h': 'Per 24 h',
+    'Por dia (0 = sem limite)': 'Per day (0 = no limit)',
+    'Máx. vagas por termo': 'Max jobs per term',
+    'Cotas dinâmicas: ao estourar uma delas o PegaVaga pausa e volta sozinho quando a próxima vaga liberar.': 'Dynamic quotas: when one runs out PegaVaga pauses and comes back on its own as soon as the next job is allowed.',
+    'Formulário (perguntas e popups do LinkedIn)': 'Form (LinkedIn questions and popups)',
+    'Responder sozinho perguntas obrigatórias (Sim/Não, listas e números)': 'Answer required questions by yourself (Yes/No, lists and numbers)',
+    'Em Sim/Não, responder': 'For Yes/No, answer',
+    'Sim': 'Yes',
+    'Não': 'No',
+    'Número (anos, quantidade)': 'Number (years, quantity)',
+    'Texto livre (ex.: cidade)': 'Free text (e.g. city)',
+    'Vazio = não inventa resposta': 'Empty = no invented answer',
+    'O que o LinkedIn não respondeu vira estas respostas; deixar o texto livre vazio evita respostas inventadas. Popups de avaliação ou pesquisa que aparecem depois de candidatar são fechados sozinhos.': 'Whatever LinkedIn did not answer becomes these answers; leaving the free text empty avoids invented answers. Rating or survey popups that appear after applying are closed on their own.',
+
+    /* Pop-up: Configurações — furtividade, agendador, backup e diagnóstico */
+    'Furtividade e segurança': 'Stealth and safety',
+    'Ceder a vez para mim: enquanto eu mexo na página, a automação espera em vez de clicar ou rolar por cima': 'Yield to me: while I use the page, the automation waits instead of clicking or scrolling over me',
+    'Fazer pausas longas de tempos em tempos (ritmo de gente)': 'Take long breaks now and then (human pace)',
+    'Intervalo mínimo (s)': 'Minimum interval (s)',
+    'Intervalo máximo (s)': 'Maximum interval (s)',
+    'Vagas entre pausas': 'Jobs between breaks',
+    'Duração da pausa (s)': 'Break length (s)',
+    'Os intervalos variam sozinhos (±30%), há pausas de "leitura" da vaga e, se o LinkedIn pedir verificação ou avisar de limite de uso, o PegaVaga para tudo por 1 h para proteger a sua conta.': 'Intervals vary on their own (±30%), there are "reading" pauses on each job and, if LinkedIn asks for verification or warns about usage limits, PegaVaga stops everything for 1 h to protect your account.',
+    'Agendador': 'Scheduler',
+    'Iniciar e parar sozinho nos horários abaixo': 'Start and stop on its own at the times below',
+    'Começa às': 'Starts at',
+    'Para às': 'Stops at',
+    'Dias da semana': 'Days of the week',
+    'Começar sozinho quando o horário abrir': 'Start on its own when the window opens',
+    'Trazer a aba para frente (o Chrome pausa os timers de abas em segundo plano)': 'Bring the tab to the front (Chrome pauses timers in background tabs)',
+    'Agendador desativado.': 'Scheduler off.',
+    'Backup da configuração': 'Configuration backup',
+    'Salve a configuração num JSON para não perdê-la ao limpar os dados ou reinstalar. O arquivo leva as buscas, as cotas, o agendador, o ritmo e as respostas do formulário (as vagas capturadas saem pela exportação em CSV).': 'Save the configuration as JSON so you do not lose it when clearing data or reinstalling. The file carries the searches, quotas, scheduler, pace and the form answers (captured jobs come out through the CSV export).',
+    'Salvar (JSON)': 'Save (JSON)',
+    'Restaurar de arquivo': 'Restore from file',
+    'Restaurar agora': 'Restore now',
+    'Cancelar': 'Cancel',
+    'Diagnóstico': 'Diagnostics',
+    'Deu problema? Este botão copia a versão, a configuração, a fila e os últimos erros registrados — cole no relato do problema. Confira o texto antes de publicar: ele inclui a sua configuração e as respostas do formulário.': 'Something broke? This button copies the version, the configuration, the queue and the last recorded errors — paste it into the bug report. Check the text before posting it: it includes your configuration and the form answers.',
+    'Copiar diagnóstico': 'Copy diagnostics',
+    'Salvo automaticamente.': 'Saved automatically.',
+
+    /* Pop-up: barra de ações e lâmpada do tema */
+    'Parar': 'Stop',
+    'Pular': 'Skip',
+    'Iniciar Busca e Varredura': 'Start search and scan',
+    'Parar Varredura': 'Stop scan',
+    'Pular vaga atual': 'Skip current job',
+    'Mudar para o tema escuro': 'Switch to dark theme',
+    /* Luz de status, fila e pausas */
+    'Capturando': 'Capturing',
+    'Pronta': 'Ready',
+    'Precisa de atenção': 'Needs attention',
+    'Pronta: nenhuma varredura em andamento.': 'Ready: no scan running.',
+    'Capturando a página de vagas aberta.': 'Capturing the job page you have open.',
+    'Capturando vagas — {posicao}: {termo}.': 'Capturing jobs — {posicao}: {termo}.',
+    'termo {n} de {total}': 'term {n} of {total}',
+    'página atual': 'current page',
+    'Pausada por {motivo} até {hora}.': 'Paused by {motivo} until {hora}.',
+    'Descansando até {hora}.': 'Resting until {hora}.',
+    'LinkedIn sinalizou limite de uso ({motivo}). Descanso até {hora}.': 'LinkedIn flagged a usage limit ({motivo}). Resting until {hora}.',
+    'LinkedIn sinalizou limite de uso. Descanso até {hora}.': 'LinkedIn flagged a usage limit. Resting until {hora}.',
+    'PegaVaga precisa de ajuda para continuar (campo: {campo}).': 'PegaVaga needs your help to continue (field: {campo}).',
+    'PegaVaga precisa de ajuda para continuar.': 'PegaVaga needs your help to continue.',
+    'cota de candidaturas': 'application quota',
+    'proteção da conta (limite do LinkedIn)': 'account protection (LinkedIn limit)',
+    'você estava usando o navegador': 'you were using the browser',
+    'janela do agendador': 'scheduler window',
+
+    /* Notificação de fim de varredura */
+    'PegaVaga terminou a varredura': 'PegaVaga finished the scan',
+    'PegaVaga parou para proteger a sua conta': 'PegaVaga stopped to protect your account',
+    '{n} vaga capturada': '{n} job captured',
+    '{n} vagas capturadas': '{n} jobs captured',
+    '{n} candidatura enviada': '{n} application sent',
+    '{n} candidaturas enviadas': '{n} applications sent',
+    '{n} formulário(s) preenchido(s) sem enviar (modo simulação)': '{n} form(s) filled in without sending (simulation mode)',
+    '{n} antiga(s) descartada(s) por espaço': '{n} old job(s) dropped for space',
+    'O LinkedIn pediu verificação ou avisou de limite de uso ({motivo}). A varredura parou sozinha e volta a funcionar depois do descanso.': 'LinkedIn asked for verification or warned about usage limits ({motivo}). The scan stopped on its own and works again after the rest.',
+    'O LinkedIn pediu verificação ou avisou de limite de uso. A varredura parou sozinha e volta a funcionar depois do descanso.': 'LinkedIn asked for verification or warned about usage limits. The scan stopped on its own and works again after the rest.',
+
+    /* Relatório: situações, resumo e legenda do donut */
+    'Enviada': 'Applied',
+    'Simulada (não enviada)': 'Simulated (not sent)',
+    'Externa (site da empresa)': 'External (company site)',
+    'Botão de candidatura não reconhecido': 'Apply button not recognised',
+    'Sem botão de candidatura': 'No apply button',
+    'Já candidatada antes': 'Already applied before',
+    'Formulário não abriu': 'Form did not open',
+    'Travada em campo obrigatório': 'Stuck on a required field',
+    'Formulário incompleto': 'Incomplete form',
+    'Interrompida (Parar)': 'Interrupted (Stop)',
+    'Parada por proteção do LinkedIn': 'Stopped by LinkedIn protection',
+    'Erro na automação': 'Automation error',
+    'Não tentada': 'Not attempted',
+    'Adiada (sem cota ou fora do horário)': 'Postponed (no quota or outside the window)',
+    'Nenhuma vaga capturada ainda.': 'No jobs captured yet.',
+    '{n} candidatada(s) nessa sessão': '{n} applied in this session',
+    '{n} candidatada(s) antes': '{n} applied before',
+    '{n} não candidatada(s)': '{n} not applied',
+    '{n} na fila': '{n} queued',
+    'nesta sessão': 'this session',
+    'antes': 'before',
+    'não candidatada(s)': 'not applied',
+    'na fila': 'queued',
+    'Vagas candidatadas nesta sessão': 'Jobs applied in this session',
+    'Vagas já candidatadas antes': 'Jobs already applied before',
+    'Vagas não candidatadas': 'Jobs not applied',
+    'Vagas na fila': 'Jobs queued',
+    'Salvo automaticamente às {hora}.': 'Saved automatically at {hora}.',
+
+    /* Lâmpada do tema, seletor de idioma e mensagens de detecção */
+    'Mudar para o tema claro': 'Switch to light theme',
+    'Idioma': 'Language',
+    'Idioma da interface': 'Interface language',
+    'Automático (do navegador)': 'Automatic (from the browser)',
+    'Português': 'Portuguese',
+    'Muda os textos do pop-up, do ícone e das notificações. O CSV e o diagnóstico continuam em português.': "Changes the texts in the popup, the icon and the notifications. The CSV and the diagnostics stay in Portuguese.",
+    'Redirecionado para verificação': 'Redirected to verification',
+    'Aviso de limite de uso na página do LinkedIn': 'LinkedIn usage limit warning on the page',
   };
 
   /* ------------------------------------------------------------------------ */
@@ -320,6 +671,7 @@ globalThis.PegaVagaShared = (() => {
     return {
       baseUrl: String(value.baseUrl || DEFAULT_SETTINGS.baseUrl).trim(),
       location: String(value.location || '').trim(),
+      locale: LOCALES.indexOf(String(value.locale || '')) >= 0 ? String(value.locale) : 'auto',
       easyApplyOnly: value.easyApplyOnly !== false,
       terms: normalizeTerms(value.terms),
       apply: {
@@ -1409,11 +1761,15 @@ globalThis.PegaVagaShared = (() => {
 
     if (d.reason === 'bloqueio') {
       return {
-        title: 'PegaVaga parou para proteger a sua conta',
-        message:
-          'O LinkedIn pediu verificação ou avisou de limite de uso' +
-          (d.guardReason ? ' (' + d.guardReason + ')' : '') +
-          '. A varredura parou sozinha e volta a funcionar depois do descanso.',
+        title: t('PegaVaga parou para proteger a sua conta'),
+        message: d.guardReason
+          ? t(
+              'O LinkedIn pediu verificação ou avisou de limite de uso ({motivo}). A varredura parou sozinha e volta a funcionar depois do descanso.',
+              { motivo: d.guardReason }
+            )
+          : t(
+              'O LinkedIn pediu verificação ou avisou de limite de uso. A varredura parou sozinha e volta a funcionar depois do descanso.'
+            ),
         urgent: true,
       };
     }
@@ -1421,20 +1777,24 @@ globalThis.PegaVagaShared = (() => {
     const vagas = safeCount(d.jobs);
     const candidaturas = safeCount(d.applied);
     const descartadas = safeCount(d.dropped);
-    const partes = [vagas + (vagas === 1 ? ' vaga capturada' : ' vagas capturadas')];
+    const partes = [
+      t(vagas === 1 ? '{n} vaga capturada' : '{n} vagas capturadas', { n: vagas }),
+    ];
 
     partes.push(
       d.dryRun
-        ? candidaturas + ' formulário(s) preenchido(s) sem enviar (modo simulação)'
-        : candidaturas + (candidaturas === 1 ? ' candidatura enviada' : ' candidaturas enviadas')
+        ? t('{n} formulário(s) preenchido(s) sem enviar (modo simulação)', { n: candidaturas })
+        : t(candidaturas === 1 ? '{n} candidatura enviada' : '{n} candidaturas enviadas', {
+            n: candidaturas,
+          })
     );
 
     if (descartadas) {
-      partes.push(descartadas + ' antiga(s) descartada(s) por espaço');
+      partes.push(t('{n} antiga(s) descartada(s) por espaço', { n: descartadas }));
     }
 
     return {
-      title: 'PegaVaga terminou a varredura',
+      title: t('PegaVaga terminou a varredura'),
       message: partes.join(' · ') + '.',
       urgent: false,
     };
@@ -1583,6 +1943,17 @@ globalThis.PegaVagaShared = (() => {
     describeRunEnd,
     countAppsToday,
     badgeText,
+
+    /* Idioma da interface */
+    LOCALES,
+    DEFAULT_LOCALE,
+    locale,
+    setLocale,
+    normalizeLocale,
+    t,
+    translate,
+    syncText,
+    UI_EN,
     buildSettingsBackup,
     parseSettingsBackup,
     HOUR_MS,

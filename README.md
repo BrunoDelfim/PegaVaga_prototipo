@@ -42,7 +42,7 @@ A versão vive no `manifest.json` (campo `version`). A regra de avanço é:
 Em resumo: o **último número** é o contador do dia a dia (0–9) e o **do meio** só
 muda quando ele estoura.
 
-Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.9`) — é ela que o
+Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.10`) — é ela que o
 script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
@@ -349,6 +349,29 @@ Na aba **Configurações → Backup da configuração**:
 > Serve para reinstalar sem reconfigurar tudo: salve o JSON, reinstale a
 > extensão, restaure.
 
+### Idioma da interface (português / English)
+
+Na aba **Configurações → Idioma** dá para escolher **Automático (do navegador)**,
+**Português** ou **English**. O que muda: pop-up, **tooltip do ícone** e as
+**notificações**. O que **não** muda (de propósito): o **CSV** e o **diagnóstico**
+continuam em português — são arquivos de dados, e traduzir a planilha mudaria o
+formato de quem já usa.
+
+Como funciona por dentro: o `shared.js` tem um **dicionário de pt → en** em que a
+**chave é o próprio texto em português** (o idioma de origem). Isso tem duas
+consequências boas:
+
+- o pop-up **não precisa de marcação nenhuma** no HTML: o `localizeDom()` traduz a
+  tela inteira de uma vez, texto por texto, inclusive **textos com números**
+  (`128 vagas capturadas` → `128 jobs captured`), porque o dicionário aceita
+  chaves com marcadores;
+- texto **ainda sem tradução aparece em português**, nunca como `undefined` — e um
+  teste **reprova** se entrar texto novo no pop-up sem tradução (a cobertura é
+  conferida a cada `node tests/pegavaga.test.js`).
+
+O idioma escolhido vale também no service worker (que lê a configuração ao subir e
+a cada mudança), para o tooltip e as notificações saírem no idioma certo.
+
 ### Arquivos gerados
 
 **CSV completo** — nome `pegavaga_AAAA-MM-DD_HH-MM-SS.csv`:
@@ -414,7 +437,7 @@ item.
 
 ```bash
 bash tools/empacotar.sh          # empacota o commit atual (HEAD)
-bash tools/empacotar.sh v0.7.9   # empacota uma tag — é o que se publica
+bash tools/empacotar.sh v0.7.10   # empacota uma tag — é o que se publica
 ```
 
 O script roda os testes antes (não gera zip com teste vermelho), monta

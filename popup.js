@@ -94,9 +94,87 @@ async function init() {
   await syncScanningState();
 
   await initTheme();
+  applyLanguage(); // traduz a tela e passa a acompanhar o que o render escrever
+  watchLanguage();
 
   chrome.runtime.onMessage.addListener(onRuntimeMessage);
   chrome.storage.onChanged.addListener(onStorageChanged);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Idioma da interface                                                        */
+/* -------------------------------------------------------------------------- */
+
+// Texto em português de cada nó (e de cada atributo), para poder voltar atrás.
+const textosOriginais = new WeakMap();
+const atributosOriginais = new WeakMap();
+let traducaoAgendada = null;
+
+/**
+ * Traduz o que já está na tela: texto, `title` e `placeholder`.
+ *
+ * A chave é o **próprio texto em português** (o idioma de origem), então não há
+ * nada para marcar no HTML nem `t()` em cada `textContent`: o que o render
+ * escreveu em português ganha a versão em inglês aqui — inclusive textos com
+ * números, porque o dicionário aceita chaves com marcadores.
+ *
+ * Guarda o original de cada nó para voltar ao português sem perder nada.
+ */
+function localizeDom() {
+  const idioma = SHARED.locale();
+
+  if (typeof document.createTreeWalker === 'function') {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    const nos = [];
+
+    while (walker.nextNode()) nos.push(walker.currentNode);
+
+    for (const no of nos) {
+      const atual = no.nodeValue;
+      const sincronizado = SHARED.syncText(atual, textosOriginais.get(no), idioma);
+
+      textosOriginais.set(no, sincronizado.registro);
+      if (sincronizado.texto !== atual) no.nodeValue = sincronizado.texto;
+    }
+  }
+
+  for (const el of document.querySelectorAll('[title], [placeholder], [aria-label]')) {
+    for (const nome of ['title', 'placeholder', 'aria-label']) {
+      if (!el.hasAttribute(nome)) continue;
+
+      const atual = el.getAttribute(nome);
+      const registros = atributosOriginais.get(el) || {};
+      const sincronizado = SHARED.syncText(atual, registros[nome], idioma);
+
+      registros[nome] = sincronizado.registro;
+      atributosOriginais.set(el, registros);
+
+      if (sincronizado.texto !== atual) el.setAttribute(nome, sincronizado.texto);
+    }
+  }
+}
+
+/**
+ * Passa a traduzir também o que aparecer depois (gráficos, resumos, faixas…).
+ * A tradução é idempotente, então a própria escrita dela não gera laço.
+ */
+function watchLanguage() {
+  if (typeof MutationObserver !== 'function') return;
+
+  new MutationObserver(() => {
+    if (traducaoAgendada) return;
+
+    traducaoAgendada = setTimeout(() => {
+      traducaoAgendada = null;
+      localizeDom();
+    }, 30);
+  }).observe(document.body, { childList: true, subtree: true, characterData: true });
+}
+
+/** Aplica o idioma escolhido na configuração (e redesenha data/hora do pop-up). */
+function applyLanguage() {
+  SHARED.setLocale(settings.locale);
+  localizeDom();
 }
 
 function cacheElements() {
@@ -114,6 +192,7 @@ function cacheElements() {
   els.settings = document.getElementById('settings');
   els.baseUrl = document.getElementById('base-url');
   els.location = document.getElementById('location');
+  els.locale = document.getElementById('locale');
   els.easyApplyOnly = document.getElementById('easy-apply-only');
   els.terms = document.getElementById('terms');
   els.termsPreview = document.getElementById('terms-preview');
@@ -250,6 +329,12 @@ function bindEvents() {
   ].forEach((input) => input.addEventListener('change', onSettingsInput));
 
   els.dayInputs.forEach((input) => input.addEventListener('change', onSettingsInput));
+
+  // Idioma: salva e reaplica na hora — a tela se traduz sozinha depois.
+  els.locale.addEventListener('change', async () => {
+    await saveSettingsFromForm();
+    applyLanguage();
+  });
 
   // Ao sair do campo, "limpa" a lista de termos (sem vazios e sem repetidos).
   els.terms.addEventListener('blur', () => saveSettingsFromForm({ normalizeForm: true }));
@@ -630,6 +715,7 @@ async function loadSettingsToForm() {
 
   els.baseUrl.value = settings.baseUrl;
   els.location.value = settings.location;
+  els.locale.value = settings.locale;
   els.easyApplyOnly.checked = settings.easyApplyOnly;
   els.terms.value = settings.terms.join('\n');
 
@@ -746,6 +832,7 @@ async function saveSettingsFromForm(options) {
   const parsed = SHARED.parseSettings({
     baseUrl: els.baseUrl.value,
     location: els.location.value,
+    locale: els.locale.value,
     easyApplyOnly: els.easyApplyOnly.checked,
     terms: els.terms.value,
     apply: {

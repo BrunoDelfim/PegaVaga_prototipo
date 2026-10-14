@@ -71,6 +71,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes[STORAGE.settings] || changes[STORAGE.run]) syncAlarm();
+  if (changes[STORAGE.settings]) refreshLocale();
   if (changes[STORAGE.settings] || changes[STORAGE.run] || changes[STORAGE.guard]) {
     refreshStatus();
   }
@@ -120,9 +121,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 /* Ao subir um service worker novo, garante o alarme, a luz e o contador certos. */
 syncAlarm();
-refreshStatus();
+refreshLocale().then(() => refreshStatus());
 refreshBadge();
 scheduleBadgeReset();
+
+/**
+ * O idioma escolhido no pop-up também vale aqui: o tooltip do ícone e as
+ * notificações saem no idioma do usuário. Lê uma vez (e a cada mudança de
+ * configuração), deixando `SHARED.t()`/`translate()` prontos para o resto.
+ */
+async function refreshLocale() {
+  try {
+    const data = await chrome.storage.local.get(STORAGE.settings);
+    SHARED.setLocale(SHARED.parseSettings(data[STORAGE.settings]).locale);
+  } catch (error) {
+    SHARED.setLocale(null); // sem configuração legível: segue o navegador
+  }
+}
 
 /* -------------------------------------------------------------------------- */
 /* Leitura de estado                                                           */
@@ -185,7 +200,7 @@ async function refreshStatus(progress) {
 }
 
 async function applyLight(light) {
-  setAction('setTitle', { title: light.title });
+  setAction('setTitle', { title: SHARED.translate(light.title) });
 
   if (paintedLight !== light.color) {
     const painted = await paintIcon(light.color).catch(() => false);

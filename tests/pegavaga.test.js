@@ -434,10 +434,70 @@ eq('badge aceita numero em texto', S.badgeText('12'), '12');
 ok('background usa o contador no badge', bgJs.includes('SHARED.badgeText(todayCount)') && bgJs.includes("setAction('setBadgeText'"));
 ok('contador acompanha o historico de candidaturas', /changes\[STORAGE\.apps\]\) refreshBadge\(\)/.test(bgJs));
 ok('virada do dia zera e remarca o alarme', /alarm\.name === ALARM_BADGE_RESET[\s\S]{0,120}refreshBadge\(\)\.then\(\(\) => scheduleBadgeReset\(\)\)/.test(bgJs));
-ok('contador aparece tambem ao subir o worker', /refreshStatus\(\);\s*\n\s*refreshBadge\(\)/.test(bgJs));
+ok('contador aparece tambem ao subir o worker', /refreshBadge\(\);\s*\n\s*scheduleBadgeReset\(\)/.test(bgJs) && bgJs.includes('refreshLocale().then(() => refreshStatus())'));
 ok('plano B mantem o selo colorido da luz', /paintedLight == null/.test(bgJs) && bgJs.includes('setBadgeBackgroundColor'));
 
-section('19. Espera por evento (assincrono)');
+section('19. Idioma da interface (pt/en)');
+const marcadoresDe = (s) => [...String(s).matchAll(/\{([a-z0-9_]+)\}/gi)].map((m) => m[1]).sort().join(',');
+const neutrosI18n = ['PegaVaga', 'English', 'https://www.linkedin.com/jobs/search/'];
+
+eq('idioma padrao e automatico', S.parseSettings(null).locale, 'auto');
+eq('idioma aceito', S.parseSettings({ locale: 'en' }).locale, 'en');
+eq('idioma invalido volta para automatico', S.parseSettings({ locale: 'klingon' }).locale, 'auto');
+eq('normalizeLocale entende variantes', [S.normalizeLocale('pt-BR'), S.normalizeLocale('en-US'), S.normalizeLocale('auto'), S.normalizeLocale('fr')].join('|'), 'pt|en||');
+eq('LOCALES', S.LOCALES.join(','), 'pt,en');
+
+S.setLocale('pt');
+eq('t() em pt devolve o proprio texto', S.t('Início'), 'Início');
+eq('t() substitui marcadores', S.t('{n} vagas capturadas', { n: 3 }), '3 vagas capturadas');
+ok('notificacao sai em pt por padrao', S.describeRunEnd({ jobs: 3, applied: 2 }).message === '3 vagas capturadas · 2 candidaturas enviadas.');
+
+S.setLocale('en');
+eq('t() em en traduz', S.t('Início'), 'Home');
+eq('t() traduz com marcadores', S.t('{n} vagas capturadas', { n: 3 }), '3 jobs captured');
+eq('t() sem valor deixa o marcador', S.t('{n} vagas capturadas', {}), '{n} jobs captured');
+eq('t() sem traducao devolve o original', S.t('Texto que ninguem traduziu'), 'Texto que ninguem traduziu');
+eq('t() aceita idioma forcado', S.t('Início', null, 'pt'), 'Início');
+eq('translate() traduz texto pronto', S.translate('Nenhuma varredura realizada'), 'No scan yet');
+eq('translate() preserva os espacos das pontas', S.translate('\n      Início\n    '), '\n      Home\n    ');
+eq('translate() traduz texto com numero', S.translate('128 vagas capturadas'), '128 jobs captured');
+eq('translate() traduz o valor dentro do marcador', S.translate('Pausada por cota de candidaturas até 14:30.'), 'Paused by application quota until 14:30.');
+eq('translate() nao inventa traducao', S.translate('Texto solto por ai'), 'Texto solto por ai');
+eq('translate() em pt nao mexe', S.translate('Início', 'pt'), 'Início');
+const notificacaoEn = S.describeRunEnd({ jobs: 3, applied: 2 });
+ok('notificacao sai traduzida', notificacaoEn.title === 'PegaVaga finished the scan' && notificacaoEn.message === '3 jobs captured · 2 applications sent.');
+const urgenteEn = S.describeRunEnd({ reason: 'bloqueio', guardReason: 'Aviso de limite de uso na página do LinkedIn' });
+ok('notificacao urgente traduz o motivo', urgenteEn.urgent === true && urgenteEn.message.includes('LinkedIn usage limit warning on the page'));
+S.setLocale('pt');
+
+// Cobertura: nada da interface fica sem tradução no idioma novo.
+const corpoPopup = popupHtml.slice(popupHtml.indexOf('</style>'));
+const textosPopup = [...corpoPopup.matchAll(/>([^<>{}]{3,}?)</g)]
+  .map((m) => m[1].replace(/\s+/g, ' ').trim())
+  .filter((t) => /[A-Za-zÀ-ÿ]{3}/.test(t));
+const atributosPopup = [...corpoPopup.matchAll(/(?:title|placeholder|aria-label)="([^"]{3,})"/g)].map((m) => m[1]);
+eq('todo texto do pop-up tem traducao', [...new Set(textosPopup)].filter((t) => S.UI_EN[t] == null && !neutrosI18n.includes(t)), []);
+eq('todo atributo do pop-up tem traducao', [...new Set(atributosPopup)].filter((t) => S.UI_EN[t] == null && !neutrosI18n.includes(t)), []);
+eq('marcadores batem nos dois idiomas', Object.entries(S.UI_EN).filter((par) => marcadoresDe(par[0]) !== marcadoresDe(par[1])).map((par) => par[0]), []);
+eq('nenhuma traducao vazia', Object.entries(S.UI_EN).filter((par) => !String(par[1]).trim()).map((par) => par[0]), []);
+ok('dicionario tem volume util', Object.keys(S.UI_EN).length >= 120);
+ok('popup tem o seletor de idioma', popupHtml.includes('id="locale"') && popupJs.includes('SHARED.setLocale(settings.locale)'));
+ok('popup traduz a tela pelo dicionario', popupJs.includes('function localizeDom') && popupJs.includes('SHARED.syncText(textosOriginais.get(no)') === false && popupJs.includes('SHARED.syncText(atual,') && popupJs.includes('MutationObserver'));
+ok('background usa o idioma no tooltip e nas notificacoes', bgJs.includes('SHARED.translate(light.title)') && bgJs.includes('refreshLocale'));
+
+// O miolo do localizeDom (pop-up): o que escrever na tela e o que guardar.
+const primeiraEn = S.syncText('Início', null, 'en');
+eq('texto novo em en e traduzido', primeiraEn.texto, 'Home');
+eq('registro guarda o original em pt', primeiraEn.registro.pt, 'Início');
+eq('traduzir de novo nao muda nada', S.syncText('Home', primeiraEn.registro, 'en').texto, 'Home');
+eq('voltar para pt devolve o original', S.syncText('Home', primeiraEn.registro, 'pt').texto, 'Início');
+eq('texto que o render trocou vira novo original', S.syncText('Configurações', primeiraEn.registro, 'en').texto, 'Settings');
+eq('texto com numero tambem passa', S.syncText('128 vagas capturadas', null, 'en').texto, '128 jobs captured');
+eq('sem idioma en o texto fica em pt', S.syncText('Início', null, 'pt').texto, 'Início');
+eq('texto desconhecido fica como esta', S.syncText('???', null, 'en').texto, '???');
+eq('espacos das pontas sobrevivem', S.syncText('\n   Início\n ', null, 'en').texto, '\n   Home\n ');
+
+section('20. Espera por evento (assincrono)');
 (async () => {
   const sig = S.createSignal();
   eq('waitUntil imediato', await S.waitUntil(sig, () => 42, 100, 0), 42);
