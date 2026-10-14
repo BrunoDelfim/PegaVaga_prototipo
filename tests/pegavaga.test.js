@@ -1,0 +1,242 @@
+/* =============================================================================
+ * PegaVaga - teste geral (estatico + unitario das funcoes puras).
+ *
+ * Como rodar (na raiz do projeto):
+ *     node tests/pegavaga.test.js
+ *
+ * Cobre: manifest/permissions, exports do shared.js, mensageria entre os
+ * contextos, IDs do popup, codigos de status, configuracao, cotas, horarios,
+ * relatorio, luz de status, deteccoes (Candidatou-se, externa, ...) e a espera
+ * por evento. Sai com codigo 0 quando tudo passa e 1 quando ha falha.
+ * ===========================================================================*/
+const fs = require('fs');
+const ROOT = require('path').resolve(__dirname, '..') + '/';
+
+let pass = 0;
+const failures = [];
+function ok(name, cond, extra) {
+  if (cond) pass += 1;
+  else failures.push(name + (extra ? '  ->  ' + extra : ''));
+}
+function eq(name, got, want) {
+  ok(name, JSON.stringify(got) === JSON.stringify(want), 'got ' + JSON.stringify(got) + ' want ' + JSON.stringify(want));
+}
+const read = (f) => fs.readFileSync(ROOT + f, 'utf8');
+const section = (t) => console.log('\n=== ' + t + ' ===');
+
+section('0. Arquivos e manifest');
+['manifest.json', 'shared.js', 'background.js', 'content.js', 'popup.html', 'popup.js'].forEach((f) =>
+  ok('existe ' + f, fs.existsSync(ROOT + f))
+);
+const manifest = JSON.parse(read('manifest.json'));
+eq('manifest_version', manifest.manifest_version, 3);
+ok('service_worker', manifest.background.service_worker === 'background.js');
+eq('content_scripts js', manifest.content_scripts[0].js, ['shared.js', 'content.js']);
+eq('content_scripts matches', manifest.content_scripts[0].matches, ['https://www.linkedin.com/*']);
+['storage', 'alarms', 'notifications', 'activeTab'].forEach((p) => ok('permissao ' + p, manifest.permissions.includes(p)));
+ok('host_permissions linkedin', manifest.host_permissions.includes('https://www.linkedin.com/*'));
+ok('versao semver', /^\d+\.\d+\.\d+$/.test(manifest.version), manifest.version);
+
+section('1. Exports do shared.js');
+require(ROOT + 'shared.js');
+const S = globalThis.PegaVagaShared;
+ok('PegaVagaShared existe', Boolean(S));
+const consumers = ['content.js', 'popup.js', 'background.js'].map(read).join('\n');
+const usedShared = [...new Set([...consumers.matchAll(/SHARED\.([A-Za-z0-9_]+)/g)].map((m) => m[1]))];
+eq('todos os SHARED.* usados existem', usedShared.filter((n) => !(n in S)), []);
+console.log('   ' + usedShared.length + ' simbolos SHARED.* verificados: ' + usedShared.join(', '));
+const usedMsg = [...new Set([...consumers.matchAll(/MSG\.([A-Z_]+)/g)].map((m) => m[1]))];
+eq('todos os MSG.* usados existem', usedMsg.filter((k) => !(k in S.MSG)), []);
+const usedStorage = [...new Set([...consumers.matchAll(/STORAGE\.([a-z0-9_]+)/g)].map((m) => m[1]))];
+eq('todos os STORAGE.* usados existem', usedStorage.filter((k) => !(k in S.STORAGE)), []);
+
+section('2. IDs do popup (HTML x JS)');
+const popupJs = read('popup.js');
+const popupHtml = read('popup.html');
+const ids = [...new Set([...popupJs.matchAll(/getElementById\('([^']+)'\)/g)].map((m) => m[1]))];
+eq('todos os IDs do popup.js existem no HTML', ids.filter((id) => !popupHtml.includes('id="' + id + '"')), []);
+console.log('   ' + ids.length + ' IDs verificados');
+ok('popup carrega shared.js antes de popup.js', popupHtml.indexOf('shared.js') < popupHtml.indexOf('popup.js'));
+
+section('3. Codigos de status');
+const codes = [...new Set([...read('content.js').matchAll(/status:\s*'([a-z_]+)'/g)].map((m) => m[1]))];
+const known = new Set(Object.keys(S.APPLY_OUTCOMES).concat([S.APPLY_PENDING]));
+eq('status do content.js sao conhecidos', codes.filter((c) => !known.has(c)), []);
+console.log('   ' + codes.join(', '));
+ok('todo APPLY_OUTCOMES tem label; reason so falta em "enviada"', Object.keys(S.APPLY_OUTCOMES).every((k) => S.APPLY_OUTCOMES[k].label && (k === 'enviada' || S.APPLY_OUTCOMES[k].reason)), Object.keys(S.APPLY_OUTCOMES).filter((k) => !S.APPLY_OUTCOMES[k].reason).join(','));
+console.log('   desfechos: ' + Object.keys(S.APPLY_OUTCOMES).join(', '));
+
+section('4. Higiene');
+['shared.js', 'background.js', 'content.js', 'popup.js'].forEach((f) => {
+  const src = read(f);
+  ok(f + ': sem debugger', !/\bdebugger\b/.test(src));
+  ok(f + ': sem TODO/FIXME', !/TODO|FIXME/.test(src));
+});
+ok('content.js tem 1 onMessage', (read('content.js').match(/chrome\.runtime\.onMessage\.addListener/g) || []).length === 1);
+ok('popup.js tem 1 onMessage', (read('popup.js').match(/chrome\.runtime\.onMessage\.addListener/g) || []).length === 1);
+
+section('5. Numeros e termos');
+eq('num normal', S.num('5', 1, 10, 3), 5);
+eq('num vazio -> fallback', S.num('', 1, 10, 3), 3);
+eq('num invalido -> fallback', S.num('abc', 1, 10, 3), 3);
+eq('num acima do max', S.num(20, 1, 10, 3), 10);
+eq('num abaixo do min', S.num(-5, 1, 10, 3), 1);
+eq('num arredonda', S.num(3.6, 1, 10, 3), 4);
+eq('normalizeTerms virgula+linha', S.normalizeTerms('react, node.js\nVUE'), ['react', 'node.js', 'VUE']);
+eq('normalizeTerms dedupe (case)', S.normalizeTerms('react, React, REACT'), ['react']);
+eq('normalizeTerms aspas', S.normalizeTerms('"react"'), ['react']);
+eq('normalizeTerms array', S.normalizeTerms(['a', 'b']), ['a', 'b']);
+eq('normalizeTerms vazio', S.normalizeTerms(''), []);
+eq('normalizeTerms limite 40', S.normalizeTerms(Array.from({ length: 45 }, (_, i) => 't' + i)).length, 40);
+
+section('6. URLs');
+ok('isLinkedInUrl ok', S.isLinkedInUrl('https://www.linkedin.com/jobs/search/'));
+ok('isLinkedInUrl nao', !S.isLinkedInUrl('https://example.com/'));
+ok('isLinkedInJobsUrl ok', S.isLinkedInJobsUrl('https://www.linkedin.com/jobs/search/'));
+ok('isLinkedInJobsUrl feed nao', !S.isLinkedInJobsUrl('https://www.linkedin.com/feed/'));
+eq('buildSearchUrl simples', S.buildSearchUrl('https://www.linkedin.com/jobs/search/', 'react', 'Brasil', false), 'https://www.linkedin.com/jobs/search/?keywords=react&location=Brasil');
+eq('buildSearchUrl com filtro', S.buildSearchUrl('https://www.linkedin.com/jobs/search/', 'react', '', true), 'https://www.linkedin.com/jobs/search/?keywords=react&f_AL=true');
+eq('buildSearchUrl remove f_AL', S.buildSearchUrl('https://www.linkedin.com/jobs/search/?f_AL=true&keywords=x', 'react', '', false), 'https://www.linkedin.com/jobs/search/?keywords=react');
+eq('buildSearchUrl base invalida', S.buildSearchUrl('%%%', 'x', '', false), '%%%');
+
+section('7. Horario e dias');
+eq('normalizeTime 8:5', S.normalizeTime('8:5', '08:00'), '08:05');
+eq('normalizeTime invalido', S.normalizeTime('25:00', '08:00'), '08:00');
+eq('timeToMinutes', S.timeToMinutes('08:30'), 510);
+eq('timeToMinutes 24:00 null', S.timeToMinutes('24:00'), null);
+eq('minutesToTime', S.minutesToTime(510), '08:30');
+eq('minutesToTime negativo', S.minutesToTime(-5), '00:00');
+eq('normalizeDays limpa/ordena', S.normalizeDays([1, 1, 7, -2, '3']), [1, 3]);
+eq('normalizeDays null -> padrao', S.normalizeDays(null), [1, 2, 3, 4, 5]);
+eq('formatDays uteis', S.formatDays([1, 2, 3, 4, 5]), 'Seg, Ter, Qua, Qui, Sex');
+eq('formatDays todos', S.formatDays([0, 1, 2, 3, 4, 5, 6]), 'todos os dias');
+eq('formatDays nenhum', S.formatDays([]), 'nenhum dia');
+const seg1200 = new Date(2026, 0, 5, 12, 0);
+ok('segunda 2026-01-05 e dia 1', seg1200.getDay() === 1);
+ok('schedule desligado -> true', S.isWithinSchedule(seg1200, { enabled: false }) === true);
+ok('schedule dentro', S.isWithinSchedule(seg1200, { enabled: true, startTime: '08:00', stopTime: '18:00', days: [1, 2, 3, 4, 5] }) === true);
+ok('schedule fora (hora)', S.isWithinSchedule(new Date(2026, 0, 5, 19, 0), { enabled: true, startTime: '08:00', stopTime: '18:00', days: [1, 2, 3, 4, 5] }) === false);
+ok('schedule fora (domingo)', S.isWithinSchedule(new Date(2026, 0, 4, 12, 0), { enabled: true, startTime: '08:00', stopTime: '18:00', days: [1, 2, 3, 4, 5] }) === false);
+ok('schedule cruza meia-noite', S.isWithinSchedule(new Date(2026, 0, 5, 23, 0), { enabled: true, startTime: '22:00', stopTime: '06:00', days: [1] }) === true);
+const next = S.nextScheduleStart(seg1200, { enabled: true, startTime: '08:00', stopTime: '18:00', days: [1, 2, 3, 4, 5] });
+ok('nextScheduleStart futuro/dia valido', next instanceof Date && next.getTime() > seg1200.getTime() && [1, 2, 3, 4, 5].includes(next.getDay()), next && next.toString());
+
+section('8. Configuracao');
+const def = S.parseSettings(null);
+eq('default baseUrl', def.baseUrl, S.LINKEDIN_SEARCH_URL);
+eq('default easyApplyOnly', def.easyApplyOnly, false);
+eq('default helpOnStuck', def.apply.helpOnStuck, true);
+eq('default apply.enabled', def.apply.enabled, false);
+eq('default terms', def.terms, []);
+eq('default dias', def.schedule.days, [1, 2, 3, 4, 5]);
+const clamp = S.parseSettings({ apply: { minDelayMs: 999999, maxDelayMs: 1, readMinMs: 99999, readMaxMs: 1, perTerm: 9999, answerNumber: 999 } });
+ok('delay min<=max', clamp.apply.minDelayMs <= clamp.apply.maxDelayMs);
+ok('read min<=max', clamp.apply.readMinMs <= clamp.apply.readMaxMs);
+eq('perTerm clampado', clamp.apply.perTerm, 500);
+eq('answerNumber clampado', clamp.apply.answerNumber, 200);
+eq('answers normalizadas', S.parseSettings({ apply: { answers: { '  ': 'x', q: '', k: ' v ' } } }).apply.answers, { k: 'v' });
+eq('terms do texto', S.parseSettings({ terms: 'a, b' }).terms, ['a', 'b']);
+eq('helpOnStuck false respeitado', S.parseSettings({ apply: { helpOnStuck: false } }).apply.helpOnStuck, false);
+
+section('9. Fila e cotas');
+const run = S.buildRunQueue(S.parseSettings({ terms: 'react, node', easyApplyOnly: true }));
+eq('fila: 2 urls', run.urls.length, 2);
+eq('fila: termo 1', run.terms[0], 'react');
+eq('fila: url com filtro', run.urls[0], 'https://www.linkedin.com/jobs/search/?keywords=react&f_AL=true');
+ok('fila running/index', run.running === true && run.index === 0);
+const runNoTerms = S.buildRunQueue(S.parseSettings(null));
+eq('fila sem termos: 1 url', runNoTerms.urls.length, 1);
+eq('fila sem termos: termo vazio', runNoTerms.terms[0], '');
+const now = Date.now();
+ok('cota inicial ok', S.computeQuota(S.parseSettings(null), [], now, 0).ok === true);
+const qHour = S.computeQuota(S.parseSettings({ apply: { perHour: 1, per24h: 100, perDay: 0, perTerm: 100 } }), [now], now, 0);
+ok('cota hora estoura', qHour.ok === false && qHour.blockedBy === 'hour', JSON.stringify(qHour.used));
+ok('resumeAt futuro', qHour.resumeAt > now);
+ok('perDay 0 -> Infinity', S.computeQuota(S.parseSettings(null), [], now, 0).limits.day === Infinity);
+eq('jitter meio', S.jitter(1000, 0.3, () => 0.5), 1000);
+eq('jitter minimo', S.jitter(1000, 0.3, () => 0), 700);
+eq('jitter maximo', S.jitter(1000, 0.3, () => 1), 1300);
+
+section('10. Relatorio de candidatura');
+eq('label ja_candidatada', S.applyOutcomeLabel('ja_candidatada'), 'Já candidatada antes');
+eq('label enviada', S.applyOutcomeLabel('enviada'), 'Enviada');
+eq('label desconhecido', S.applyOutcomeLabel('xyz'), 'xyz');
+eq('failure enviada -> null', S.describeApplyFailure({ applyStatus: 'enviada' }), null);
+const fJa = S.describeApplyFailure({ applyStatus: 'ja_candidatada' });
+ok('failure ja: already e nao pending', fJa.already === true && fJa.pending === false, JSON.stringify(fJa));
+eq('failure sem status -> nao_tentada', S.describeApplyFailure({}).code, 'nao_tentada');
+eq('resumo 1 candidatada', S.describeApplySummary(S.summarizeApply([{ applyStatus: 'enviada' }], { applyEnabled: true })), '1 candidatada(s)');
+eq('resumo so ja-candidatadas', S.describeApplySummary(S.summarizeApply([{ applyStatus: 'ja_candidatada' }, { applyStatus: 'ja_candidatada' }], { applyEnabled: true })), '0 candidatada(s) · 2 já candidatada(s) antes');
+eq('resumo misto', S.describeApplySummary(S.summarizeApply([{ applyStatus: 'enviada' }, { applyStatus: 'travada' }, { applyStatus: 'externa' }], { applyEnabled: true })), '1 candidatada(s) · 2 não candidatada(s): 1 externa (site da empresa) · 1 travada em campo obrigatório');
+const q = S.computeQuota(S.parseSettings(null), [], now, 0);
+eq('describeQuota', S.describeQuota(q), 'Candidaturas — 0/6 na hora · 0/25 em 24 h · 0/8 neste termo');
+eq('describeSchedule off', S.describeSchedule({ enabled: false }), 'Agendador desativado.');
+
+section('11. Luz de status');
+eq('luz idle', S.statusLight({}).key, 'ready');
+eq('luz capturando', S.statusLight({ run: { running: true } }).key, 'capturing');
+eq('luz pausa cota', S.statusLight({ run: { running: true, paused: true, pauseReason: 'cota', resumeAt: now + 60000 } }).key, 'ready');
+eq('luz guard', S.statusLight({ guard: { blockedUntil: now + 60000, reason: 'x' } }).key, 'attention');
+eq('luz problema', S.statusLight({ run: { running: true, problem: 'sem lista' } }).key, 'attention');
+eq('luz precisa de ajuda', S.statusLight({ run: { running: true, needsHelp: true, helpMissing: 'Cidade' } }).key, 'attention');
+
+section('12. Deteccao e dialogos');
+ok('already candidatou-se', S.looksAlreadyApplied('Candidatou-se há 1 mês') === true);
+ok('already voce se candidatou', S.looksAlreadyApplied('Você se candidatou em 12 de out.') === true);
+ok('already candidatura enviada', S.looksAlreadyApplied('Candidatura enviada') === true);
+ok('already applied (en)', S.looksAlreadyApplied('You applied on March 3') === true);
+ok('already NAO casa "nao se candidatou"', S.looksAlreadyApplied('Você ainda não se candidatou a esta vaga') === false);
+ok('already NAO casa empresa', S.looksAlreadyApplied('Applied Materials') === false);
+eq('plainText', S.plainText('Você se candidatou'), 'voce se candidatou');
+eq('hostOf externo', S.hostOf('https://careers.acme.com/x/y'), 'careers.acme.com');
+ok('isOffsiteUrl externo', S.isOffsiteUrl('https://careers.acme.com') === true);
+ok('isOffsiteUrl linkedin', S.isOffsiteUrl('https://www.linkedin.com/jobs/view/1/') === false);
+eq('classifyApply easy', S.classifyApply({ label: 'Candidatura simplificada' }), 'simplificada');
+eq('classifyApply externa href', S.classifyApply({ href: 'https://careers.acme.com' }), 'externa');
+eq('classifyApply externa label', S.classifyApply({ label: 'Candidatar-se no site da empresa' }), 'externa');
+eq('classifyApply desconhecida', S.classifyApply({}), 'desconhecida');
+eq('classifyDialog form', S.classifyDialog({ hasApplyAction: true }), 'formulario');
+eq('classifyDialog survey', S.classifyDialog({ text: 'avalie como foi sua experiencia' }), 'pesquisa');
+eq('classifyDialog aviso', S.classifyDialog({ hasClose: true }), 'aviso');
+eq('classifyDialog desconhecido', S.classifyDialog({}), 'desconhecido');
+eq('dismiss Fechar', S.matchDismissLabel('Fechar'), 'fechar');
+eq('dismiss Agora nao', S.matchDismissLabel('Agora não'), 'agora_nao');
+eq('dismiss Descartar (nunca)', S.matchDismissLabel('Descartar'), '');
+eq('dismiss Pular', S.matchDismissLabel('Pular'), 'dispensar');
+eq('answerForQuestion casa', S.answerForQuestion('Você tem autorização?', { autorizacao: 'Não' }), 'Não');
+eq('pickChoice sim', S.pickChoice(['Selecione uma opção', 'Sim', 'Não'], { yes: true }), 'Sim');
+eq('pickChoice nao', S.pickChoice(['Selecione', 'Não', 'Sim'], { yes: false }), 'Não');
+eq('pickChoice so placeholder', S.pickChoice(['Selecione uma opção'], { yes: true }), '');
+eq('pickChoice vazio', S.pickChoice([], {}), '');
+
+section('13. Espera por evento (assincrono)');
+(async () => {
+  const sig = S.createSignal();
+  eq('waitUntil imediato', await S.waitUntil(sig, () => 42, 100, 0), 42);
+
+  const t0 = Date.now();
+  const nulo = await S.waitUntil(S.createSignal(), () => null, 60, 0);
+  ok('waitUntil timeout -> null', nulo === null && Date.now() - t0 >= 50);
+
+  await S.waitForQuiet(S.createSignal(), 40).then((quieto) => ok('waitForQuiet true (sem wake)', quieto === true));
+
+  const sigW = S.createSignal();
+  const pQuiet = S.waitForQuiet(sigW, 5000);
+  setTimeout(() => sigW.wake(), 20);
+  ok('waitForQuiet false (com wake)', (await pQuiet) === false);
+
+  const sigA = S.createSignal();
+  let flag = false;
+  const pA = S.waitUntil(sigA, () => (flag ? 'ok' : null), 5000, 0);
+  setTimeout(() => { flag = true; sigA.wake(); }, 20);
+  eq('waitUntil acorda no sinal', await pA, 'ok');
+
+  console.log('\n=========================================');
+  console.log('RESULTADO: ' + pass + ' passaram, ' + failures.length + ' falharam');
+  if (failures.length) {
+    console.log('\nFALHAS:');
+    failures.forEach((f) => console.log(' - ' + f));
+  }
+  console.log('=========================================');
+  process.exit(failures.length ? 1 : 0);
+})();

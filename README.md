@@ -21,7 +21,10 @@ pegavaga_chrome/
 ├── popup.html      # Interface (configuração, cotas, agendador + contador)
 ├── popup.js        # Fila de termos, orquestração da aba e geração do CSV
 ├── content.js      # Scraping do DOM do LinkedIn, candidatura, fila e storage
-└── README.md
+├── README.md
+└── tests/
+    ├── pegavaga.test.js  # Teste automático (estático + unitário)
+    └── SMOKE_TEST.md     # Roteiro de teste manual no Chrome
 ```
 
 ## Versionamento
@@ -309,6 +312,25 @@ Exemplos de motivo gravado:
 `ID`, `Titulo`, `Empresa`, `Link`, `Termo`, `Status`, `Motivo`,
 `Ultima tentativa`. Só entram as vagas que **não** foram candidatadas (as
 definitivas e as que ficaram na fila); as `Já candidatada antes` ficam de fora.
+
+## Testes
+
+**Automático** (sem precisar do Chrome) — valida `manifest`, permissões, exports
+do `shared.js`, mensageria entre os contextos, IDs do popup, códigos de status,
+configuração, cotas, horários, relatório, luz de status e as detecções (ex.:
+“Candidatou-se”). Roda na raiz do projeto:
+
+```bash
+node tests/pegavaga.test.js
+```
+
+Sai com código `0` quando tudo passa e `1` quando há falha (imprime a lista de
+falhas no fim).
+
+**Manual** (o que depende do navegador + LinkedIn): siga o roteiro em
+[`tests/SMOKE_TEST.md`](tests/SMOKE_TEST.md) depois de mudanças relevantes —
+instale pelo `chrome://extensions`, dê **F5** nas abas do LinkedIn e confira cada
+item.
 
 ## Permissões utilizadas
 
