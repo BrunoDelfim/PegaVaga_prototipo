@@ -28,11 +28,19 @@ fim — e não siga adiante antes de entender a falha.
       (“Pronta”, bolinha **azul**) e as abas **Início** / **Configurações**.
 - [ ] Aba **Início**: donut com o total no centro (`0 vagas`), a ilustração do
       estado vazio e o card **Como funciona** terminando no **aviso de risco**.
-- [ ] Aba **Configurações**: **URL de busca** + **termos** (`react, node.js`) → a
-      **fila numerada** aparece embaixo do campo.
+- [ ] Aba **Configurações**, ainda vazia, clique em **Iniciar** → aparece
+      **“Preencha os campos obrigatórios: Localização · Termos de vaga.”**, os
+      campos ficam **marcados em vermelho** e a aba de Configurações abre. Confira
+      também que os **dois interruptores de Candidatura Simplificada** estão
+      **ligados e desativados**.
+- [ ] Preencha a **localização** (`São Paulo`) e os **termos** (`react, node.js`) →
+      a **fila numerada** aparece embaixo do campo e o vermelho sai quando você
+      digita.
 - [ ] **Iniciar** (barra fixa embaixo) → o LinkedIn abre/navega, as vagas são
       capturadas (o número no donut sobe) e o toast confirma a ação.
 - [ ] **Parar** interrompe a varredura.
+- [ ] Se estiver em **English**, confira que **nada** do painel ficou em português
+      (seção T).
 
 ## Por recurso
 
