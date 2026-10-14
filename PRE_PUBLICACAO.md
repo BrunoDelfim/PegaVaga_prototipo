@@ -4,7 +4,7 @@ Plano de trabalho para sair da beta e publicar na **Chrome Web Store**.
 Cada item diz **por quê** e **como fazer**; ao concluir, troque `[ ]` por `[x]` e
 preencha a linha **Feito em** com a versão e o commit.
 
-**Progresso:** 3 de 14 itens · **Versão:** a que está no `manifest.json`
+**Progresso:** 4 de 14 itens · **Versão:** a que está no `manifest.json`
 
 Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
@@ -52,6 +52,11 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 - [ ] **4. Material da loja**
   Descrição curta e longa, **screenshots** (640×400), tile promocional
   **440×280** e o ícone 128 (já existe em `icons/pg-128.png`).
+  ⚠ Achado ao fazer o item 10: a **descrição do `manifest.json` tem 305
+  caracteres** e a loja pede **até 132** (“A string of no more than 132
+  characters”, docs de *Prepare your extension*) — encurtar aqui (o
+  `tools/empacotar.sh` avisa enquanto isso). A descrição longa vai no campo da
+  loja, não no manifest.
   *Feito em:* —
 
 - [ ] **5. Teste em perfil limpo (smoke test completo)**
@@ -89,10 +94,17 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   Hoje, limpar ou reinstalar perde tudo. Exportar/importar um JSON resolve.
   *Feito em:* —
 
-- [ ] **10. Empacotamento (zip + tag/release)**
+- [x] **10. Empacotamento (zip + tag/release)**
   Script para gerar o `.zip` de publicação (fora `tests/`, `.git`, `.md`) e uma
   **tag** no git (ex.: `v0.7.0`).
-  *Feito em:* —
+  *Feito em:* `0.7.4` (commit `fdf9efa`, tag **`v0.7.4`**) — `tools/empacotar.sh`
+  gera `dist/pegavaga-0.7.4.zip` (96 KB, 9 arquivos) usando `git archive`, então
+  **não depende de `zip` instalado** e só entra o que está versionado + na lista
+  explícita. Três cuidados embutidos: (1) roda os testes antes e **não empacota
+  se falharem**; (2) confere que o `manifest.json` ficou **na raiz** do zip — a
+  loja não aceita dentro de pasta; (3) avisa se a versão do `HEAD` divergir da
+  tag ou se a descrição do manifest passar de 132 caracteres (ela passa, ver item
+  4). Testado com tag válida, `HEAD` e ref inexistente.
 
 ## 🟢 Polimento (depois que a base estiver no ar)
 
@@ -136,4 +148,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 13/10/2026 | 1. Teto de armazenamento | `0.7.2`–`0.7.3` | `ced7d36` |
 | 13/10/2026 | 3. Aviso de risco no app | `0.7.4` | `6ea0976` |
 | 13/10/2026 | 6. CI no GitHub Actions | — (infra) | `cda8e02` |
+| 13/10/2026 | 10. Empacotamento (zip + tag `v0.7.4`) | `0.7.4` | `fdf9efa` |
 

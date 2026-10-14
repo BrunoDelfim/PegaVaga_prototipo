@@ -42,6 +42,11 @@ A versão vive no `manifest.json` (campo `version`). A regra de avanço é:
 Em resumo: o **último número** é o contador do dia a dia (0–9) e o **do meio** só
 muda quando ele estoura.
 
+Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.4`) — é ela que o
+script de empacotamento usa. A **`1.0.0` só sai com o checklist de
+pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
+seguimos abaixo de 1.
+
 ## Instalação (modo desenvolvedor)
 
 1. Abra `chrome://extensions/`.
@@ -355,6 +360,24 @@ falhas no fim).
 [`tests/SMOKE_TEST.md`](tests/SMOKE_TEST.md) depois de mudanças relevantes —
 instale pelo `chrome://extensions`, dê **F5** nas abas do LinkedIn e confira cada
 item.
+
+## Empacotar para a loja
+
+```bash
+bash tools/empacotar.sh          # empacota o commit atual (HEAD)
+bash tools/empacotar.sh v0.7.4   # empacota uma tag — é o que se publica
+```
+
+O script roda os testes antes (não gera zip com teste vermelho), monta
+`dist/pegavaga-<versão>.zip` e confere que o `manifest.json` ficou **na raiz** do
+zip: a Chrome Web Store exige isso, o arquivo **não pode estar dentro de uma
+pasta**. Ele também avisa quando a versão do `HEAD` difere da tag escolhida e
+quando a descrição do manifest passa dos **132 caracteres** que a loja pede.
+
+Como o pacote vem de `git archive`, entram só arquivos versionados e da lista
+explícita (`manifest.json`, os quatro scripts, o `popup.html` e `icons/`):
+`tests/`, `.github/`, os `.md` e o `.git` ficam de fora, e **não precisa de `zip`
+instalado** — o próprio git monta o zip. O `dist/` é ignorado pelo git.
 
 ## Antes de publicar
 
