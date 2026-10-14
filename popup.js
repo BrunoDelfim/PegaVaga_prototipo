@@ -1596,8 +1596,6 @@ function renderRun(run, totalFallback, breakUntil) {
   if (run && run.running) {
     const total =
       totalFallback || (Array.isArray(run.urls) ? run.urls.length : 1) || 1;
-    const label = run.term ? `"${run.term}"` : 'página atual';
-
     const label = run.term ? `"${run.term}"` : SHARED.t('página atual');
 
     let info =

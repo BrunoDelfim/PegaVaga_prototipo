@@ -42,6 +42,9 @@ section('1. Exports do shared.js');
 require(ROOT + 'shared.js');
 const S = globalThis.PegaVagaShared;
 ok('PegaVagaShared existe', Boolean(S));
+// Idioma fixo no pt: o teste não pode depender do idioma do sistema/navegador
+// onde roda (no Node 20 nem existe `navigator`, no 26 o idioma vem do sistema).
+S.setLocale('pt');
 const consumers = ['content.js', 'popup.js', 'background.js'].map(read).join('\n');
 const usedShared = [...new Set([...consumers.matchAll(/SHARED\.([A-Za-z0-9_]+)/g)].map((m) => m[1]))];
 eq('todos os SHARED.* usados existem', usedShared.filter((n) => !(n in S)), []);

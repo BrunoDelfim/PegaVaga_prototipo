@@ -42,7 +42,7 @@ A versão vive no `manifest.json` (campo `version`). A regra de avanço é:
 Em resumo: o **último número** é o contador do dia a dia (0–9) e o **do meio** só
 muda quando ele estoura.
 
-Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.13`) — é ela que o
+Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.14`) — é ela que o
 script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
@@ -367,7 +367,17 @@ consequências boas:
   chaves com marcadores;
 - texto **ainda sem tradução aparece em português**, nunca como `undefined` — e um
   teste **reprova** se entrar texto novo no pop-up sem tradução (a cobertura é
-  conferida a cada `node tests/pegavaga.test.js`).
+  conferida a cada `node tests/pegavaga.test.js`);
+- a varredura de cobertura **também olha o código** (`popup.js` e `shared.js`), e
+  não só o HTML: foi assim que apareceram as frases **compostas** (toasts, faixas
+  e rodapés montados por `+` ou template) que tinham ficado em português. Frases
+  com valores dentro precisam de uma chave com marcadores (`{ nome }`) — os
+  padrões mais específicos ficam **antes** dos genéricos no dicionário.
+
+> **Cuidado ao rodar localmente:** o CI checa a sintaxe no **Node 20**. Versões
+> mais novas do Node podem aceitar construções que o 20 recusa — já aconteceu aqui
+> com um `const` declarado duas vezes no mesmo bloco (o Node 26 passou, o 20
+> reprovou, e quem pegou foi o CI).
 
 O idioma escolhido vale também no service worker (que lê a configuração ao subir e
 a cada mudança), para o tooltip e as notificações saírem no idioma certo.
@@ -437,7 +447,7 @@ item.
 
 ```bash
 bash tools/empacotar.sh          # empacota o commit atual (HEAD)
-bash tools/empacotar.sh v0.7.13   # empacota uma tag — é o que se publica
+bash tools/empacotar.sh v0.7.14   # empacota uma tag — é o que se publica
 ```
 
 O script roda os testes antes (não gera zip com teste vermelho), monta
