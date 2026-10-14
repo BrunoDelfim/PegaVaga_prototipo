@@ -561,7 +561,17 @@
         box-shadow: 0 1px 2px rgba(15, 23, 42, 0.3);
         transition: transform 0.18s ease;
       }
-      #settings .switch input[type="checkbox"]:checked { background: var(--brand); }
+      /* Ligado: o miolo do trilho fica verde e a bolinha desliza — dá para ler
+       * de longe, nos dois temas. O override do tema escuro vale **só para o
+       * estado desligado** (`:not(:checked)`), senão ele vencia esta regra por
+       * especificidade e os dois estados ficavam com a mesma cor. */
+      #settings .switch input[type="checkbox"]:checked {
+        background: var(--ok);
+        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.18);
+      }
+      html[data-theme="dark"] #settings .switch input[type="checkbox"]:checked {
+        background: #1f9d55; /* verde médio: o branco da bolinha continua legível */
+      }
       #settings .switch input[type="checkbox"]:checked::after { transform: translateX(14px); }
       #settings .switch input[type="checkbox"]:focus-visible { box-shadow: var(--ring); }
       #settings .switch > span { font-size: var(--fs-sm); line-height: 1.45; color: var(--text); }
@@ -694,7 +704,7 @@
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
       }
       html[data-theme="dark"] .terms-preview li { border-color: #1e3a5f; }
-      html[data-theme="dark"] #settings .switch input[type="checkbox"] { background: #334155; }
+      html[data-theme="dark"] #settings .switch input[type="checkbox"]:not(:checked) { background: #334155; }
       html[data-theme="dark"] ::-webkit-scrollbar-thumb {
         background: #334155;
         border-color: var(--surface);

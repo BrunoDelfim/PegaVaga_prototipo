@@ -501,6 +501,13 @@ const dinamicasI18n = [
 ];
 eq('frases dinamicas seguem traduzidas', dinamicasI18n.filter((f) => !S.UI_EN[f] || S.UI_EN[f] === f), []);
 ok('popup tem o seletor de idioma', popupHtml.includes('id="locale"') && popupJs.includes('SHARED.setLocale(settings.locale)'));
+
+// Toggle: ligado/desligado precisam ter cores diferentes nos DOIS temas. O bug
+// era o override do tema escuro vencer a regra do ligado por especificidade.
+ok('toggle ligado tem cor propria', /#settings \.switch input\[type="checkbox"\]:checked \{\s*\n\s*background: var\(--ok\)/.test(popupHtml));
+ok('toggle ligado tem cor propria no tema escuro', /html\[data-theme="dark"\] #settings \.switch input\[type="checkbox"\]:checked \{\s*\n\s*background: #1f9d55/.test(popupHtml));
+ok('override do escuro vale so para o desligado', popupHtml.includes('html[data-theme="dark"] #settings .switch input[type="checkbox"]:not(:checked)'));
+ok('nao sobrou override do escuro sem :not', (popupHtml.match(/html\[data-theme="dark"\] #settings \.switch input\[type="checkbox"\] \{/g) || []).length === 0);
 ok('popup traduz a tela pelo dicionario', popupJs.includes('function localizeDom') && popupJs.includes('SHARED.syncText(textosOriginais.get(no)') === false && popupJs.includes('SHARED.syncText(atual,') && popupJs.includes('MutationObserver'));
 ok('background usa o idioma no tooltip e nas notificacoes', bgJs.includes('SHARED.translate(light.title)') && bgJs.includes('refreshLocale'));
 

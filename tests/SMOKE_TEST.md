@@ -47,6 +47,10 @@ fim — e não siga adiante antes de entender a falha.
       sistema com o popup fechado e reabra).
 - [ ] Nos dois temas o contraste está bom: textos legíveis, cabeçalho com degradê
       próprio, nada “sumindo” (confira também o aviso âmbar do item C).
+- [ ] Nos **interruptores** das Configurações, ligado e desligado se distinguem
+      **nos dois temas**: trilho **verde** com a bolinha à direita quando ligado,
+      trilho cinza com a bolinha à esquerda quando desligado (era o bug: no tema
+      escuro os dois ficavam iguais).
 - [ ] **Chip de status** (cabeçalho): **verde** capturando · **azul** pronta ·
       **vermelha** quando precisa de atenção; o texto acompanha o estado.
 - [ ] **Toast** (faixa da barra de baixo): aparece nas ações (iniciar, parar,
