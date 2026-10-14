@@ -807,11 +807,14 @@ function renderTermsQueue() {
   els.termsPreview.hidden = !terms.length;
   els.termsQueue.className = 'hint';
   els.termsQueue.textContent = terms.length
-    ? 'A busca roda em loop, um termo por vez, nesta ordem (' +
-      terms.length +
-      (terms.length === 1 ? ' termo' : ' termos') +
-      '). Passe o mouse sobre cada um para ver a busca.'
-    : 'Sem termos: a varredura percorre a página de vagas que estiver aberta.';
+    ? SHARED.t(
+        'A busca roda em loop, um termo por vez, nesta ordem ({n} {unidade}). Passe o mouse sobre cada um para ver a busca.',
+        {
+          n: terms.length,
+          unidade: SHARED.t(terms.length === 1 ? 'termo' : 'termos'),
+        }
+      )
+    : SHARED.t('Sem termos: a varredura percorre a página de vagas que estiver aberta.');
 }
 
 /** Resume a fila que vai rodar: "3 termos em loop (react → node.js → vue)". */

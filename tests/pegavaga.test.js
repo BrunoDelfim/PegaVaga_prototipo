@@ -481,6 +481,25 @@ eq('todo atributo do pop-up tem traducao', [...new Set(atributosPopup)].filter((
 eq('marcadores batem nos dois idiomas', Object.entries(S.UI_EN).filter((par) => marcadoresDe(par[0]) !== marcadoresDe(par[1])).map((par) => par[0]), []);
 eq('nenhuma traducao vazia', Object.entries(S.UI_EN).filter((par) => !String(par[1]).trim()).map((par) => par[0]), []);
 ok('dicionario tem volume util', Object.keys(S.UI_EN).length >= 120);
+
+// Frases montadas em código (não estão no HTML): lista de regressão.
+const dinamicasI18n = [
+  'Configure uma URL do LinkedIn (ex.: https://www.linkedin.com/jobs/search/).',
+  'Varredura interrompida.',
+  'Nenhuma vaga capturada ainda. Rode a varredura primeiro.',
+  'Todas as vagas capturadas foram candidatadas. Nada a relatar.',
+  '· {n} candidatura(s) neste termo',
+  '· pausado por {motivo} até {hora}',
+  '· descansando até {hora}',
+  'Última varredura: {quando}',
+  'Nesta sessão (termo)',
+  'Pausado por',
+  'Diagnóstico copiado. Cole no relato do problema (confira antes).',
+  'Dados limpos.',
+  'Salvando…',
+  'A busca roda em loop, um termo por vez, nesta ordem ({n} {unidade}). Passe o mouse sobre cada um para ver a busca.',
+];
+eq('frases dinamicas seguem traduzidas', dinamicasI18n.filter((f) => !S.UI_EN[f] || S.UI_EN[f] === f), []);
 ok('popup tem o seletor de idioma', popupHtml.includes('id="locale"') && popupJs.includes('SHARED.setLocale(settings.locale)'));
 ok('popup traduz a tela pelo dicionario', popupJs.includes('function localizeDom') && popupJs.includes('SHARED.syncText(textosOriginais.get(no)') === false && popupJs.includes('SHARED.syncText(atual,') && popupJs.includes('MutationObserver'));
 ok('background usa o idioma no tooltip e nas notificacoes', bgJs.includes('SHARED.translate(light.title)') && bgJs.includes('refreshLocale'));

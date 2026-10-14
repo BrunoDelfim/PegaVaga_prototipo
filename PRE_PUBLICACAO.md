@@ -226,6 +226,12 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   *Fica em português de propósito:* o **CSV** e o **diagnóstico** — são arquivos de
   dados, e traduzir a planilha mudaria o formato de quem já usa (o próprio aviso
   do grupo diz isso ao usuário).
+  *Complemento em* `0.7.11` (commit `HASH_B`): faltavam as **frases montadas em
+  código** (títulos do card de execução, “Última varredura: …”, toasts de
+  diagnóstico/limpeza/backup, rodapé da fila de termos, faixa de ajuda). A
+  cobertura conferida pelo teste olhava só o HTML; entrei com uma **lista de
+  regressão** das frases dinâmicas — se alguém apagar uma tradução do dicionário,
+  o teste reprova.
 
 ---
 
