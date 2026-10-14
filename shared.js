@@ -954,8 +954,8 @@ globalThis.PegaVagaShared = (() => {
   function describeApplySummary(summary) {
     if (!summary || !summary.total) return 'Nenhuma vaga capturada ainda.';
 
-    let text = summary.applied + ' candidatada(s)';
-    if (summary.already) text += ' · ' + summary.already + ' já candidatada(s) antes';
+    let text = summary.applied + ' candidatada(s) nessa sessão';
+    if (summary.already) text += ' · ' + summary.already + ' candidatada(s) antes';
     if (summary.failed) text += ' · ' + summary.failed + ' não candidatada(s)';
     if (summary.pending) text += ' · ' + summary.pending + ' na fila';
 

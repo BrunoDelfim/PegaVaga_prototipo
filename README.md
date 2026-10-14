@@ -142,7 +142,7 @@ muda quando ele estoura.
      mostra a fila, ex.: `Varredura em andamento: 3 termos em loop (react → node.js → vue).`
 7. Acompanhe no pop-up:
    - `N vagas capturadas` e o resumo das candidaturas, ex.:
-     `12 candidatada(s) · 5 já candidatada(s) antes · 8 não candidatada(s) · 3 na fila: 4 travada em campo obrigatório · 2 externa (site da empresa)`;
+     `12 candidatada(s) nessa sessão · 5 candidatada(s) antes · 8 não candidatada(s) · 3 na fila: 4 travada em campo obrigatório · 2 externa (site da empresa)`;
    - a linha `Termo X de N: "…" · K candidatura(s) neste termo`;
    - a linha de cotas, ex.:
      `Candidaturas — 2/6 na hora · 5/25 em 24 h · 8 hoje · 3/8 neste termo`;

@@ -165,9 +165,10 @@ eq('failure enviada -> null', S.describeApplyFailure({ applyStatus: 'enviada' })
 const fJa = S.describeApplyFailure({ applyStatus: 'ja_candidatada' });
 ok('failure ja: already e nao pending', fJa.already === true && fJa.pending === false, JSON.stringify(fJa));
 eq('failure sem status -> nao_tentada', S.describeApplyFailure({}).code, 'nao_tentada');
-eq('resumo 1 candidatada', S.describeApplySummary(S.summarizeApply([{ applyStatus: 'enviada' }], { applyEnabled: true })), '1 candidatada(s)');
-eq('resumo so ja-candidatadas', S.describeApplySummary(S.summarizeApply([{ applyStatus: 'ja_candidatada' }, { applyStatus: 'ja_candidatada' }], { applyEnabled: true })), '0 candidatada(s) · 2 já candidatada(s) antes');
-eq('resumo misto', S.describeApplySummary(S.summarizeApply([{ applyStatus: 'enviada' }, { applyStatus: 'travada' }, { applyStatus: 'externa' }], { applyEnabled: true })), '1 candidatada(s) · 2 não candidatada(s): 1 externa (site da empresa) · 1 travada em campo obrigatório');
+eq('resumo 1 candidatada', S.describeApplySummary(S.summarizeApply([{ applyStatus: 'enviada' }], { applyEnabled: true })), '1 candidatada(s) nessa sessão');
+eq('resumo so ja-candidatadas', S.describeApplySummary(S.summarizeApply([{ applyStatus: 'ja_candidatada' }, { applyStatus: 'ja_candidatada' }], { applyEnabled: true })), '0 candidatada(s) nessa sessão · 2 candidatada(s) antes');
+eq('resumo misto', S.describeApplySummary(S.summarizeApply([{ applyStatus: 'enviada' }, { applyStatus: 'travada' }, { applyStatus: 'externa' }], { applyEnabled: true })), '1 candidatada(s) nessa sessão · 2 não candidatada(s): 1 externa (site da empresa) · 1 travada em campo obrigatório');
+ok('resumo em uma linha so', S.describeApplySummary(S.summarizeApply([{ applyStatus: 'enviada' }, { applyStatus: 'travada' }], { applyEnabled: true })).indexOf('\n') === -1);
 const q = S.computeQuota(S.parseSettings(null), [], now, 0);
 eq('describeQuota', S.describeQuota(q), 'Candidaturas — 0/6 na hora · 0/25 em 24 h · 0/8 neste termo');
 eq('describeSchedule off', S.describeSchedule({ enabled: false }), 'Agendador desativado.');
