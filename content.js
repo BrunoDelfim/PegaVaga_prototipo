@@ -375,6 +375,21 @@
   }
 
   /**
+   * Pausa que obedece ao **Parar** no instante em que ele chega.
+   *
+   * Uma pausa de "leitura da vaga" dura até 12 s: se o Parar tivesse de esperar
+   * o prazo acabar, o botão pareceria não funcionar. As mutações da página só
+   * fazem reavaliar (a pausa segue até o prazo); quem manda embora é o `abort`.
+   */
+  function pause(ms) {
+    const prazo = Math.max(0, Number(ms) || 0);
+
+    if (!prazo) return Promise.resolve();
+
+    return waitUntil(() => (state.abort ? true : null), prazo, CONFIG.breakPollMs);
+  }
+
+  /**
    * Espera a página ficar quieta: nenhuma mutação dentro de `ms`. É o que diz
    * "a etapa terminou de carregar" — melhor que duas leituras iguais, porque
    * olha o que a página está fazendo, e não quanto tempo a internet levou.
@@ -918,7 +933,7 @@
 
   /** Pausa curta com variação humana (nada de intervalos sempre iguais). */
   function humanPause(baseMs, ratio) {
-    return wait(jitter(baseMs, ratio == null ? CONFIG.humanRatio : ratio));
+    return pause(jitter(baseMs, ratio == null ? CONFIG.humanRatio : ratio));
   }
 
   /** Canto aleatório do elemento, para o clique não cair sempre no pixel exato. */
@@ -3025,6 +3040,26 @@
   /* Mensageria com o pop-up                                                   */
   /* ------------------------------------------------------------------------ */
 
+  /**
+   * A fila no storage é a fonte da verdade: se ela sumir (Parar no pop-up, o
+   * agendador encerrando a execução, outra aba mexendo), esta aba para **na
+   * hora** — inclusive quando a mensagem de Parar não chega até aqui, que é o
+   * caso do Parar clicado com outra aba ativa.
+   */
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes[STORAGE_RUN_KEY]) return;
+
+    const run = changes[STORAGE_RUN_KEY].newValue;
+
+    // Fila nova (ou pausada) passando por aqui: nada a interromper.
+    if (run && run.running === true) return;
+    if (!state.run) return;
+
+    state.run = null;
+    state.abort = true;
+    wakeWaiters();
+  });
+
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message && message.type) {
       case MSG.PING:
@@ -3069,6 +3104,9 @@
 
       case MSG.STOP:
         state.abort = true;
+        // Acorda quem está esperando a página (modal, envio, etapa): sem isso o
+        // Parar só valia quando a espera atual acabasse — até 20 s.
+        wakeWaiters();
         clearRun();
         sendResponse({ ok: true, stopping: true });
         break;
@@ -3077,6 +3115,7 @@
         // Apaga as vagas capturadas. O histórico de candidaturas (pegavaga_apps)
         // fica de pé de propósito: as cotas protegem a conta de uma rajada.
         state.abort = true;
+        wakeWaiters();
         state.jobs = {};
         state.dropped = 0; // zera junto: sem vagas, o aviso de descarte não faz sentido
         state.lastSyncedId = null;

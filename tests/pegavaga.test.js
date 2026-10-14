@@ -460,6 +460,15 @@ ok('virada do dia zera e remarca o alarme', /alarm\.name === ALARM_BADGE_RESET[\
 ok('contador aparece tambem ao subir o worker', /refreshBadge\(\);\s*\n\s*scheduleBadgeReset\(\)/.test(bgJs) && bgJs.includes('refreshLocale().then(() => refreshStatus())'));
 ok('plano B mantem o selo colorido da luz', /paintedLight == null/.test(bgJs) && bgJs.includes('setBadgeBackgroundColor'));
 
+section('18b. Parar imediato');
+// O Parar não pode esperar a pausa/etapa atual terminar (12 s de leitura, 20 s
+// de confirmação eram o que fazia o botão parecer que não funcionava).
+ok('parar acorda as esperas', /case MSG\.STOP:[\s\S]{0,320}wakeWaiters\(\)/.test(contentJs));
+ok('limpar tambem acorda as esperas', /case MSG\.CLEAR:[\s\S]{0,320}wakeWaiters\(\)/.test(contentJs));
+ok('pausa humana obedece ao parar', /function humanPause\(baseMs, ratio\) \{\s*\n\s*return pause\(/.test(contentJs));
+ok('a pausa desiste no abort', /function pause\(ms\)[\s\S]{0,260}state\.abort \? true : null/.test(contentJs));
+ok('aba reage a fila removida no storage', /changes\[STORAGE_RUN_KEY\][\s\S]{0,260}state\.abort = true;[\s\S]{0,80}wakeWaiters\(\)/.test(contentJs));
+
 section('19. Idioma da interface (pt/en)');
 const marcadoresDe = (s) => [...String(s).matchAll(/\{([a-z0-9_]+)\}/gi)].map((m) => m[1]).sort().join(',');
 const neutrosI18n = ['PegaVaga', 'English', 'https://www.linkedin.com/jobs/search/'];

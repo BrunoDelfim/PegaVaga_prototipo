@@ -38,7 +38,11 @@ fim — e não siga adiante antes de entender a falha.
       digita.
 - [ ] **Iniciar** (barra fixa embaixo) → o LinkedIn abre/navega, as vagas são
       capturadas (o número no donut sobe) e o toast confirma a ação.
-- [ ] **Parar** interrompe a varredura.
+- [ ] **Parar** interrompe **na hora** — inclusive no meio de uma pausa de
+      “leitura” da vaga ou de uma etapa do formulário (não espera a espera atual
+      terminar).
+- [ ] **Parar com outra aba ativa** também funciona: mude de aba, clique em
+      **Parar** e volte para a do LinkedIn — ela para sem continuar varrendo.
 - [ ] Se estiver em **English**, confira que **nada** do painel ficou em português
       (seção T).
 
