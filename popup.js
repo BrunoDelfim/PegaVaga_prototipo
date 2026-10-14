@@ -102,6 +102,39 @@ async function init() {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Campos obrigatórios                                                        */
+/* -------------------------------------------------------------------------- */
+
+/** Os campos que precisam estar preenchidos para a varredura começar. */
+function requiredFields() {
+  return [
+    { key: 'baseUrl', el: els.baseUrl },
+    { key: 'location', el: els.location },
+    { key: 'terms', el: els.terms },
+  ];
+}
+
+/** Pinta de vermelho o que falta e leva o cursor ao primeiro campo vazio. */
+function markMissingFields(keys) {
+  clearMissingFields();
+
+  const alvos = requiredFields().filter((item) => keys.indexOf(item.key) >= 0);
+
+  alvos.forEach((item) => item.el.classList.add('falta'));
+
+  if (alvos.length) {
+    alvos[0].el.focus();
+    if (typeof alvos[0].el.scrollIntoView === 'function') {
+      alvos[0].el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }
+}
+
+function clearMissingFields() {
+  requiredFields().forEach((item) => item.el.classList.remove('falta'));
+}
+
+/* -------------------------------------------------------------------------- */
 /* Idioma da interface                                                        */
 /* -------------------------------------------------------------------------- */
 
@@ -336,6 +369,11 @@ function bindEvents() {
     applyLanguage();
   });
 
+  // Campo obrigatório: o vermelho do aviso sai assim que você começa a digitar.
+  requiredFields().forEach((item) => {
+    item.el.addEventListener('input', () => item.el.classList.remove('falta'));
+  });
+
   // Ao sair do campo, "limpa" a lista de termos (sem vazios e sem repetidos).
   els.terms.addEventListener('blur', () => saveSettingsFromForm({ normalizeForm: true }));
 }
@@ -352,31 +390,24 @@ function bindEvents() {
 async function onStartClick() {
   const parsed = await saveSettingsFromForm({ silent: true, normalizeForm: true });
 
-  if (!parsed.baseUrl || !SHARED.isLinkedInUrl(parsed.baseUrl)) {
-    setStatus(
-      'Configure uma URL do LinkedIn (ex.: https://www.linkedin.com/jobs/search/).',
-      'error'
-    );
+  // Campos obrigatórios (URL do LinkedIn, localização e 1+ termos): a regra mora
+  // no SHARED, então o pop-up e o service worker concordam sem duplicar código.
+  const falta = SHARED.describeMissing(parsed);
+
+  if (falta.fields.length) {
+    setStatus(falta.message, 'error');
     openSettings();
-    els.baseUrl.focus();
+    markMissingFields(falta.fields);
     return;
   }
+
+  clearMissingFields();
 
   const tab = await getActiveTab();
   const tabUrl = (tab && tab.url) || '';
   const onLinkedIn = Boolean(tab && tab.id && SHARED.isLinkedInUrl(tabUrl));
-  const onJobsPage = onLinkedIn && SHARED.isLinkedInJobsUrl(tabUrl);
 
   const run = SHARED.buildRunQueue(parsed);
-
-  // Sem termos cadastrados e já na lista de vagas: varre o que está aberto.
-  // Com o filtro de Candidatura Simplificada ligado preferimos navegar para a URL
-  // montada, que já leva o parâmetro f_AL=true (a página aberta pode não tê-lo).
-  if (!parsed.terms.length && onJobsPage && !parsed.easyApplyOnly) {
-    run.terms = [''];
-    run.urls = [''];
-    run.term = '';
-  }
 
   // Resumo da fila, usado nas mensagens de início ("3 termos em loop (a → b)").
   const queue = describeQueue(run);
@@ -394,13 +425,7 @@ async function onStartClick() {
 
   const firstUrl = run.urls[0];
 
-  // 1) Já estamos na lista de vagas: dispara sem navegar.
-  if (firstUrl === '' && onJobsPage) {
-    await kickOffTab(tab.id, run, say);
-    return;
-  }
-
-  // 2) Temos uma aba do LinkedIn: navega até a primeira busca configurada.
+  // 1) Temos uma aba do LinkedIn: navega até a primeira busca configurada.
   if (onLinkedIn && tab.id) {
     if (tabUrl === firstUrl) {
       await kickOffTab(tab.id, run, say);
@@ -420,7 +445,7 @@ async function onStartClick() {
     return;
   }
 
-  // 3) Não é uma aba do LinkedIn: abre uma nova aba já na busca configurada.
+  // 2) Não é uma aba do LinkedIn: abre uma nova aba já na busca configurada.
   say(
     'Abrindo a busca do LinkedIn em uma nova aba' +
       (queue ? ' (' + queue + ')' : '') +
@@ -819,7 +844,7 @@ function renderTermsQueue() {
           unidade: SHARED.t(terms.length === 1 ? 'termo' : 'termos'),
         }
       )
-    : SHARED.t('Sem termos: a varredura percorre a página de vagas que estiver aberta.');
+    : SHARED.t('Informe pelo menos 1 termo — é obrigatório para iniciar.');
 }
 
 /** Resume a fila que vai rodar: "3 termos em loop (react → node.js → vue)". */
@@ -879,6 +904,10 @@ async function saveSettingsFromForm(options) {
   if (normalizeForm) {
     const normalizedText = parsed.terms.join('\n');
     if (els.terms.value !== normalizedText) els.terms.value = normalizedText;
+
+    // URL vazia cai no padrão do LinkedIn: mostramos na tela o que será usado,
+    // para o campo não ficar vazio enquanto roda com o padrão.
+    if (!els.baseUrl.value.trim()) els.baseUrl.value = parsed.baseUrl;
 
     els.applyPerTerm.value = String(parsed.apply.perTerm);
     els.applyHour.value = String(parsed.apply.perHour);

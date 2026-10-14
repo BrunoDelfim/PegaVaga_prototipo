@@ -42,7 +42,7 @@ A versão vive no `manifest.json` (campo `version`). A regra de avanço é:
 Em resumo: o **último número** é o contador do dia a dia (0–9) e o **do meio** só
 muda quando ele estoura.
 
-Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.14`) — é ela que o
+Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.15`) — é ela que o
 script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
@@ -78,15 +78,14 @@ seguimos abaixo de 1.
      **fila numerada** (passe o mouse para ver a busca de cada termo). Vazios e
      repetidos são descartados (limite de 40 termos).
 3. Em **Candidaturas**:
-   - **Pesquisar somente vagas com Candidatura Simplificada** — **ligado por
-     padrão**: toda busca é aberta com o **filtro nativo de Candidatura
-     Simplificada** do LinkedIn ativado (parâmetro `f_AL=true`), então a lista
-     traz **só vagas em que dá para se candidatar sem sair do LinkedIn**. Vale
-     também para a varredura sem termos (nesse caso a extensão navega para a URL
-     filtrada em vez de usar a página já aberta).
-   - **“Candidatar-se sozinho pela Candidatura Simplificada”** — **ligado por
-     padrão** (desligue para só rastrear vagas, sem candidatar). Com ele ligado,
-     ajuste as cotas:
+   - **Pesquisar somente vagas com Candidatura Simplificada** — **fixo: ligado e
+     desativado** (o interruptor fica na tela, mas não dá para desmarcar): toda
+     busca é aberta com o **filtro nativo de Candidatura Simplificada** do
+     LinkedIn ativado (parâmetro `f_AL=true`), então a lista traz **só vagas em
+     que dá para se candidatar sem sair do LinkedIn**.
+   - **“Candidatar-se sozinho pela Candidatura Simplificada”** — **fixo: ligado e
+     desativado**. A extensão sempre candidata dentro das cotas (não existe mais o
+     modo “só rastrear vagas”):
    - **“Modo simulação”** — **desligado por padrão**: ligado, a extensão faz tudo
      igual (busca, abre o formulário e **preenche**), mas **para antes do clique
      de enviar**. A vaga entra no relatório como `Simulada (não enviada)`, o
@@ -202,8 +201,9 @@ seguimos abaixo de 1.
 9. **■ Parar Varredura** interrompe tudo na hora: encerra a fila atual, cancela
    qualquer retomada agendada e fecha o formulário de candidatura aberto.
 
-> Sem termos cadastrados, o comportamento é o antigo: a extensão varre a lista
-> de vagas aberta no momento (útil quando você já filtrou a busca na mão).
+> **Campos obrigatórios:** **URL de busca do LinkedIn**, **localização** e **pelo
+> menos 1 termo**. Faltando algum, o **Iniciar** não começa: ele diz o que falta,
+> marca os campos em vermelho e leva o cursor até o primeiro.
 
 ### Como funciona a candidatura automática
 
@@ -447,7 +447,7 @@ item.
 
 ```bash
 bash tools/empacotar.sh          # empacota o commit atual (HEAD)
-bash tools/empacotar.sh v0.7.14   # empacota uma tag — é o que se publica
+bash tools/empacotar.sh v0.7.15   # empacota uma tag — é o que se publica
 ```
 
 O script roda os testes antes (não gera zip com teste vermelho), monta

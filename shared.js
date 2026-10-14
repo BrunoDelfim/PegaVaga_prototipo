@@ -60,10 +60,14 @@ globalThis.PegaVagaShared = (() => {
     baseUrl: LINKEDIN_SEARCH_URL,
     location: '',
     locale: 'auto', // 'auto' | 'pt' | 'en' — idioma da interface
+    // Sempre ligado (a interface mostra o interruptor desativado): a extensão só
+    // trabalha com Candidatura Simplificada.
     easyApplyOnly: true, // busca só vagas com Candidatura Simplificada (filtro f_AL)
     terms: [],
     apply: {
-      enabled: true, // candidatar-se sozinho (padrão: ligado)
+      // Sempre ligado (interruptor desativado na interface): a extensão sempre
+      // candidata — não existe mais o modo "só rastrear vagas".
+      enabled: true,
       dryRun: false, // modo simulação: preenche o formulário e NÃO envia
       perTerm: 8, // candidaturas por termo de busca
       perHour: 6, // janela móvel de 60 min
@@ -313,7 +317,7 @@ globalThis.PegaVagaShared = (() => {
     'vagas capturadas': 'jobs captured',
     'Ainda não capturei vagas por termo. Rode uma varredura para ver aqui quanto cada termo rendeu.': 'No jobs per term yet. Run a scan to see how much each term brought in.',
     '· candidatadas. Clique num termo para ver as últimas 24 h dele (barra clara = vagas, escura = candidaturas; em cinza, o que foi de ontem).': '· applied. Click a term to see its last 24 h (light bar = jobs, dark = applications; grey = yesterday).',
-    ': o PegaVaga abre a busca do LinkedIn com os seus termos, varre cada um e, se a candidatura automática estiver ligada, candidata-se respeitando as cotas de hora/24 h/dia, o agendador e o ritmo humano. No CSV sai também o motivo de cada vaga que não deu para candidatar.': ': PegaVaga opens the LinkedIn search with your terms, scans each one and, if automatic applying is on, applies within the hourly/24 h/daily quotas, the scheduler and the human pace. The CSV also carries the reason for every job it could not apply to.',
+    ': o PegaVaga abre a busca do LinkedIn com os seus termos, varre cada um e candidata-se respeitando as cotas de hora/24 h/dia, o agendador e o ritmo humano. No CSV sai também o motivo de cada vaga que não deu para candidatar.': ': PegaVaga opens the LinkedIn search with your terms, scans each one and applies within the hourly/24 h/daily quotas, the scheduler and the human pace. The CSV also carries the reason for every job it could not apply to.',
     'e age na sua própria sessão do LinkedIn: automatizar candidaturas é uma área cinzenta dos termos de uso, e a conta pode ser limitada. Comece com cotas baixas (ex.: 5/h, 20/dia) e acompanhe as primeiras execuções. Sem vínculo com o LinkedIn.': 'and works on your own LinkedIn session: automating applications is a grey area of the terms of use, and the account may be limited. Start with low quotas (e.g. 5/h, 20/day) and watch the first runs. Not affiliated with LinkedIn.',
     'Seções': 'Sections',
     'Vagas por situação': 'Jobs by status',
@@ -329,7 +333,13 @@ globalThis.PegaVagaShared = (() => {
 
     /* Pop-up: Configurações — busca e candidaturas */
     'URL de busca ou perfil': 'Search URL or profile',
-    'Localização (opcional)': 'Location (optional)',
+    'Localização': 'Location',
+    'Obrigatório: URL de busca no LinkedIn, localização e pelo menos 1 termo.': 'Required: a LinkedIn search URL, a location and at least 1 term.',
+    'Estes dois ficam fixos: o PegaVaga só trabalha com Candidatura Simplificada.': 'These two are fixed: PegaVaga only works with Easy Apply.',
+    'Preencha os campos obrigatórios: {campos}.': 'Fill in the required fields: {campos}.',
+    'URL de busca no LinkedIn': 'LinkedIn search URL',
+    'Termos de vaga': 'Job terms',
+    'Informe pelo menos 1 termo — é obrigatório para iniciar.': 'Enter at least 1 term — it is required to start.',
     'Termos de vaga (vários, separados por vírgula ou um por linha)': 'Job terms (several, separated by commas or one per line)',
     'Ex.: Brasil, São Paulo, Remoto': 'E.g. Brazil, São Paulo, Remote',
     'desenvolvedor frontend, react, node.js': 'frontend developer, react, node.js',
@@ -483,7 +493,6 @@ globalThis.PegaVagaShared = (() => {
     'Restauração cancelada.': 'Restore cancelled.',
     'Dados limpos.': 'Data cleared.',
     'Salvando…': 'Saving…',
-    'Sem termos: a varredura percorre a página de vagas que estiver aberta.': 'No terms: the scan goes through the job page you have open.',
     'A busca roda em loop, um termo por vez, nesta ordem ({n} {unidade}). Passe o mouse sobre cada um para ver a busca.': 'The search loops, one term at a time, in this order ({n} {unidade}). Hover each one to see the search.',
     'termo': 'term',
     'termos': 'terms',
@@ -808,10 +817,13 @@ globalThis.PegaVagaShared = (() => {
       baseUrl: String(value.baseUrl || DEFAULT_SETTINGS.baseUrl).trim(),
       location: String(value.location || '').trim(),
       locale: LOCALES.indexOf(String(value.locale || '')) >= 0 ? String(value.locale) : 'auto',
-      easyApplyOnly: value.easyApplyOnly !== false,
+      // Fixos por decisão de produto: o filtro de Candidatura Simplificada e a
+      // candidatura automática não têm como ser desligados (o interruptor fica na
+      // tela, mas desativado). Qualquer valor vindo da configuração é ignorado.
+      easyApplyOnly: true,
       terms: normalizeTerms(value.terms),
       apply: {
-        enabled: apply.enabled !== false,
+        enabled: true, // fixo (ver DEFAULT_SETTINGS)
         dryRun: apply.dryRun === true, // padrão desligado: envia de verdade
         perTerm: num(apply.perTerm, 1, 500, defApply.perTerm),
         perHour: num(apply.perHour, 1, 1000, defApply.perHour),
@@ -855,6 +867,41 @@ globalThis.PegaVagaShared = (() => {
    * Monta a fila de termos: um item por termo, varrido em sequência. Sem termos
    * cadastrados, cai no modo antigo (varre a página de vagas aberta).
    */
+  /**
+   * O que falta para poder iniciar uma varredura. Hoje são obrigatórios: **URL do
+   * LinkedIn**, **localização** e **pelo menos 1 termo** — sem isso a extensão não
+   * começa (e o pop-up mostra o motivo, apontando os campos).
+   *
+   * Puro e testável: devolve os campos vazios **e** a mensagem pronta, para o
+   * pop-up e o service worker usarem a mesma regra.
+   *
+   * @param {Object} settings configuração já normalizada
+   * @returns {{ fields: string[], message: string }} `fields` vazio = pode rodar
+   */
+  function describeMissing(settings) {
+    const cfg = settings || {};
+    const vazios = [];
+
+    if (!isLinkedInUrl(cfg.baseUrl)) vazios.push('baseUrl');
+    if (!String(cfg.location || '').trim()) vazios.push('location');
+    if (!(Array.isArray(cfg.terms) ? cfg.terms.length : 0)) vazios.push('terms');
+
+    const rotulos = {
+      baseUrl: 'URL de busca no LinkedIn',
+      location: 'Localização',
+      terms: 'Termos de vaga',
+    };
+
+    return {
+      fields: vazios,
+      message: vazios.length
+        ? t('Preencha os campos obrigatórios: {campos}.', {
+            campos: vazios.map((campo) => t(rotulos[campo])).join(' · '),
+          })
+        : '',
+    };
+  }
+
   function buildRunQueue(settings) {
     const cfg = settings || DEFAULT_SETTINGS;
     const terms = Array.isArray(cfg.terms) ? cfg.terms : [];
@@ -2120,6 +2167,7 @@ globalThis.PegaVagaShared = (() => {
     nextScheduleStart,
     parseSettings,
     buildRunQueue,
+    describeMissing,
     computeQuota,
     jitter,
     applyOutcomeLabel,

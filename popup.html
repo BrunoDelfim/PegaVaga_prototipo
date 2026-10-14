@@ -575,6 +575,14 @@
       #settings .switch input[type="checkbox"]:checked::after { transform: translateX(14px); }
       #settings .switch input[type="checkbox"]:focus-visible { box-shadow: var(--ring); }
       #settings .switch > span { font-size: var(--fs-sm); line-height: 1.45; color: var(--text); }
+      /* Interruptor fixo: continua mostrando o estado, só não deixa mudar. */
+      #settings .switch input[type="checkbox"]:disabled { cursor: not-allowed; }
+
+      /* Campo obrigatório que ficou vazio na tentativa de iniciar. */
+      #settings .falta {
+        border-color: var(--danger);
+        box-shadow: 0 0 0 3px var(--danger-soft);
+      }
 
       .group { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
       /* O primeiro grupo do painel não tem nada acima: o traço viraria um risco solto. */
@@ -896,9 +904,9 @@
           <span class="card-title">Como funciona</span>
           <p class="hint">
             Clique em <b>Iniciar</b>: o PegaVaga abre a busca do LinkedIn com os seus
-            termos, varre cada um e, se a candidatura automática estiver ligada,
-            candidata-se respeitando as cotas de hora/24 h/dia, o agendador e o ritmo
-            humano. No CSV sai também o motivo de cada vaga que não deu para candidatar.
+            termos, varre cada um e candidata-se respeitando as cotas de hora/24 h/dia,
+            o agendador e o ritmo humano. No CSV sai também o motivo de cada vaga que
+            não deu para candidatar.
           </p>
           <p class="notice">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -941,7 +949,7 @@
             placeholder="https://www.linkedin.com/jobs/search/"
           />
 
-          <label for="location">Localização (opcional)</label>
+          <label for="location">Localização</label>
           <input id="location" type="text" placeholder="Ex.: Brasil, São Paulo, Remoto" />
 
           <label for="terms">Termos de vaga (vários, separados por vírgula ou um por linha)</label>
@@ -953,19 +961,22 @@
           ></textarea>
           <ol class="terms-preview" id="terms-preview"></ol>
           <p class="hint" id="terms-queue"></p>
+          <p class="hint">Obrigatório: URL de busca no LinkedIn, localização e pelo menos 1 termo.</p>
 
           <div class="group">
             <strong>Candidaturas</strong>
 
             <label class="switch">
-              <input type="checkbox" id="easy-apply-only" />
+              <input type="checkbox" id="easy-apply-only" disabled />
               <span>Pesquisar somente vagas com Candidatura Simplificada</span>
             </label>
 
             <label class="switch">
-              <input type="checkbox" id="apply-enabled" />
+              <input type="checkbox" id="apply-enabled" disabled />
               <span>Candidatar-se sozinho pela Candidatura Simplificada</span>
             </label>
+
+            <p class="hint">Estes dois ficam fixos: o PegaVaga só trabalha com Candidatura Simplificada.</p>
 
             <label class="switch">
               <input type="checkbox" id="apply-dry-run" />

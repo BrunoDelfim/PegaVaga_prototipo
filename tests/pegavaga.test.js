@@ -160,8 +160,9 @@ eq('default helpOnStuck', def.apply.helpOnStuck, true);
 eq('default schedule.enabled', def.schedule.enabled, false);
 eq('default terms', def.terms, []);
 eq('default dias', def.schedule.days, [1, 2, 3, 4, 5]);
-eq('apply.enabled false respeitado', S.parseSettings({ apply: { enabled: false } }).apply.enabled, false);
-eq('easyApplyOnly false respeitado', S.parseSettings({ easyApplyOnly: false }).easyApplyOnly, false);
+eq('apply.enabled sempre ligado (fixo)', S.parseSettings({ apply: { enabled: false } }).apply.enabled, true);
+eq('easyApplyOnly sempre ligado (fixo)', S.parseSettings({ easyApplyOnly: false }).easyApplyOnly, true);
+eq('agendador continua desligado por padrao', S.parseSettings({ schedule: { enabled: true } }).schedule.enabled, true);
 eq('fillRequired true respeitado', S.parseSettings({ apply: { fillRequired: true } }).apply.fillRequired, true);
 const clamp = S.parseSettings({ apply: { minDelayMs: 999999, maxDelayMs: 1, readMinMs: 99999, readMaxMs: 1, perTerm: 9999, answerNumber: 999 } });
 ok('delay min<=max', clamp.apply.minDelayMs <= clamp.apply.maxDelayMs);
@@ -171,6 +172,24 @@ eq('answerNumber clampado', clamp.apply.answerNumber, 200);
 eq('answers normalizadas', S.parseSettings({ apply: { answers: { '  ': 'x', q: '', k: ' v ' } } }).apply.answers, { k: 'v' });
 eq('terms do texto', S.parseSettings({ terms: 'a, b' }).terms, ['a', 'b']);
 eq('helpOnStuck false respeitado', S.parseSettings({ apply: { helpOnStuck: false } }).apply.helpOnStuck, false);
+
+section('8b. Campos obrigatorios para iniciar');
+const semNada = S.describeMissing(S.parseSettings(null));
+eq('falta localizacao e termos', semNada.fields, ['location', 'terms']);
+eq('mensagem diz o que falta', semNada.message, 'Preencha os campos obrigatórios: Localização · Termos de vaga.');
+eq('url de outro site conta como faltando', S.describeMissing(S.parseSettings({ baseUrl: 'https://example.com/jobs', location: 'Recife', terms: 'react' })).fields, ['baseUrl']);
+eq('url vazia cai no padrao do LinkedIn (e aparece na tela)', S.parseSettings({ baseUrl: '' }).baseUrl, S.LINKEDIN_SEARCH_URL);
+eq('localizacao so com espacos nao conta', S.describeMissing(S.parseSettings({ baseUrl: 'https://www.linkedin.com/jobs/search/', location: '   ', terms: 'react' })).fields, ['location']);
+const completa = S.parseSettings({ baseUrl: 'https://www.linkedin.com/jobs/search/', location: 'Recife', terms: 'react' });
+eq('com tudo preenchido pode rodar', S.describeMissing(completa).fields, []);
+eq('sem pendencia nao ha mensagem', S.describeMissing(completa).message, '');
+ok('a regra usa a mesma URL do LinkedIn do resto', S.describeMissing(S.parseSettings({ baseUrl: 'https://br.linkedin.com/jobs/search/', location: 'Recife', terms: 'react' })).fields.length === 0);
+
+ok('interruptores fixos ficam desativados na tela', popupHtml.includes('id="easy-apply-only" disabled') && popupHtml.includes('id="apply-enabled" disabled'));
+ok('popup valida os obrigatorios antes de iniciar', popupJs.includes('SHARED.describeMissing(parsed)') && popupJs.includes('markMissingFields(falta.fields)'));
+ok('campo que falta fica marcado em vermelho', /#settings \.falta \{[\s\S]{0,140}border-color: var\(--danger\)/.test(popupHtml));
+ok('aviso de obrigatorios na tela', popupHtml.includes('Obrigatório: URL de busca no LinkedIn, localização e pelo menos 1 termo.'));
+ok('rodape da fila avisa que o termo e obrigatorio', popupJs.includes('Informe pelo menos 1 termo'));
 
 section('9. Fila e cotas');
 const run = S.buildRunQueue(S.parseSettings({ terms: 'react, node', easyApplyOnly: true }));

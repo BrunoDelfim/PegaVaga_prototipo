@@ -96,17 +96,25 @@ fim — e não siga adiante antes de entender a falha.
 - [ ] Cada termo vira **uma busca própria** (`keywords=…` na URL).
 - [ ] **Localização** entra como `location=…` na URL.
 - [ ] Termos vazios/repetidos são descartados; o limite de 40 é respeitado.
-- [ ] **Sem termos**: varre a página de vagas que estiver aberta.
+- [ ] **Sem nenhum termo não inicia**: clique em **Iniciar** → o aviso “Preencha os
+      campos obrigatórios: …” aparece e o campo de termos fica **marcado em
+      vermelho**.
+- [ ] **Localização obrigatória**: apague a localização e clique em **Iniciar** →
+      o aviso aponta a **localização**, o campo fica marcado e o cursor vai para
+      ele; o vermelho sai assim que você digita. (Com os dois vazios, o aviso lista
+      **os dois**.)
+- [ ] **URL**: apague e cole uma URL que **não** é do LinkedIn (ex.:
+      `https://exemplo.com/vagas`) → o aviso aponta a **URL de busca no LinkedIn**.
 - [ ] Na **fila numerada**, passe o mouse num termo → o tooltip mostra a URL daquela
-      busca (com `f_AL=true` quando o filtro está ligado).
+      busca (com `f_AL=true`, já que o filtro é fixo).
 
 ### E. Filtro “Pesquisar somente vagas com Candidatura Simplificada”
-- [ ] Vem **ligado por padrão** (marque/desmarque para conferir os dois casos).
-- [ ] Ligado, a URL da busca sai com **`f_AL=true`** (confira na barra de endereços
-      ou no *title* do termo, na fila).
-- [ ] Desligado, o `f_AL` **não** aparece.
-- [ ] Sem termos e já numa página de vagas, com o filtro ligado a extensão
-      **navega** para a URL filtrada (não usa a página aberta).
+- [ ] Vem **ligado e desativado**: o interruptor aparece na tela, mas **não dá para
+      desmarcar** (o PegaVaga só trabalha com Candidatura Simplificada).
+- [ ] Em toda busca a URL sai com **`f_AL=true`** (confira na barra de endereços ou
+      no *title* do termo, na fila).
+- [ ] O aviso “Estes dois ficam fixos…” aparece logo abaixo dos dois interruptores
+      fixos.
 
 ### F. Captura de vagas
 - [ ] Ao passar pelos cards, título/empresa/link/descrição são capturados.
@@ -114,8 +122,8 @@ fim — e não siga adiante antes de entender a falha.
 - [ ] O CSV (**Exportar (CSV)**) abre no Excel com acentos corretos.
 
 ### G. Candidatura automática (Candidatura Simplificada)
-- [ ] **“Candidatar-se sozinho pela Candidatura Simplificada”** vem **ligado por
-      padrão**; desligado, a extensão só rastreia vagas (não candidata).
+- [ ] **“Candidatar-se sozinho pela Candidatura Simplificada”** vem **ligado e
+      desativado** (fixo): a extensão **sempre** candidata, respeitando as cotas.
 - [ ] **Modo simulação** (ligue o interruptor e rode): a extensão busca, abre o
       formulário e **preenche**, mas **não envia** — no relatório a vaga aparece
       como **`Simulada (não enviada)`**, o formulário é fechado sozinho e a
@@ -155,6 +163,8 @@ fim — e não siga adiante antes de entender a falha.
 - [ ] O card de cotas e o chip de status batem com o que está acontecendo.
 
 ### K. Agendador
+- [ ] Vem **desligado por padrão** (numa instalação limpa o interruptor está
+      desmarcado).
 - [ ] Ligado com uma janela que **já está aberta** → inicia sozinho.
 - [ ] Fora da janela → **não** varre e a fila fica pausada.
 - [ ] Janela que **cruza a meia-noite** (ex.: `22:00 → 06:00`) funciona.
