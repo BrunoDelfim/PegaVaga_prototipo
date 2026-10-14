@@ -101,6 +101,7 @@ function cacheElements() {
   els.statusLight = document.getElementById('status-light');
   els.count = document.getElementById('count');
   els.lastRun = document.getElementById('last-run');
+  els.trimHint = document.getElementById('trim-hint');
   els.runInfo = document.getElementById('run-info');
   els.quotaInfo = document.getElementById('quota-info');
   els.status = document.getElementById('status');
@@ -748,10 +749,29 @@ async function refresh() {
   }
 
   els.btnExport.disabled = jobs.length === 0;
+  renderTrimHint(meta);
   renderApplySummary(jobs);
   renderQuota();
   renderSpark();
   renderTerms(jobs);
+}
+
+/**
+ * Avisa quando o teto de armazenamento já descartou vagas antigas: sem isso o
+ * usuário exportaria a planilha achando que está tudo lá. Zero descartes = aviso
+ * escondido (o normal).
+ */
+function renderTrimHint(meta) {
+  if (!els.trimHint) return;
+
+  const dropped = meta && Number.isFinite(Number(meta.dropped)) ? Number(meta.dropped) : 0;
+
+  els.trimHint.hidden = dropped === 0;
+  els.trimHint.textContent = dropped
+    ? 'Descartei ' + dropped +
+      ' vaga(s) antiga(s) para o armazenamento não encher (guardo as ' + SHARED.MAX_JOBS +
+      ' mais recentes). Exporte a planilha de vez em quando para não perder nada.'
+    : '';
 }
 
 /**

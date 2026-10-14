@@ -6,8 +6,9 @@
  *
  * Cobre: manifest/permissions, exports do shared.js, mensageria entre os
  * contextos, IDs do popup, codigos de status, configuracao, cotas, horarios,
- * relatorio, luz de status, deteccoes (Candidatou-se, externa, ...) e a espera
- * por evento. Sai com codigo 0 quando tudo passa e 1 quando ha falha.
+ * relatorio, luz de status, teto de armazenamento, deteccoes (Candidatou-se,
+ * externa, ...) e a espera por evento. Sai com codigo 0 quando tudo passa e 1
+ * quando ha falha.
  * ===========================================================================*/
 const fs = require('fs');
 const ROOT = require('path').resolve(__dirname, '..') + '/';
@@ -33,7 +34,7 @@ eq('manifest_version', manifest.manifest_version, 3);
 ok('service_worker', manifest.background.service_worker === 'background.js');
 eq('content_scripts js', manifest.content_scripts[0].js, ['shared.js', 'content.js']);
 eq('content_scripts matches', manifest.content_scripts[0].matches, ['https://www.linkedin.com/*']);
-['storage', 'alarms', 'notifications', 'activeTab'].forEach((p) => ok('permissao ' + p, manifest.permissions.includes(p)));
+['storage', 'alarms', 'notifications', 'activeTab', 'unlimitedStorage'].forEach((p) => ok('permissao ' + p, manifest.permissions.includes(p)));
 ok('host_permissions linkedin', manifest.host_permissions.includes('https://www.linkedin.com/*'));
 ok('versao semver', /^\d+\.\d+\.\d+$/.test(manifest.version), manifest.version);
 
@@ -215,7 +216,28 @@ eq('pickChoice nao', S.pickChoice(['Selecione', 'Não', 'Sim'], { yes: false }),
 eq('pickChoice so placeholder', S.pickChoice(['Selecione uma opção'], { yes: true }), '');
 eq('pickChoice vazio', S.pickChoice([], {}), '');
 
-section('13. Espera por evento (assincrono)');
+section('13. Teto de armazenamento');
+const vaga = (id, chars, at) => ({ id: id, description: 'x'.repeat(chars), capturedAt: at });
+const dia = (n) => new Date(2026, 0, n, 12, 0).toISOString();
+const mapa = {};
+for (let i = 1; i <= 5; i += 1) mapa['j' + i] = vaga('j' + i, 10, dia(i));
+const cortado = S.trimJobs(mapa, { maxJobs: 3, maxChars: 100 });
+eq('trimJobs respeita o teto de vagas', Object.keys(cortado.jobs).length, 3);
+eq('trimJobs conta os descartados', cortado.dropped, 2);
+eq('trimJobs mantem as mais novas', Object.keys(cortado.jobs).sort(), ['j3', 'j4', 'j5']);
+const curta = S.trimJobs(mapa, { maxJobs: 9, maxChars: 4 });
+eq('trimJobs corta a descricao longa', curta.jobs.j1.description, 'xxxx');
+eq('trimJobs preserva o resto da vaga', curta.jobs.j1.id, 'j1');
+eq('trimJobs nao corta o que cabe', S.trimJobs(mapa, { maxJobs: 9, maxChars: 50 }).jobs.j2.description.length, 10);
+ok('trimJobs devolve o mesmo mapa quando nao ha nada a cortar', S.trimJobs(mapa, { maxJobs: 9, maxChars: 50 }).jobs === mapa);
+eq('trimJobs mapa vazio', Object.keys(S.trimJobs({}).jobs).length, 0);
+eq('trimJobs sem parametros usa o padrao', S.trimJobs(mapa).dropped, 0);
+eq('trimJobs descarta entrada invalida', Object.keys(S.trimJobs({ a: null, b: vaga('b', 5, dia(2)) }, { maxJobs: 9 }).jobs), ['b']);
+eq('trimJobs vaga sem capturedAt e a mais antiga', Object.keys(S.trimJobs({ novo: vaga('novo', 5, dia(9)), velho: { id: 'velho', description: 'z' } }, { maxJobs: 1 }).jobs), ['novo']);
+ok('teto de vagas definido', S.MAX_JOBS >= 1000);
+ok('limite de descricao definido', S.DESC_MAX_CHARS >= 2000);
+
+section('14. Espera por evento (assincrono)');
 (async () => {
   const sig = S.createSignal();
   eq('waitUntil imediato', await S.waitUntil(sig, () => 42, 100, 0), 42);

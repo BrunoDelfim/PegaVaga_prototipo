@@ -2,7 +2,7 @@
 
 Extensão para automatizar o rastreamento **e as candidaturas** no LinkedIn:
 cadastra uma **URL de busca (ou perfil)** e uma lista de **termos**, varre cada
-termo automaticamente, captura **título, empresa, link e descrição completa** de
+termo automaticamente, captura **título, empresa, link e descrição** de
 cada vaga, **candidata-se sozinho** pela Candidatura Simplificada respeitando
 **cotas por hora, 24 h e dia** — respondendo as perguntas obrigatórias do
 formulário e fechando os popups de avaliação/pesquisa que o LinkedIn abre depois
@@ -355,7 +355,7 @@ item.
 ## Antes de publicar
 
 O que falta para sair da beta está em **[`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)**:
-checklist com bloqueadores (risco de storage, política de privacidade, aviso no
+checklist com bloqueadores (política de privacidade, aviso no
 app), itens fortes (CI, diagnóstico, dry-run, empacotamento) e polimento.
 Cada item tem **por quê**, **como fazer** e uma caixinha que vai sendo marcada.
 
@@ -364,6 +364,7 @@ Cada item tem **por quê**, **como fazer** e uma caixinha que vai sendo marcada.
 | Permissão        | Motivo                                                        |
 | ---------------- | ------------------------------------------------------------- |
 | `storage`        | Guardar a configuração, a fila, as vagas e as cotas.           |
+| `unlimitedStorage` | Banco local de vagas: o histórico de descrições passa do teto de ~10 MB do `storage.local`. |
 | `activeTab`      | Falar com a aba ativa do LinkedIn a partir do pop-up.         |
 | `alarms`         | Agendador: acordar o service worker no horário escolhido e quando uma cota libera. |
 | `notifications`  | Avisar na área de trabalho quando uma vaga precisa da sua ajuda. |
@@ -382,12 +383,26 @@ via `Blob` + `<a download>` gerados no próprio pop-up.
 | `pegavaga_settings`    | `{ baseUrl, location, terms[], apply{…}, schedule{…} }` — inclui as cotas, o ritmo humano (`minDelayMs`, `maxDelayMs`, `readMinMs`, `readMaxMs`, `respectUserActivity`, `breaksEnabled`, `breakEvery`, `breakMs`), as respostas do formulário (`fillRequired`, `answerYes`, `answerNumber`, `answerText`, `answers`) e o agendador. |
 | `pegavaga_run`         | Fila atual: `{ running, paused, resumeAt, pauseReason, index, term, terms[], urls[], appliedInTerm, visitedInTerm, appliedTotal, sinceBreak, tabId, source }`. |
 | `pegavaga_jobs`        | `{ [jobId]: { id, title, company, link, term, description, applyStatus, applyReason, applyAttempts, applyTriedAt, appliedAt, capturedAt } }`. |
-| `pegavaga_meta`        | `{ lastRun, count, pageUrl }`.                                  |
+| `pegavaga_meta`        | `{ lastRun, count, pageUrl, dropped }` — `dropped` é quantas vagas antigas já saíram pelo teto. |
 | `pegavaga_apps`        | `[timestamp, …]` das candidaturas enviadas (base das cotas por hora/24 h/dia). |
 | `pegavaga_guard`       | `{ blockedUntil, reason, at }` — descanso imposto quando o LinkedIn sinaliza limite de uso/verificação. Enquanto vale, **nada** roda (nem o agendador). |
 
 `pauseReason` da fila diz por que ela está parada: `cota`, `guard`, `usuario`
 (vez para você) ou `schedule` (fora da janela do agendador).
+
+### Tetos de armazenamento
+
+`pegavaga_jobs` guarda no máximo **5.000 vagas** (`MAX_JOBS`): passando disso, as
+capturadas há mais tempo saem — e o pop-up avisa isso no card **Início** (o
+`dropped` do `pegavaga_meta`). A descrição de cada vaga é cortada em **6.000
+caracteres** (`DESC_MAX_CHARS`); o texto inteiro continua na própria vaga do
+LinkedIn, que está sempre no `Link`.
+
+Os dois tetos ficam em `SHARED.trimJobs` (função pura, coberta pelos testes) e
+são aplicados **antes de cada gravação**, no `persist()` do `content.js`. A
+permissão `unlimitedStorage` tira o teto de ~10 MB do `chrome.storage.local`,
+mas os limites continuam valendo para a extensão não ficar lenta: a cada
+gravação o mapa inteiro é serializado.
 
 ## Agendador (background.js)
 

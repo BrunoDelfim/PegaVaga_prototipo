@@ -623,6 +623,7 @@
       .hint { margin: 6px 0 0; font-size: var(--fs-xs); line-height: 1.5; color: var(--muted); }
       .hint.ok { color: var(--ok); }
       .hint.error { color: var(--danger); }
+      .hint.warn { color: var(--warn); }
 
       /* ============================ Modo escuro =============================
          Ligado por `html[data-theme="dark"]`: a lâmpada do cabeçalho troca e, ao
@@ -769,6 +770,7 @@
           <ul class="legend" id="apply-summary"></ul>
         </div>
         <span class="lastrun" id="last-run">Nenhuma varredura realizada</span>
+        <p class="hint warn" id="trim-hint" hidden></p>
         <p class="empty" id="empty-state" hidden>
           <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

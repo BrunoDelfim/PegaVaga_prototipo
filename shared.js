@@ -39,6 +39,11 @@ globalThis.PegaVagaShared = (() => {
   const LINKEDIN_EASY_APPLY_PARAM = 'f_AL';
 
   const MAX_TERMS = 40; // trava de segurança por execução
+
+  // Teto do banco de vagas (chrome.storage.local): descrição gigante é cortada e,
+  // passando do limite de vagas, as mais antigas saem. Ver trimJobs().
+  const MAX_JOBS = 5000;
+  const DESC_MAX_CHARS = 6000;
   const HOUR_MS = 3600000;
   const DAY_MS = 86400000;
   const HISTORY_LIMIT = 500; // candidaturas guardadas (base das cotas móveis)
@@ -1262,6 +1267,62 @@ globalThis.PegaVagaShared = (() => {
     };
   }
 
+  /**
+   * Aplica os tetos de armazenamento ao mapa de vagas: corta a descrição que
+   * passar de `maxChars` e, havendo mais de `maxJobs` vagas, descarta as
+   * capturadas há mais tempo (vaga sem `capturedAt` conta como a mais antiga).
+   * Função pura: quando não há nada para cortar, devolve o próprio mapa recebido.
+   * @param {Object} jobs mapa { [jobId]: vaga }
+   * @param {{ maxJobs?: number, maxChars?: number }} [options] padrão: MAX_JOBS/DESC_MAX_CHARS
+   * @returns {{ jobs: Object, dropped: number }} mapa (novo ou o mesmo) e quantas vagas saíram
+   */
+  function trimJobs(jobs, options) {
+    const opts = options || {};
+    const maxJobs = Number.isFinite(opts.maxJobs) ? opts.maxJobs : MAX_JOBS;
+    const maxChars = Number.isFinite(opts.maxChars) ? opts.maxChars : DESC_MAX_CHARS;
+    const list = jobs || {};
+    const keys = Object.keys(list);
+
+    let dropSet = null;
+    let dropped = 0;
+
+    if (keys.length > maxJobs) {
+      const byAge = keys.slice().sort((a, b) => {
+        const ta = Date.parse((list[a] && list[a].capturedAt) || '') || 0;
+        const tb = Date.parse((list[b] && list[b].capturedAt) || '') || 0;
+        return ta - tb;
+      });
+
+      dropped = keys.length - maxJobs;
+      dropSet = new Set(byAge.slice(0, dropped));
+    }
+
+    const out = {};
+    let changed = Boolean(dropSet);
+
+    for (const key of keys) {
+      if (dropSet && dropSet.has(key)) continue;
+
+      const job = list[key];
+
+      if (!job) {
+        changed = true; // entrada inválida não vai para a planilha
+        continue;
+      }
+
+      const text = typeof job.description === 'string' ? job.description : '';
+
+      if (text.length > maxChars) {
+        out[key] = Object.assign({}, job, { description: text.slice(0, maxChars) });
+        changed = true;
+      } else {
+        out[key] = job;
+      }
+    }
+
+    return { jobs: changed ? out : list, dropped: dropped };
+  }
+
   return {
     STORAGE,
     MSG,
@@ -1272,6 +1333,9 @@ globalThis.PegaVagaShared = (() => {
     LINKEDIN_SEARCH_URL,
     LINKEDIN_EASY_APPLY_PARAM,
     MAX_TERMS,
+    MAX_JOBS,
+    DESC_MAX_CHARS,
+    trimJobs,
     HOUR_MS,
     DAY_MS,
     HISTORY_LIMIT,

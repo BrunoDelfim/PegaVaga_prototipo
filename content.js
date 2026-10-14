@@ -52,6 +52,10 @@
   const STORAGE_SETTINGS_KEY = STORAGE.settings || 'pegavaga_settings';
   const STORAGE_GUARD_KEY = STORAGE.guard || 'pegavaga_guard';
 
+  // Teto do banco de vagas: corta descrição gigante e descarta as vagas mais
+  // antigas quando passa do limite (regra pura no shared.js, coberta por testes).
+  const trimJobs = SHARED.trimJobs || ((jobs) => ({ jobs: jobs || {}, dropped: 0 }));
+
   const MSG = SHARED.MSG || {
     START: 'PEGAVAGA_START',
     STOP: 'PEGAVAGA_STOP',
@@ -269,6 +273,7 @@
 
   const state = {
     jobs: {}, // { [jobId]: { id, title, company, link, description, ... } }
+    dropped: 0, // vagas antigas já descartadas pelo teto de armazenamento
     scanning: false,
     abort: false,
     lastRun: null,
@@ -578,10 +583,19 @@
   }
 
   function persist() {
+    // Teto de armazenamento antes de gravar: descrição cortada em
+    // DESC_MAX_CHARS e as vagas mais antigas fora quando passa de MAX_JOBS.
+    // Sem isso o Chrome passa a recusar as gravações em silêncio.
+    const trimmed = trimJobs(state.jobs);
+
+    if (trimmed.dropped > 0) state.dropped += trimmed.dropped;
+    state.jobs = trimmed.jobs;
+
     const meta = {
       lastRun: state.lastRun,
       count: Object.keys(state.jobs).length,
       pageUrl: location.href,
+      dropped: state.dropped, // o pop-up avisa quando isso passa de zero
     };
 
     return chrome.storage.local
@@ -595,6 +609,7 @@
       state.jobs = data[STORAGE_JOBS_KEY] || {};
       const meta = data[STORAGE_META_KEY] || {};
       state.lastRun = meta.lastRun || null;
+      state.dropped = Number(meta.dropped) || 0;
     } catch (error) {
       state.jobs = {};
     }

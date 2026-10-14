@@ -4,7 +4,7 @@ Plano de trabalho para sair da beta e publicar na **Chrome Web Store**.
 Cada item diz **por quê** e **como fazer**; ao concluir, troque `[ ]` por `[x]` e
 preencha a linha **Feito em** com a versão e o commit.
 
-**Progresso:** 0 de 14 itens · **Versão:** a que está no `manifest.json`
+**Progresso:** 1 de 14 itens · **Versão:** a que está no `manifest.json`
 
 Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
@@ -12,7 +12,7 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
 ## 🔴 Bloqueadores (fazer antes de publicar)
 
-- [ ] **1. Risco de estourar o `chrome.storage.local`**
+- [x] **1. Risco de estourar o `chrome.storage.local`**
   `pegavaga_jobs` guarda a **descrição completa** de cada vaga e **não tem teto**
   (há limite só para os apps). O `storage.local` tem ~10 MB: com ~2–3 mil vagas
   longas, o Chrome passa a **rejeitar gravações — em silêncio**, porque os erros
@@ -20,7 +20,14 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   *Como:* truncar a descrição (ex.: 2.000 caracteres) **e/ou** teto de vagas
   (ex.: 5.000, descartando as mais antigas com aviso) **e/ou** a permissão
   `unlimitedStorage`.
-  *Feito em:* —
+  *Feito em:* `0.7.2` (commit `ae66818`) — foram os **três** caminhos, com a
+  regra isolada numa função pura (`SHARED.trimJobs`, 13 testes novos):
+  `unlimitedStorage` no manifest; descrição cortada em `DESC_MAX_CHARS` (6.000
+  caracteres) e teto de `MAX_JOBS` (5.000 vagas), em que as capturadas há mais
+  tempo saem. O total descartado vai para `pegavaga_meta.dropped` e o pop-up
+  avisa no card **Início** (“descartei N vagas antigas…”). Os tetos são aplicados
+  no `persist()`, antes de cada gravação — o mapa inteiro é reescrito sempre, por
+  isso o teto também protege a velocidade.
 
 - [ ] **2. Política de privacidade + declaração de uso de dados**
   A Chrome Web Store exige a política **e** o preenchimento do formulário de
@@ -114,4 +121,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | Data | Item | Versão | Commit |
 | --- | --- | --- | --- |
 | 13/10/2026 | Checklist criado | `0.6.9` | — |
+| 13/10/2026 | 1. Teto de armazenamento | `0.7.2` | `ae66818` |
 
