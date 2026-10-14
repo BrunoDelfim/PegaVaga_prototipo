@@ -4,7 +4,7 @@ Plano de trabalho para sair da beta e publicar na **Chrome Web Store**.
 Cada item diz **por quê** e **como fazer**; ao concluir, troque `[ ]` por `[x]` e
 preencha a linha **Feito em** com a versão e o commit.
 
-**Progresso:** 9 de 14 itens · **Versão:** a que está no `manifest.json`
+**Progresso:** 10 de 14 itens · **Versão:** a que está no `manifest.json`
 
 Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
@@ -164,10 +164,23 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   O ícone já tem a luzinha de status; o badge mostraria o total do dia.
   *Feito em:* —
 
-- [ ] **12. Notificação ao terminar a varredura**
+- [x] **12. Notificação ao terminar a varredura**
   Hoje só existe a notificação de “preciso de ajuda”. Avisar quando a fila
   termina é útil para quem deixa rodando em segundo plano.
-  *Feito em:* —
+  *Feito em:* `0.7.8` (commit `8333ea0`, tag **`v0.7.8`**) — o `content.js` manda
+  **`MSG.DONE`** no fim da fila (antes de limpar a fila, que é de onde o resumo
+  vem) e também quando o **guard** derruba a varredura. O texto sai de
+  **`SHARED.describeRunEnd()`** (função pura, com 13 verificações), não do
+  service worker: “128 vagas capturadas · 9 candidaturas enviadas” — e no **modo
+  simulação** diz “formulários preenchidos sem enviar”, para o resumo não
+  parecer que falhou.
+  *Dois cuidados que valem nota:* o aviso é **suprimido quando a página está em
+  foco** (`document.hasFocus()`), porque aí a notificação só repetiria o que você
+  já está vendo; e a de **parada por proteção** usa `requireInteraction`, ficando
+  na tela até ser vista (as outras somem sozinhas). Clicar traz a aba do LinkedIn
+  para frente — extraí `focusTabId()`, que agora serve também ao pedido de ajuda.
+  Interruptor **“Avisar quando a varredura terminar”** nas Candidaturas, **ligado
+  por padrão**.
 
 - [x] **13. Atualizar o `tests/SMOKE_TEST.md`**
   Incluir o que mudou: abas (Início/Configurações), lâmpada (tema), card “Vagas
@@ -213,4 +226,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 13/10/2026 | 2. Política de privacidade | — (docs) | `5231400` |
 | 13/10/2026 | 7. Copiar diagnóstico e 8. Modo simulação | `0.7.6` | `28923ca`, `19733de` |
 | 13/10/2026 | 9. Backup da configuração em JSON | `0.7.7` | `6441de6` |
+| 13/10/2026 | 12. Notificação de fim de varredura | `0.7.8` | `8333ea0` |
 
