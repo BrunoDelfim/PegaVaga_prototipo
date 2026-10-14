@@ -1,0 +1,30 @@
+name: Testes
+
+# Roda a cada push (qualquer branch) e em pull request. O teste já sai com código
+# 1 quando falha, então o GitHub marca a execução como falha sozinho -- não
+# precisa de nenhum passo extra de verificação.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  testes:
+    name: node tests/pegavaga.test.js
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # O projeto não tem dependências: nada de npm install, o teste roda direto.
+      - name: Checagem de sintaxe
+        run: |
+          for f in shared.js background.js content.js popup.js; do
+            node --check "$f"
+          done
+
+      - name: Testes
+        run: node tests/pegavaga.test.js
