@@ -93,7 +93,8 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   `content.js`, então o erro desaparece sem deixar rastro.
   *Como:* guardar os erros num buffer (últimos ~50), somar versão + configuração
   e copiar para a área de transferência.
-  *Feito em:* `0.7.5` (commit `28923ca`) — o `content.js` ganhou
+  *Feito em:* `0.7.6` (commits `28923ca` e `19733de`, tag **`v0.7.6`**) — o
+  `content.js` ganhou
   **`noteError(onde, erro)`**: cada `catch` registra **hora + trecho + mensagem**
   num buffer de **50** (`SHARED.ERROR_KEEP`), gravado em `pegavaga_errors` (junto
   da gravação das vagas e, sozinho, quando o erro vem da própria gravação — sem
@@ -106,12 +107,18 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   simulação, tema e os últimos erros; a cópia usa `navigator.clipboard` **com
   queda para o `textarea` clássico**, e o texto avisa que ele traz a sua
   configuração (para conferir antes de colar em público).
+  *Achado no caminho:* a lista de permissões do Chrome diz que
+  **`clipboardWrite` é necessária** para o `document.execCommand('copy')` (o plano
+  B da cópia). Sem ela o botão poderia nascer quebrado no navegador — então a
+  permissão entrou (`19733de`), com a justificativa no `LOJA.md` e na tabela do
+  README, e o **bump extra para `0.7.6`**: a `0.7.5` saiu sem ela, e tag
+  publicada não se move.
 
 - [x] **8. Modo simulação (dry-run)**
   Varre e preenche o formulário, mas **não clica em enviar**. Deixa a primeira
   experiência segura (e é um bom argumento na descrição da loja).
   *Como:* opção em Candidaturas; no `runApplyFlow`, parar antes do envio.
-  *Feito em:* `0.7.5` (commit `28923ca`) — interruptor **“Modo simulação”** nas
+  *Feito em:* `0.7.6` (commit `28923ca`, tag **`v0.7.6`**) — interruptor **“Modo simulação”** nas
   Candidaturas, **desligado por padrão** (de propósito: não muda o comportamento
   de quem já usa — quem quer a primeira vez segura liga o interruptor, e o item 4
   pode citar isso na descrição da loja). No `runApplyFlow`, quando o próximo
@@ -192,5 +199,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 13/10/2026 | 10. Empacotamento (zip + tag `v0.7.4`) | `0.7.4` | `fdf9efa` |
 | 13/10/2026 | 13. Roteiro de smoke test | — (docs) | `caee973` |
 | 13/10/2026 | 2. Política de privacidade | — (docs) | `5231400` |
-| 13/10/2026 | 7. Copiar diagnóstico e 8. Modo simulação | `0.7.5` | `28923ca` |
+| 13/10/2026 | 7. Copiar diagnóstico e 8. Modo simulação | `0.7.6` | `28923ca`, `19733de` |
 
