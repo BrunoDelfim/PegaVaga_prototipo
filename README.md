@@ -161,7 +161,8 @@ muda quando ele estoura.
      **vagas capturadas · candidatadas** ao lado. **Clique num termo** para ver o
      mini-gráfico das últimas 24 h **daquele termo** (barra clara = vagas
      capturadas, escura = candidaturas) — é assim que dá para ver *quando* cada
-     termo rendeu;
+     termo rendeu. O card fica **sempre visível**: sem vagas capturadas, ele
+     mostra um aviso de vazio;
    - a linha do agendador, ex.:
      `Janela: Seg, Ter, Qua, Qui, Sex, 08:00 → 18:00 · próxima: seg. 08:00.`
      (quando a fila está pausada, ela também diz **por quê**: cota, janela,

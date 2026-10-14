@@ -189,7 +189,7 @@
       .hero { display: flex; flex-direction: column; gap: 6px; }
       .hero-top { display: flex; align-items: center; gap: 14px; }
       .hero .lastrun { font-size: var(--fs-xs); color: var(--muted); }
-      .hero .empty {
+      .empty {
         display: flex;
         align-items: center;
         gap: 10px;
@@ -198,7 +198,7 @@
         line-height: 1.45;
         color: var(--muted);
       }
-      .hero .empty svg { flex: 0 0 auto; color: #b8c6d8; }
+      .empty svg { flex: 0 0 auto; color: #b8c6d8; }
 
       /* Donut do resumo */
       .donut-wrap { position: relative; flex: 0 0 auto; width: 92px; height: 92px; }
@@ -736,20 +736,34 @@
         <p class="hint" id="spark-hint"></p>
       </section>
 
-      <section class="card" id="terms-card" hidden>
+      <section class="card" id="terms-card">
         <span class="card-title">Vagas por termo</span>
-        <ul class="terms-bars" id="terms-bars"></ul>
-        <div class="term-spark-wrap">
-          <div class="term-spark-head">
-            <b id="term-spark-name"></b>
-            <span id="term-spark-total"></span>
+
+        <div id="terms-body" hidden>
+          <ul class="terms-bars" id="terms-bars"></ul>
+          <div class="term-spark-wrap">
+            <div class="term-spark-head">
+              <b id="term-spark-name"></b>
+              <span id="term-spark-total"></span>
+            </div>
+            <svg class="spark term-spark" id="term-spark" viewBox="0 0 320 40"
+              preserveAspectRatio="none" aria-hidden="true"></svg>
           </div>
-          <svg class="spark term-spark" id="term-spark" viewBox="0 0 320 40"
-            preserveAspectRatio="none" aria-hidden="true"></svg>
+          <p class="hint">
+            Números: <b>vagas capturadas</b> · candidatadas. Clique num termo para ver as
+            últimas 24 h dele (barra clara = vagas, escura = candidaturas).
+          </p>
         </div>
-        <p class="hint">
-          Números: <b>vagas capturadas</b> · candidatadas. Clique num termo para ver as
-          últimas 24 h dele (barra clara = vagas, escura = candidaturas).
+
+        <p class="empty" id="terms-empty">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 20V11M10 20V4M16 20v-6M2 20h20" />
+          </svg>
+          <span>
+            Ainda não capturei vagas por termo. Rode uma varredura para ver aqui quanto
+            cada termo rendeu.
+          </span>
         </p>
       </section>
 

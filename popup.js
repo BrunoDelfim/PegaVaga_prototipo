@@ -148,6 +148,8 @@ function cacheElements() {
   els.sparkCard = document.getElementById('spark-card');
   els.sparkHint = document.getElementById('spark-hint');
   els.termsCard = document.getElementById('terms-card');
+  els.termsBody = document.getElementById('terms-body');
+  els.termsEmpty = document.getElementById('terms-empty');
   els.termsBars = document.getElementById('terms-bars');
   els.termSpark = document.getElementById('term-spark');
   els.termSparkName = document.getElementById('term-spark-name');
@@ -1014,7 +1016,9 @@ function renderTerms(jobs) {
     (a, b) => b.total - a.total || a.term.localeCompare(b.term, 'pt-BR')
   );
 
-  els.termsCard.hidden = rows.length === 0;
+  // O card fica sempre visível: sem vagas, mostra o aviso de vazio.
+  if (els.termsBody) els.termsBody.hidden = rows.length === 0;
+  if (els.termsEmpty) els.termsEmpty.hidden = rows.length > 0;
 
   if (!rows.length) {
     els.termsBars.innerHTML = '';
