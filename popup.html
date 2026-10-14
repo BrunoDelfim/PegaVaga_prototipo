@@ -625,6 +625,21 @@
       .hint.error { color: var(--danger); }
       .hint.warn { color: var(--warn); }
 
+      /* Caixa de aviso (risco/beta): fundo âmbar suave, já previsto no tema. */
+      .notice {
+        display: flex;
+        gap: 8px;
+        margin: 10px 0 0;
+        padding: 9px 10px;
+        border-radius: var(--r-md);
+        background: var(--warn-soft);
+        font-size: var(--fs-xs);
+        line-height: 1.5;
+      }
+
+      .notice svg { flex: 0 0 auto; margin-top: 2px; color: var(--warn); }
+      .notice b { color: var(--warn); }
+
       /* ============================ Modo escuro =============================
          Ligado por `html[data-theme="dark"]`: a lâmpada do cabeçalho troca e, ao
          abrir, o pop-up segue o tema do sistema (o script do pop-up resolve). */
@@ -869,6 +884,19 @@
             termos, varre cada um e, se a candidatura automática estiver ligada,
             candidata-se respeitando as cotas de hora/24 h/dia, o agendador e o ritmo
             humano. No CSV sai também o motivo de cada vaga que não deu para candidatar.
+          </p>
+          <p class="notice">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+              <path d="M12 9v4" /><path d="M12 17h.01" />
+            </svg>
+            <span>
+              <b>Use por sua conta e risco.</b> Está em <b>beta</b> e age na sua própria
+              sessão do LinkedIn: automatizar candidaturas é uma área cinzenta dos termos
+              de uso, e a conta pode ser limitada. Comece com cotas baixas (ex.: 5/h,
+              20/dia) e acompanhe as primeiras execuções. Sem vínculo com o LinkedIn.
+            </span>
           </p>
         </section>
       </div>
