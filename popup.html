@@ -143,7 +143,8 @@
       }
       .chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-      /* Lâmpada: alterna claro/escuro (acesa = tema escuro). */
+      /* Lâmpada: ACESA = tema claro (bulbo cheio e quente); APAGADA = tema
+         escuro (só o contorno, sem brilho). */
       .head-actions { display: flex; align-items: center; gap: 8px; }
 
       .lamp {
@@ -153,17 +154,20 @@
         padding: 0;
         border: 1px solid rgba(255, 255, 255, 0.22);
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.1);
         color: #fff;
       }
       .lamp:hover:not(:disabled) { background: rgba(255, 255, 255, 0.24); }
-      .lamp-on { display: none; color: #fde68a; }
-      html[data-theme="dark"] .lamp-off { display: none; }
-      html[data-theme="dark"] .lamp-on { display: block; }
-      html[data-theme="dark"] .lamp {
-        border-color: rgba(253, 230, 138, 0.4);
-        background: rgba(253, 230, 138, 0.18);
-        box-shadow: 0 0 10px rgba(253, 230, 138, 0.35);
+
+      .lamp-off { color: rgba(255, 255, 255, 0.6); } /* apagada: contorno discreto */
+      .lamp-on { display: none; color: #fde68a; } /* acesa: bulbo quentinho */
+
+      html:not([data-theme="dark"]) .lamp-off { display: none; }
+      html:not([data-theme="dark"]) .lamp-on { display: block; }
+      html:not([data-theme="dark"]) .lamp {
+        border-color: rgba(253, 230, 138, 0.45);
+        background: rgba(253, 230, 138, 0.2);
+        box-shadow: 0 0 10px rgba(253, 230, 138, 0.4);
       }
 
       .light {
@@ -696,7 +700,7 @@
         </div>
 
         <div class="head-actions">
-          <button id="theme-toggle" class="lamp" type="button" aria-pressed="false"
+          <button id="theme-toggle" class="lamp" type="button" aria-pressed="true"
             title="Mudar para o tema escuro">
             <svg class="lamp-off" width="17" height="17" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="1.8" stroke-linecap="round"

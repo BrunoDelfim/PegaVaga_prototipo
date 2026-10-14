@@ -638,8 +638,8 @@ function prefersDark() {
 }
 
 /**
- * Aplica o tema (`light` | `dark`) no `html` e na lâmpada: acesa = escuro, com
- * um brilho quentinho; apagada = claro.
+ * Aplica o tema (`light` | `dark`) no `html` e na lâmpada: ACESA = tema claro
+ * (bulbo cheio, quentinho); APAGADA = tema escuro (só o contorno).
  */
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
@@ -647,7 +647,7 @@ function applyTheme(theme) {
   if (!els.themeToggle) return;
 
   const dark = theme === 'dark';
-  els.themeToggle.setAttribute('aria-pressed', dark ? 'true' : 'false');
+  els.themeToggle.setAttribute('aria-pressed', dark ? 'false' : 'true');
   els.themeToggle.title = dark ? 'Mudar para o tema claro' : 'Mudar para o tema escuro';
 }
 
