@@ -20,7 +20,7 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   *Como:* truncar a descrição (ex.: 2.000 caracteres) **e/ou** teto de vagas
   (ex.: 5.000, descartando as mais antigas com aviso) **e/ou** a permissão
   `unlimitedStorage`.
-  *Feito em:* `0.7.2` (commit `ae66818`) — foram os **três** caminhos, com a
+  *Feito em:* `0.7.2` (commit `ced7d36`) — foram os **três** caminhos, com a
   regra isolada numa função pura (`SHARED.trimJobs`, 13 testes novos):
   `unlimitedStorage` no manifest; descrição cortada em `DESC_MAX_CHARS` (6.000
   caracteres) e teto de `MAX_JOBS` (5.000 vagas), em que as capturadas há mais
@@ -121,5 +121,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | Data | Item | Versão | Commit |
 | --- | --- | --- | --- |
 | 13/10/2026 | Checklist criado | `0.6.9` | — |
-| 13/10/2026 | 1. Teto de armazenamento | `0.7.2` | `ae66818` |
+| 13/10/2026 | 1. Teto de armazenamento | `0.7.2` | `ced7d36` |
 
