@@ -4,7 +4,7 @@ Plano de trabalho para sair da beta e publicar na **Chrome Web Store**.
 Cada item diz **por quê** e **como fazer**; ao concluir, troque `[ ]` por `[x]` e
 preencha a linha **Feito em** com a versão e o commit.
 
-**Progresso:** 1 de 14 itens · **Versão:** a que está no `manifest.json`
+**Progresso:** 2 de 14 itens · **Versão:** a que está no `manifest.json`
 
 Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
@@ -37,11 +37,17 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   *Como:* criar `PRIVACY.md` e linkar no item da loja.
   *Feito em:* —
 
-- [ ] **3. Aviso de risco/beta dentro da extensão**
+- [x] **3. Aviso de risco/beta dentro da extensão**
   O README tem o aviso (“área cinzenta do LinkedIn; use por sua conta e risco”),
   mas quem instala pela loja não lê o README.
   *Como:* incluir um aviso curto no card **“Como funciona”** (aba Início).
-  *Feito em:* —
+  *Feito em:* `0.7.4` (commit `6ea0976`) — caixa âmbar no fim do card **Como
+  funciona**: o risco (área cinzenta dos termos de uso, conta pode ser
+  limitada), que a extensão **está em beta**, a sugestão de começar com cotas
+  baixas e que **não há vínculo com o LinkedIn**. A cor reaproveita os tokens
+  `--warn`/`--warn-soft`, que já existiam nos dois temas (nada de cor solta no
+  CSS). Um teste estático guarda o texto e a classe, para o aviso não sumir numa
+  refatoração. O README ganhou a nota de que o aviso também está no app.
 
 - [ ] **4. Material da loja**
   Descrição curta e longa, **screenshots** (640×400), tile promocional
@@ -123,4 +129,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | --- | --- | --- | --- |
 | 13/10/2026 | Checklist criado | `0.6.9` | — |
 | 13/10/2026 | 1. Teto de armazenamento | `0.7.2`–`0.7.3` | `ced7d36` |
+| 13/10/2026 | 3. Aviso de risco no app | `0.7.4` | `6ea0976` |
 

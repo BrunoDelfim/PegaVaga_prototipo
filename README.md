@@ -261,7 +261,9 @@ muda quando ele estoura.
 > **Use por sua conta e risco.** Automação de candidaturas é uma área cinzenta
 > do LinkedIn: a extensão age na sua sessão, com os seus dados, e o envio é
 > definitivo. Comece com cotas baixas (por exemplo 5/h, 20/dia) e acompanhe as
-> primeiras execuções antes de deixar rodando sozinho.
+> primeiras execuções antes de deixar rodando sozinho. **O mesmo aviso aparece
+> dentro da extensão**, no card “Como funciona” da aba **Início** — quem instala
+> pela loja não lê o README.
 
 ### Quando uma vaga precisa de você
 
@@ -355,8 +357,8 @@ item.
 ## Antes de publicar
 
 O que falta para sair da beta está em **[`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)**:
-checklist com bloqueadores (política de privacidade, aviso no
-app), itens fortes (CI, diagnóstico, dry-run, empacotamento) e polimento.
+checklist com bloqueadores (política de privacidade, material da
+loja), itens fortes (CI, diagnóstico, dry-run, empacotamento) e polimento.
 Cada item tem **por quê**, **como fazer** e uma caixinha que vai sendo marcada.
 
 ## Permissões utilizadas
