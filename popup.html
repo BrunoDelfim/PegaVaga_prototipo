@@ -5,6 +5,10 @@
     <title>PegaVaga</title>
     <style>
       :root {
+        /* Sem isto, o Chrome desenha a moldura do popup (e a barra de rolagem)
+           no esquema escuro do sistema: aquela "borda preta" de 1px em volta. */
+        color-scheme: light;
+
         --bg: #0a66c2;
         --bg-dark: #004182;
         --ok: #1f9d55;
@@ -13,21 +17,47 @@
         --text: #1f2933;
         --muted: #64748b;
         --line: #e2e8f0;
+        --surface: #f8fafc;
       }
 
       * {
         box-sizing: border-box;
       }
 
+      html {
+        background: var(--surface);
+      }
+
+      html,
+      body {
+        border: none;
+      }
+
+      /* Barra de rolagem clara e fina: no Linux/modo escuro ela vem preta e
+         "gruda" na borda direita do popup. */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 8px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+      }
+
       body {
         width: 340px;
         margin: 0;
-        padding: 0;
+        padding: 0px;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial,
           sans-serif;
         font-size: 13px;
         color: var(--text);
-        background: #f8fafc;
+        background: var(--surface);
       }
 
       header {
@@ -73,7 +103,7 @@
       }
 
       main {
-        padding: 12px 14px 14px;
+        padding: 10px 10px 10px;
       }
 
       .counter {
@@ -95,7 +125,7 @@
       }
 
       .counter .label {
-        font-size: 11px;
+        font-size: 13px;
         color: var(--muted);
         text-transform: uppercase;
         letter-spacing: 0.4px;
@@ -103,7 +133,7 @@
 
       .counter .lastrun {
         display: block;
-        margin-top: 4px;
+        margin-top: 8px;
         font-size: 10px;
         color: var(--muted);
       }
@@ -300,7 +330,7 @@
 
       .counter .runinfo {
         display: block;
-        margin-top: 4px;
+        margin-top: 2px;
         font-size: 10px;
         font-weight: 600;
         color: var(--bg-dark);
@@ -308,14 +338,14 @@
 
       .counter .quota {
         display: block;
-        margin-top: 4px;
+        margin-top: 2px;
         font-size: 10px;
         color: var(--muted);
       }
 
       .counter .summary {
         display: block;
-        margin-top: 4px;
+        margin-top: 2px;
         font-size: 10px;
         color: var(--warn);
       }
