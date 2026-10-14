@@ -34,7 +34,7 @@ eq('manifest_version', manifest.manifest_version, 3);
 ok('service_worker', manifest.background.service_worker === 'background.js');
 eq('content_scripts js', manifest.content_scripts[0].js, ['shared.js', 'content.js']);
 eq('content_scripts matches', manifest.content_scripts[0].matches, ['https://www.linkedin.com/*']);
-['storage', 'alarms', 'notifications', 'activeTab', 'unlimitedStorage'].forEach((p) => ok('permissao ' + p, manifest.permissions.includes(p)));
+['storage', 'clipboardWrite', 'alarms', 'notifications', 'activeTab', 'unlimitedStorage'].forEach((p) => ok('permissao ' + p, manifest.permissions.includes(p)));
 ok('host_permissions linkedin', manifest.host_permissions.includes('https://www.linkedin.com/*'));
 ok('versao semver', /^\d+\.\d+\.\d+$/.test(manifest.version), manifest.version);
 

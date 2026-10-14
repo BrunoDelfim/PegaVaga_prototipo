@@ -46,6 +46,7 @@ código atual):
 | Permissão | Justificativa sugerida |
 | --- | --- |
 | `storage` | Guardar **no próprio navegador** a configuração da busca, as cotas, o agendador e as vagas capturadas, que são a base do relatório em CSV. Nada é enviado a servidores. |
+| `clipboardWrite` | Copiar o **diagnóstico** (versão, configuração e últimos erros) para a área de transferência **quando o usuário clica no botão**, para colar num relato de problema. A extensão só **escreve**, nunca lê a área de transferência. |
 | `unlimitedStorage` | O histórico de vagas, com a descrição de cada uma, passa do teto padrão de ~10 MB do `chrome.storage.local`; sem esta permissão o Chrome passa a recusar as gravações e o histórico se perde. |
 | `activeTab` | Falar com a aba ativa do LinkedIn (iniciar/parar a varredura e pular uma vaga) **somente** quando o usuário clica nos botões do pop-up. |
 | `alarms` | Agendador: acordar o service worker no horário escolhido pelo usuário e quando uma cota de candidaturas libera. |
