@@ -65,14 +65,16 @@ muda quando ele estoura.
      **um por vez, em loop, na ordem digitada**; abaixo do campo aparece a
      **fila numerada** (passe o mouse para ver a busca de cada termo). Vazios e
      repetidos são descartados (limite de 40 termos).
-3. Em **Candidaturas** (opcional):
-   - **Somente vagas com Candidatura Simplificada** — quando ligado, toda busca é
-     aberta com o **filtro nativo de Candidatura Simplificada** do LinkedIn
-     ativado (parâmetro `f_AL=true`), então a lista traz **só vagas em que dá para
-     se candidatar sem sair do LinkedIn**. Vale também para a varredura sem termos
-     (nesse caso a extensão navega para a URL filtrada em vez de usar a página já
-     aberta).
-   - Ligue **“Candidatar-se sozinho pela Candidatura Simplificada”** e ajuste as cotas:
+3. Em **Candidaturas**:
+   - **Pesquisar somente vagas com Candidatura Simplificada** — **ligado por
+     padrão**: toda busca é aberta com o **filtro nativo de Candidatura
+     Simplificada** do LinkedIn ativado (parâmetro `f_AL=true`), então a lista
+     traz **só vagas em que dá para se candidatar sem sair do LinkedIn**. Vale
+     também para a varredura sem termos (nesse caso a extensão navega para a URL
+     filtrada em vez de usar a página já aberta).
+   - **“Candidatar-se sozinho pela Candidatura Simplificada”** — **ligado por
+     padrão** (desligue para só rastrear vagas, sem candidatar). Com ele ligado,
+     ajuste as cotas:
    - **Por termo** — quantas candidaturas fazer em cada termo. Ao atingir,
      o PegaVaga **passa para o próximo termo** e zera essa cota.
    - **Por hora** — janela móvel de 60 min.
@@ -82,15 +84,16 @@ muda quando ele estoura.
      segurança para o script não varrer a lista para sempre).
    - **Formulário (perguntas e popups do LinkedIn)** — o que fazer quando a
      etapa pede uma resposta que o LinkedIn não tem:
-     - **Responder sozinho perguntas obrigatórias** — liga/desliga o
-       preenchimento automático de Sim/Não, listas e números;
+     - **Responder sozinho perguntas obrigatórias** — **desligado por padrão**;
+       ligue para preencher sozinho Sim/Não, listas e números (perguntas
+       personalizadas caem no [pedido de ajuda](#quando-uma-vaga-precisa-de-você));
      - **Em Sim/Não, responder** — `Sim` (padrão) ou `Não`;
      - **Número (anos, quantidade)** — resposta para campos numéricos (0–200);
      - **Texto livre (ex.: cidade)** — resposta para campos de texto; **vazio**
        (padrão) deixa a extensão não responder em vez de inventar.
      Os popups de **avaliação/pesquisa** que o LinkedIn abre depois de
      candidatar são fechados sozinhos, sempre, independentemente destas opções.
-   - **Pedir a minha ajuda (notificação)** — liga a ajuda quando uma vaga **trava
+   - **Pedir a minha ajuda (notificação)** — **ligado por padrão**: quando uma vaga **trava
      num campo que só você preenche** (pergunta personalizada, sem valor salvo no
      LinkedIn). Em vez de descartar a vaga, o PegaVaga manda uma **notificação na
      área de trabalho** (“PegaVaga precisa de ajuda para continuar”), mantém o
@@ -115,7 +118,7 @@ muda quando ele estoura.
      limite de uso**, a extensão **para tudo por 1 hora** (nenhuma candidatura,
      nenhuma varredura, nem pelo agendador) e retoma sozinha depois. O aviso
      aparece no topo do pop-up em laranja.
-5. Em **Agendador** (opcional), ligue
+5. Em **Agendador** (**desligado por padrão**), ligue
    **“Iniciar e parar sozinho nos horários abaixo”** e escolha:
    - **Começa às / Para às** — aceita janelas que cruzam a meia-noite
      (ex.: `22:00 → 06:00`);
@@ -198,10 +201,10 @@ muda quando ele estoura.
   espera (etapa carregando, envio em andamento), ele é fechado na hora, em
   paralelo — o fluxo não precisa reiniciar, ele **continua de onde estava**.
   Sem isso o popup ficava na frente da lista e a varredura empacava.
-- **Perguntas obrigatórias**: quando a etapa pede algo que o LinkedIn não
-  respondeu sozinho (Sim/Não, listas e números), a extensão responde com o que
-  está em **Formulário (perguntas e popups do LinkedIn)** — padrão: **Sim**,
-  número **1** e o texto livre configurado. Perguntas de texto livre ficam **em
+- **Perguntas obrigatórias**: **desligado por padrão**. Quando ligado e a etapa
+  pede algo que o LinkedIn não respondeu sozinho (Sim/Não, listas e números), a
+  extensão responde com o que está em **Formulário (perguntas e popups do
+  LinkedIn)** — padrão: **Sim**, número **1** e o texto livre configurado. Perguntas de texto livre ficam **em
   branco** se você não preencher nada (a extensão não inventa respostas). Se
   quiser respostas específicas por pergunta, grave em
   `pegavaga_settings.apply.answers`, ex.:

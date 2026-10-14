@@ -49,10 +49,10 @@ globalThis.PegaVagaShared = (() => {
   const DEFAULT_SETTINGS = {
     baseUrl: LINKEDIN_SEARCH_URL,
     location: '',
-    easyApplyOnly: false, // busca só vagas com Candidatura Simplificada (filtro f_AL)
+    easyApplyOnly: true, // busca só vagas com Candidatura Simplificada (filtro f_AL)
     terms: [],
     apply: {
-      enabled: false, // candidatar-se sozinho só se o usuário ligar
+      enabled: true, // candidatar-se sozinho (padrão: ligado)
       perTerm: 8, // candidaturas por termo de busca
       perHour: 6, // janela móvel de 60 min
       per24h: 25, // janela móvel de 24 h
@@ -66,7 +66,7 @@ globalThis.PegaVagaShared = (() => {
       breaksEnabled: true, // pausas longas periódicas entre candidaturas
       breakEvery: 10, // candidaturas entre uma pausa longa e outra
       breakMs: 90000, // duração base da pausa longa
-      fillRequired: true, // responde sozinho perguntas obrigatórias do formulário
+      fillRequired: false, // perguntas obrigatórias: só responde se o usuário ligar
       answerYes: true, // resposta padrão em perguntas de Sim/Não
       answerNumber: 1, // resposta padrão em campo numérico (anos, quantidade…)
       answerText: '', // resposta padrão em texto livre (vazio = não inventa)
@@ -308,10 +308,10 @@ globalThis.PegaVagaShared = (() => {
     return {
       baseUrl: String(value.baseUrl || DEFAULT_SETTINGS.baseUrl).trim(),
       location: String(value.location || '').trim(),
-      easyApplyOnly: value.easyApplyOnly === true,
+      easyApplyOnly: value.easyApplyOnly !== false,
       terms: normalizeTerms(value.terms),
       apply: {
-        enabled: apply.enabled === true,
+        enabled: apply.enabled !== false,
         perTerm: num(apply.perTerm, 1, 500, defApply.perTerm),
         perHour: num(apply.perHour, 1, 1000, defApply.perHour),
         per24h: num(apply.per24h, 1, 2000, defApply.per24h),
@@ -325,7 +325,7 @@ globalThis.PegaVagaShared = (() => {
         breaksEnabled: apply.breaksEnabled !== false,
         breakEvery: num(apply.breakEvery, 1, 100, defApply.breakEvery),
         breakMs: num(apply.breakMs, 10000, 600000, defApply.breakMs),
-        fillRequired: apply.fillRequired !== false,
+        fillRequired: apply.fillRequired === true,
         answerYes: apply.answerYes !== false,
         answerNumber: num(apply.answerNumber, 0, 200, defApply.answerNumber),
         answerText: String(apply.answerText == null ? '' : apply.answerText)

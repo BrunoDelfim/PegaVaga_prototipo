@@ -124,11 +124,16 @@ ok('nextScheduleStart futuro/dia valido', next instanceof Date && next.getTime()
 section('8. Configuracao');
 const def = S.parseSettings(null);
 eq('default baseUrl', def.baseUrl, S.LINKEDIN_SEARCH_URL);
-eq('default easyApplyOnly', def.easyApplyOnly, false);
+eq('default easyApplyOnly', def.easyApplyOnly, true);
+eq('default apply.enabled', def.apply.enabled, true);
+eq('default fillRequired', def.apply.fillRequired, false);
 eq('default helpOnStuck', def.apply.helpOnStuck, true);
-eq('default apply.enabled', def.apply.enabled, false);
+eq('default schedule.enabled', def.schedule.enabled, false);
 eq('default terms', def.terms, []);
 eq('default dias', def.schedule.days, [1, 2, 3, 4, 5]);
+eq('apply.enabled false respeitado', S.parseSettings({ apply: { enabled: false } }).apply.enabled, false);
+eq('easyApplyOnly false respeitado', S.parseSettings({ easyApplyOnly: false }).easyApplyOnly, false);
+eq('fillRequired true respeitado', S.parseSettings({ apply: { fillRequired: true } }).apply.fillRequired, true);
 const clamp = S.parseSettings({ apply: { minDelayMs: 999999, maxDelayMs: 1, readMinMs: 99999, readMaxMs: 1, perTerm: 9999, answerNumber: 999 } });
 ok('delay min<=max', clamp.apply.minDelayMs <= clamp.apply.maxDelayMs);
 ok('read min<=max', clamp.apply.readMinMs <= clamp.apply.readMaxMs);

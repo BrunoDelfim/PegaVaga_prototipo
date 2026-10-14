@@ -32,7 +32,8 @@ ser conferido na mão. Use este roteiro depois de qualquer mudança relevante.
 - [ ] Termos vazios/repetidos são descartados; o limite de 40 é respeitado.
 - [ ] **Sem termos**: varre a página de vagas que estiver aberta.
 
-### B. Filtro “Somente vagas com Candidatura Simplificada”
+### B. Filtro “Pesquisar somente vagas com Candidatura Simplificada”
+- [ ] Vem **ligado por padrão** (marque/desmarque para conferir os dois casos).
 - [ ] Ligado, a URL da busca sai com **`f_AL=true`** (confira na barra de
       endereços ou no *title* do termo, na fila).
 - [ ] Desligado, o `f_AL` **não** aparece.
@@ -45,8 +46,12 @@ ser conferido na mão. Use este roteiro depois de qualquer mudança relevante.
 - [ ] O CSV (**⬇ Exportar para Excel**) abre no Excel com acentos corretos.
 
 ### D. Candidatura automática (Candidatura Simplificada)
-- [ ] Vaga com **Candidatura Simplificada**: o formulário abre, as perguntas
-      obrigatórias são respondidas (Sim/1) e a candidatura é **enviada**.
+- [ ] **“Candidatar-se sozinho pela Candidatura Simplificada”** vem **ligado por
+      padrão**; desligado, a extensão só rastreia vagas (não candidata).
+- [ ] Com **“Responder sozinho perguntas obrigatórias”** ligado, as perguntas
+      Sim/Não, listas e números são respondidas (Sim/1) e a candidatura é
+      **enviada**. Desligado (padrão), pergunta personalizada cai no pedido de
+      ajuda.
 - [ ] Vaga **externa** (site da empresa): **não clica**, registra
       `Externa (site da empresa)` com o motivo.
 - [ ] Popups pós-candidatura (avaliação/pesquisa/salvar vaga) são **fechados**.
