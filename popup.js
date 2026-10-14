@@ -55,6 +55,7 @@ const CSV_SEPARATOR = ';'; // Excel pt-BR usa ponto e vírgula como separador pa
 const PAUSE_LABELS = SHARED.PAUSE_REASON_LABELS;
 
 const SAVE_DELAY_MS = 400; // debounce do salvamento automático da configuração
+const TOAST_MS = 7000; // quanto tempo o aviso do rodapé fica na tela
 const DAY_LABELS = SHARED.WEEKDAYS;
 
 /* -------------------------------------------------------------------------- */
@@ -63,6 +64,8 @@ const DAY_LABELS = SHARED.WEEKDAYS;
 
 const els = {};
 let saveTimer = null;
+let statusTimer = null;
+let selectTab = null; // troca de aba (Início / Configurações)
 let settings = SHARED.parseSettings(null);
 let appsCache = [];
 let runCache = null;
@@ -77,6 +80,7 @@ async function init() {
   buildDayInputs();
   bindEvents();
   bindChartTips();
+  bindTabs();
 
   await loadSettingsToForm();
   await refresh();
@@ -604,7 +608,7 @@ async function saveSettingsFromForm(options) {
 }
 
 function openSettings() {
-  els.settings.open = true;
+  if (selectTab) selectTab(1); // leva para a aba "Configurações"
 }
 
 /* -------------------------------------------------------------------------- */
@@ -952,6 +956,29 @@ function bindChartTips() {
   document.addEventListener('mouseout', highlight(false));
 }
 
+/**
+ * Abas Início / Configurações: mostra um painel por vez e marca a aba ativa em
+ * `aria-selected` (é o CSS que desenha o destaque).
+ */
+function bindTabs() {
+  const entries = [
+    { tab: document.getElementById('tab-home'), pane: document.getElementById('pane-home') },
+    { tab: document.getElementById('tab-config'), pane: document.getElementById('settings') },
+  ].filter((entry) => entry.tab && entry.pane);
+
+  selectTab = (index) => {
+    entries.forEach((entry, i) => {
+      const on = i === index;
+      entry.tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      entry.pane.hidden = !on;
+    });
+
+    window.scrollTo(0, 0);
+  };
+
+  entries.forEach((entry, i) => entry.tab.addEventListener('click', () => selectTab(i)));
+}
+
 /** Explica o agendador: janela, próxima abertura ou pausa por cota. */
 function renderScheduleHint() {
   if (!els.scheduleHint) return;
@@ -1105,6 +1132,13 @@ function renderStatusLight() {
 function setStatus(message, type) {
   els.status.textContent = message;
   els.status.className = 'status' + (type ? ' ' + type : '');
+
+  // Como um "toast": some sozinho depois de alguns segundos.
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => {
+    els.status.textContent = '';
+    els.status.className = 'status';
+  }, TOAST_MS);
 }
 
 /* -------------------------------------------------------------------------- */

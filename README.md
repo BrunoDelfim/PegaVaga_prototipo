@@ -52,8 +52,10 @@ muda quando ele estoura.
 
 ## Como usar
 
-1. Clique no ícone da extensão e abra **⚙ Configuração de busca**.
-2. Em **busca**, preencha:
+1. Clique no ícone da extensão: o pop-up abre na aba **Início**, com as abas
+   **Início** e **Configurações** no topo (o cabeçalho e as abas ficam fixos,
+   só o conteúdo rola). O visual acompanha o tema do sistema (**claro ou escuro**).
+2. Na aba **Configurações**, em **busca**, preencha:
    - **URL de busca ou perfil**: por padrão
      `https://www.linkedin.com/jobs/search/`. Também funciona colando a URL de
      um perfil/empresa (ex.: `https://www.linkedin.com/company/acme/jobs/`).
@@ -143,19 +145,25 @@ muda quando ele estoura.
      termo atual (fim da lista, teto de vagas ou cota do termo), ele **navega
      sozinho para o próximo** termo, até acabarem os termos — a barra de status
      mostra a fila, ex.: `Varredura em andamento: 3 termos em loop (react → node.js → vue).`
-7. Acompanhe no pop-up:
-   - `N vagas capturadas` e o resumo das candidaturas, ex.:
-     `12 candidatada(s) nessa sessão · 5 candidatada(s) antes · 8 não candidatada(s) · 3 na fila: 4 travada em campo obrigatório · 2 externa (site da empresa)`;
-   - a linha `Termo X de N: "…" · K candidatura(s) neste termo`;
-   - a linha de cotas, ex.:
-     `Candidaturas — 2/6 na hora · 5/25 em 24 h · 8 hoje · 3/8 neste termo`;
+7. Acompanhe na aba **Início**:
+   - o **donut** no topo: o número no centro são as **vagas capturadas** e os
+     anéis/legenda mostram a situação de cada uma (verde nesta sessão, azul já
+     candidatadas antes, vermelho não candidatadas, cinza na fila). Passe o mouse
+     nos anéis (ou na legenda) para ver o detalhe e destacar a área;
+   - a linha `Termo X de N: "…" · K candidatura(s) neste termo`, com uma **barra
+     de progresso** da fila de termos;
+   - as **barras de cota** (sessão, hora, 24 h, dia) — a que estourou fica
+     vermelha; o texto continua disponível no tooltip;
+   - o **mini-gráfico de candidaturas por hora** nas últimas 24 h;
    - a linha do agendador, ex.:
      `Janela: Seg, Ter, Qua, Qui, Sex, 08:00 → 18:00 · próxima: seg. 08:00.`
      (quando a fila está pausada, ela também diz **por quê**: cota, janela,
-     proteção do LinkedIn ou “você estava usando o navegador”).
-   - a **luzinha ao lado do nome PegaVaga** (a mesma cor do ponto no ícone da
-     extensão): verde capturando, amarela pronta, vermelha quando precisa de
-     atenção — passe o mouse para ver o motivo.
+     proteção do LinkedIn ou “você estava usando o navegador”);
+   - o **chip no cabeçalho** (bolinha + texto) — a mesma leitura do ícone da
+     extensão: verde capturando, amarela pronta, vermelha quando precisa de
+     atenção; passe o mouse para ver o motivo;
+   - os avisos e os resultados das ações aparecem num **toast** no rodapé, que
+     some sozinho depois de alguns segundos.
 8. Ao terminar (ou quando quiser), exporte:
    - **⬇ Exportar para Excel (CSV)** — todas as vagas capturadas, com o status e
      o **motivo** das que não foram candidatadas;
