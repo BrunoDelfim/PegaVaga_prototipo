@@ -100,6 +100,7 @@ function cacheElements() {
   els.settings = document.getElementById('settings');
   els.baseUrl = document.getElementById('base-url');
   els.location = document.getElementById('location');
+  els.easyApplyOnly = document.getElementById('easy-apply-only');
   els.terms = document.getElementById('terms');
   els.termsPreview = document.getElementById('terms-preview');
   els.termsQueue = document.getElementById('terms-queue');
@@ -186,6 +187,7 @@ function bindEvents() {
     els.applyBreaks,
     els.applyFillRequired,
     els.applyAnswerYes,
+    els.easyApplyOnly,
     els.scheduleEnabled,
     els.scheduleAutoStart,
     els.scheduleFocus,
@@ -227,7 +229,9 @@ async function onStartClick() {
   const run = SHARED.buildRunQueue(parsed);
 
   // Sem termos cadastrados e já na lista de vagas: varre o que está aberto.
-  if (!parsed.terms.length && onJobsPage) {
+  // Com o filtro de Candidatura Simplificada ligado preferimos navegar para a URL
+  // montada, que já leva o parâmetro f_AL=true (a página aberta pode não tê-lo).
+  if (!parsed.terms.length && onJobsPage && !parsed.easyApplyOnly) {
     run.terms = [''];
     run.urls = [''];
     run.term = '';
@@ -391,6 +395,7 @@ async function loadSettingsToForm() {
 
   els.baseUrl.value = settings.baseUrl;
   els.location.value = settings.location;
+  els.easyApplyOnly.checked = settings.easyApplyOnly;
   els.terms.value = settings.terms.join('\n');
 
   els.applyEnabled.checked = settings.apply.enabled;
@@ -458,6 +463,7 @@ function renderTermsQueue() {
   const terms = SHARED.normalizeTerms(els.terms.value);
   const baseUrl = els.baseUrl.value || SHARED.DEFAULT_SETTINGS.baseUrl;
   const location = els.location.value;
+  const easyApplyOnly = els.easyApplyOnly.checked;
 
   els.termsPreview.textContent = '';
 
@@ -468,7 +474,8 @@ function renderTermsQueue() {
     order.textContent = String(index + 1) + '. ';
     item.appendChild(order);
     item.appendChild(document.createTextNode(term));
-    item.title = SHARED.buildSearchUrl(baseUrl, term, location); // a busca de cada termo
+    // a busca de cada termo (já com o filtro de Candidatura Simplificada, se ligado)
+    item.title = SHARED.buildSearchUrl(baseUrl, term, location, easyApplyOnly);
 
     els.termsPreview.appendChild(item);
   });
@@ -501,6 +508,7 @@ async function saveSettingsFromForm(options) {
   const parsed = SHARED.parseSettings({
     baseUrl: els.baseUrl.value,
     location: els.location.value,
+    easyApplyOnly: els.easyApplyOnly.checked,
     terms: els.terms.value,
     apply: {
       enabled: els.applyEnabled.checked,

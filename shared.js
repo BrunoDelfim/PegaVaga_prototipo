@@ -30,6 +30,9 @@ globalThis.PegaVagaShared = (() => {
   };
 
   const LINKEDIN_SEARCH_URL = 'https://www.linkedin.com/jobs/search/';
+  // Filtro nativo do LinkedIn: `f_AL=true` deixa na lista só vagas com
+  // Candidatura Simplificada (Easy Apply).
+  const LINKEDIN_EASY_APPLY_PARAM = 'f_AL';
 
   const MAX_TERMS = 40; // trava de segurança por execução
   const HOUR_MS = 3600000;
@@ -43,6 +46,7 @@ globalThis.PegaVagaShared = (() => {
   const DEFAULT_SETTINGS = {
     baseUrl: LINKEDIN_SEARCH_URL,
     location: '',
+    easyApplyOnly: false, // busca só vagas com Candidatura Simplificada (filtro f_AL)
     terms: [],
     apply: {
       enabled: false, // candidatar-se sozinho só se o usuário ligar
@@ -137,7 +141,7 @@ globalThis.PegaVagaShared = (() => {
   }
 
   /** Monta a URL de busca de um termo, reaproveitando a URL base informada. */
-  function buildSearchUrl(baseUrl, term, location) {
+  function buildSearchUrl(baseUrl, term, location, easyApplyOnly) {
     let url;
     try {
       url = new URL(baseUrl || LINKEDIN_SEARCH_URL);
@@ -147,6 +151,13 @@ globalThis.PegaVagaShared = (() => {
 
     if (term) url.searchParams.set('keywords', term);
     if (location) url.searchParams.set('location', location);
+
+    // Ativa/desativa o filtro nativo de Candidatura Simplificada do LinkedIn.
+    if (easyApplyOnly === true) {
+      url.searchParams.set(LINKEDIN_EASY_APPLY_PARAM, 'true');
+    } else {
+      url.searchParams.delete(LINKEDIN_EASY_APPLY_PARAM);
+    }
 
     return url.toString();
   }
@@ -293,6 +304,7 @@ globalThis.PegaVagaShared = (() => {
     return {
       baseUrl: String(value.baseUrl || DEFAULT_SETTINGS.baseUrl).trim(),
       location: String(value.location || '').trim(),
+      easyApplyOnly: value.easyApplyOnly === true,
       terms: normalizeTerms(value.terms),
       apply: {
         enabled: apply.enabled === true,
@@ -344,10 +356,12 @@ globalThis.PegaVagaShared = (() => {
     let runTerms;
 
     if (terms.length) {
-      urls = terms.map((term) => buildSearchUrl(cfg.baseUrl, term, cfg.location));
+      urls = terms.map((term) =>
+        buildSearchUrl(cfg.baseUrl, term, cfg.location, cfg.easyApplyOnly)
+      );
       runTerms = terms.slice();
     } else {
-      urls = [buildSearchUrl(cfg.baseUrl, '', cfg.location)];
+      urls = [buildSearchUrl(cfg.baseUrl, '', cfg.location, cfg.easyApplyOnly)];
       runTerms = [''];
     }
 
@@ -1203,6 +1217,7 @@ globalThis.PegaVagaShared = (() => {
     STATUS_LIGHTS,
     statusLight,
     LINKEDIN_SEARCH_URL,
+    LINKEDIN_EASY_APPLY_PARAM,
     MAX_TERMS,
     HOUR_MS,
     DAY_MS,

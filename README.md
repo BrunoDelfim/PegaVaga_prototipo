@@ -50,8 +50,14 @@ pegavaga_chrome/
      **um por vez, em loop, na ordem digitada**; abaixo do campo aparece a
      **fila numerada** (passe o mouse para ver a busca de cada termo). Vazios e
      repetidos são descartados (limite de 40 termos).
-3. Em **Candidaturas** (opcional), ligue
-   **“Candidatar-se sozinho pela Candidatura Simplificada”** e ajuste as cotas:
+3. Em **Candidaturas** (opcional):
+   - **Somente vagas com Candidatura Simplificada** — quando ligado, toda busca é
+     aberta com o **filtro nativo de Candidatura Simplificada** do LinkedIn
+     ativado (parâmetro `f_AL=true`), então a lista traz **só vagas em que dá para
+     se candidatar sem sair do LinkedIn**. Vale também para a varredura sem termos
+     (nesse caso a extensão navega para a URL filtrada em vez de usar a página já
+     aberta).
+   - Ligue **“Candidatar-se sozinho pela Candidatura Simplificada”** e ajuste as cotas:
    - **Por termo** — quantas candidaturas fazer em cada termo. Ao atingir,
      o PegaVaga **passa para o próximo termo** e zera essa cota.
    - **Por hora** — janela móvel de 60 min.
