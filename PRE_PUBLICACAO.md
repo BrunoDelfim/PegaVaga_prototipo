@@ -4,7 +4,7 @@ Plano de trabalho para sair da beta e publicar na **Chrome Web Store**.
 Cada item diz **por quê** e **como fazer**; ao concluir, troque `[ ]` por `[x]` e
 preencha a linha **Feito em** com a versão e o commit.
 
-**Progresso:** 11 de 14 itens · **Versão:** a que está no `manifest.json`
+**Progresso:** 12 de 14 itens · **Versão:** a que está no `manifest.json`
 
 Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
@@ -207,9 +207,25 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   atualizados para os botões de hoje e o fim ganhou o passo de **testar o zip**
   empacotado — é o que fecha o caminho `roteiro → tag → zip → instalar`.
 
-- [ ] **14. i18n (pt/en)**
+- [x] **14. i18n (pt/en)**
   O código já reconhece rótulos em português e inglês; falta a interface.
-  *Feito em:* —
+  *Feito em:* `0.7.10` (commit `977397a`, tag **`v0.7.10`**) — **Configurações →
+  Idioma** (Automático / Português / English) traduz o **pop-up inteiro**, o
+  **tooltip do ícone** e as **notificações**.
+  *A escolha de projeto que fez a diferença:* o dicionário é **pt → en com a chave
+  sendo o próprio texto em português** (o idioma de origem). Com isso o pop-up
+  **não precisou de marcação nenhuma** no HTML — o `localizeDom()` traduz a tela
+  de uma vez, inclusive **textos com números** (`128 vagas capturadas` →
+  `128 jobs captured`), porque chaves com marcadores viram padrões. E **texto sem
+  tradução aparece em português**, nunca como `undefined`.
+  *Guardas:* um teste **reprova texto novo no pop-up sem tradução** (cobertura
+  conferida no CI: hoje **0 textos** e **0 atributos** fora do dicionário), outro
+  exige que os **marcadores batam** nos dois idiomas, e o miolo do `localizeDom`
+  ficou numa **função pura** (`syncText`, testada com texto recém-escrito pelo
+  render, ida e volta de idioma e idempotência).
+  *Fica em português de propósito:* o **CSV** e o **diagnóstico** — são arquivos de
+  dados, e traduzir a planilha mudaria o formato de quem já usa (o próprio aviso
+  do grupo diz isso ao usuário).
 
 ---
 
@@ -240,4 +256,5 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 13/10/2026 | 9. Backup da configuração em JSON | `0.7.7` | `6441de6` |
 | 13/10/2026 | 12. Notificação de fim de varredura | `0.7.8` | `8333ea0` |
 | 13/10/2026 | 11. Badge com as candidaturas do dia | `0.7.9` | `766618f` |
+| 13/10/2026 | 14. Interface em inglês (i18n pt/en) | `0.7.10` | `977397a` |
 
