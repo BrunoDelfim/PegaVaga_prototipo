@@ -20,6 +20,10 @@
  *      script pessoal com permissão sensível (o “desenvolvedor” citado é você).
  *      Siga em **Avançado** ▸ **Acessar «projeto» (não seguro)** ▸ **Permitir**.
  *      Detalhes em tools/RELATO.md.
+ *   4b. Se “executou” e o e-mail não chegou, rode a função **resumo()** e leia a
+ *      aba Execuções: ela imprime o destinatário exato (pega erro de digitação),
+ *      se as constantes ainda estão no exemplo, o remetente e a cota do dia.
+ *      A função **cota()** mostra só o quanto resta do limite diário.
  *   5. **Implantar** → **Nova implantação** → tipo **App da Web** →
  *      *Executar como*: **eu** · *Quem tem acesso*: **qualquer pessoa** →
  *      **Implantar**. Copie a URL que termina em `/exec`.
@@ -64,9 +68,10 @@ function doPost(e) {
     var para = String(entrada.para || relato.email || DESTINO).trim();
 
     // Sem destinatário válido o Google aceita o envio e ninguém recebe — melhor
-    // recusar com um motivo claro (aparece também em Execuções).
-    if (!para || para.indexOf('@') < 0) {
-      console.error('Relato sem destinatário: ajuste DESTINO no script ou reportEmail no env.js.');
+    // recusar com um motivo claro (aparece também em Execuções). A régua é a
+    // mesma do teste: `@` válido e diferente do endereço de exemplo.
+    if (!enderecoValido(para)) {
+      console.error('Relato sem destinatário valido: ajuste DESTINO no script ou reportEmail no env.js.');
       return ContentService.createTextOutput('erro: destinatario nao configurado');
     }
 
@@ -182,14 +187,64 @@ function testeDeEnvio() {
 }
 
 /**
+ * Endereço utilizável: tem `@` em posição válida e **não** é o valor de exemplo.
+ * É a régua única do script — usada tanto no teste quanto no `doPost`, para não
+ * existir caminho em que o e-mail sai para um endereço que não existe.
+ */
+function enderecoValido(endereco) {
+  var texto = String(endereco || '').trim();
+
+  return texto.indexOf('@') > 0 && texto !== 'SEU_EMAIL@EXEMPLO.COM';
+}
+
+/**
  * true quando a constante `DESTINO` continua com o valor de exemplo. Serve para
  * avisar em vez de mandar e-mail para um endereço que não existe (o Google
  * aceita o envio e ninguém recebe: é o sintoma que mais confunde).
  */
 function destinoEmBranco() {
-  var atual = String(DESTINO || '').trim();
+  return !enderecoValido(DESTINO);
+}
 
-  return !atual || atual.indexOf('@') < 0 || atual === 'SEU_EMAIL@EXEMPLO.COM';
+/** true quando a constante `TOKEN` continua com o valor de exemplo. */
+function tokenEmBranco() {
+  return !String(TOKEN || '').trim() || TOKEN === 'troque-por-uma-senha-sua';
+}
+
+/** Mostra o token sem revelá-lo: "oPe***" em vez de "oPeg...3!". */
+function mascarar(valor) {
+  var texto = String(valor || '');
+
+  if (!texto) return '(vazio)';
+  if (texto.length <= 3) return '***';
+
+  return texto.substring(0, 3) + '***(' + texto.length + ' caracteres)';
+}
+
+/**
+ * **Este é o primeiro lugar a olhar quando “executou e não chegou”.**
+ *
+ * Rode esta função e leia a aba **Execuções**: ela imprime, sem revelar segredo,
+ * o destinatário (servindo para ver um endereço digitado errado), se as
+ * constantes ainda estão nos valores de exemplo, quem é o remetente desta conta
+ * e quantos e-mails o dia ainda permite.
+ */
+function resumo() {
+  Logger.log('--- PegaVaga: resumo do entregador ---');
+  Logger.log('DESTINO (recebe os relatos): ' + (destinoEmBranco() ? 'NO VALOR DE EXEMPLO -> ' + DESTINO : DESTINO));
+  Logger.log('TOKEN (confere o POST): ' + (tokenEmBranco() ? 'NO VALOR DE EXEMPLO — troque!' : mascarar(TOKEN)));
+  Logger.log('Cota de e-mails restante hoje: ' + MailApp.getRemainingDailyQuota());
+
+  try {
+    var apelidos = MailApp.getAliases();
+    Logger.log('Remetente desta conta: ' + (apelidos.length ? apelidos.join(', ') : 'a propria conta (sem apelidos)'));
+  } catch (erro) {
+    Logger.log('Nao consegui listar os remetentes: ' + erro);
+  }
+
+  Logger.log('Se o DESTINO acima estiver certo e a cota nao estiver em 0, o envio daqui');
+  Logger.log('funciona - e o problema esta no destino (Spam, filtro ou a caixa errada).');
+  Logger.log('Observacao: o e-mail de um script pode demorar alguns minutos e cair em Spam.');
 }
 
 /**

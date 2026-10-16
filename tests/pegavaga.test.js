@@ -891,6 +891,18 @@ ok(
   /function cota/.test(scriptGoogle) && /getRemainingDailyQuota/.test(scriptGoogle)
 );
 ok(
+  'script do Google tem resumo do entregador',
+  /function resumo/.test(scriptGoogle) && /function tokenEmBranco/.test(scriptGoogle)
+);
+ok(
+  'resumo mostra o token sem revela-lo',
+  /function mascarar/.test(scriptGoogle) && /substring\(0, 3\)/.test(scriptGoogle)
+);
+ok(
+  'guia manda comecar pelo resumo e avisa que o teste e opcional',
+  /resumo\(\)/.test(guiaRelato) && /opcional/.test(guiaRelato)
+);
+ok(
   'script do Google recusa relato sem destinatario',
   /destinatario nao configurado/.test(scriptGoogle)
 );
@@ -906,7 +918,95 @@ try {
   gsValido = false;
   gsErro = String(erro && erro.message);
 }
-ok('script do Google e JavaScript valido', gsValido, gsErro);
+// Além da sintaxe: rodar o .gs contra um MailApp de mentira. É o que pega erro de
+// execução (nome errado, caminho que estoura) sem depender do Google — e prova o
+// comportamento que interessa: recusar destino de exemplo e não vazar o token.
+const logsGoogle = [];
+const enviados = [];
+const caixaGoogle = {
+  MailApp: {
+    sendEmail: (mensagem) => enviados.push(mensagem),
+    getRemainingDailyQuota: () => 97,
+    getAliases: () => [],
+  },
+  Logger: { log: (linha) => logsGoogle.push(String(linha)) },
+  console: { error: (linha) => logsGoogle.push('ERRO ' + linha) },
+  ContentService: { createTextOutput: (texto) => ({ getContent: () => String(texto) }) },
+};
+let googleRodou = true;
+let googleErro = '';
+try {
+  require('vm').runInNewContext(scriptGoogle, caixaGoogle);
+} catch (erro) {
+  googleRodou = false;
+  googleErro = String(erro && erro.message);
+}
+ok('script do Google roda num MailApp de mentira', googleRodou, googleErro);
+
+if (googleRodou) {
+  // DESTINO ainda no exemplo: o teste tem que RECUSAR, em vez de enviar para o
+  // vazio e aparecer como "executado" (o sintoma que confundiu de verdade).
+  let recusou = '';
+  try {
+    caixaGoogle.testeDeEnvio();
+  } catch (erro) {
+    recusou = String(erro && erro.message);
+  }
+  ok('testeDeEnvio recusa DESTINO de exemplo', /DESTINO/.test(recusou), recusou);
+
+  // Com o destino preenchido, o envio acontece e o log diz para quem foi.
+  logsGoogle.length = 0;
+  caixaGoogle.DESTINO = 'quem-recebe@exemplo.com';
+  caixaGoogle.testeDeEnvio();
+  eq('testeDeEnvio envia uma mensagem', enviados.length, 1);
+  eq('testeDeEnvio envia para o DESTINO', enviados[0].to, 'quem-recebe@exemplo.com');
+  ok(
+    'log do teste mostra destinatario e cota',
+    logsGoogle.some((l) => l.includes('quem-recebe@exemplo.com')) && logsGoogle.some((l) => l.includes('97'))
+  );
+
+  // O resumo avisa o que está configurado, sem imprimir o token.
+  logsGoogle.length = 0;
+  caixaGoogle.TOKEN = 'segredo-bem-grande-123';
+  caixaGoogle.resumo();
+  ok(
+    'resumo() imprime destinatario e cota',
+    logsGoogle.some((l) => /DESTINO/.test(l)) && logsGoogle.some((l) => /97/.test(l))
+  );
+  ok(
+    'resumo() nao imprime o token',
+    logsGoogle.some((l) => /seg\*\*\*/.test(l)) && !logsGoogle.some((l) => l.includes('segredo-bem-grande-123'))
+  );
+
+  // doPost: token errado é recusado; relato sem destinatário também.
+  eq(
+    'doPost recusa token errado',
+    caixaGoogle.doPost({ parameter: { token: 'outro', payload: '{}' } }).getContent(),
+    'token invalido'
+  );
+
+  caixaGoogle.DESTINO = 'SEU_EMAIL@EXEMPLO.COM';
+  eq(
+    'doPost recusa relato sem destinatario',
+    caixaGoogle.doPost({ parameter: { token: 'segredo-bem-grande-123', payload: JSON.stringify({ motivo: 'x' }) } }).getContent(),
+    'erro: destinatario nao configurado'
+  );
+
+  enviados.length = 0;
+  eq(
+    'doPost entrega quando o token e o destinatario batem',
+    caixaGoogle.doPost({
+      parameter: {
+        token: 'segredo-bem-grande-123',
+        para: 'quem-recebe@exemplo.com',
+        payload: JSON.stringify({ id: 'r-1', motivo: 'rajada', erros: [{ at: 'agora', where: 'teste', message: 'oi' }] }),
+      },
+    }).getContent(),
+    'ok'
+  );
+  eq('doPost mandou uma mensagem', enviados.length, 1);
+  ok('assunto do relato cita o motivo', /rajada/.test(enviados[0].subject));
+}
 
 // O que garante que o destinatario e o token ficam fora do repositorio: o
 // .gitignore (env.js e os zips) e o exemplo com os campos vazios. E a regua

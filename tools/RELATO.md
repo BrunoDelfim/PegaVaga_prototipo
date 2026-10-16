@@ -216,33 +216,49 @@ disso: nesse caso nada sai do navegador e a declaração continua “não coleta
 
 ## “Executou, mas o e-mail não chega”
 
-Na ordem do que costuma ser — e como descobrir qual é o seu caso:
+**Comece por aqui:** rode a função **`resumo()`** (menu de funções ▸ **▶ Executar**) e
+abra a aba **Execuções** (barra lateral do editor). Ela imprime o destinatário
+exato, se as constantes ainda estão nos valores de exemplo, o remetente e a cota
+do dia — quase sempre isso já responde.
 
-1. **A constante `DESTINO` ficou no valor de exemplo.** É a causa nº 1, e a mais
+> **Antes de tudo: este teste é opcional.** O que precisa funcionar é o caminho da
+> extensão (POST no `/exec` → `doPost` → `MailApp`), que é o mesmo do
+> `--testar` do terminal. Se o `--testar` chega, **o entregador está pronto** — o
+> `testeDeEnvio` só existe para conferir por dentro do Google.
+
+Depois do `resumo()`, as causas na ordem:
+
+1. **A função errada no menu.** Parece bobo, mas é comum: o Google deixa o menu no
+   `myFunction` (ou em outra função) e o ▶ Executar roda **aquilo** — a execução
+   aparece como concluída e nada acontece. Confira se o nome no menu é
+   **`testeDeEnvio`** (ou `resumo`).
+2. **A constante `DESTINO` no valor de exemplo.** É a causa clássica — e a mais
    confusa, porque **o `--testar` pode chegar enquanto este teste não chega**:
-   - o `testeDeEnvio` (botão **▶ Executar** no editor) manda para a constante
-     **`DESTINO`**;
+   - o `testeDeEnvio` manda para a constante **`DESTINO`**;
    - o relato da extensão manda para o campo **`para`**, que vem no POST (o
      `reportEmail` do `env.js`) e **substitui** o `DESTINO`.
 
-   Com `DESTINO` em `SEU_EMAIL@EXEMPLO.COM`, o Google **aceita**, marca como
-   **executado** e ninguém recebe. O script agora **recusa na hora**, com aviso,
-   em vez de mandar para o vazio.
-2. **Spam.** E-mail automático de script novo cai em Spam com muita frequência —
-   confira também **Promoções**/**Atualizações** no Gmail.
-3. **Cota do dia.** Contas comuns: **100 destinatários por dia**. Rode a função
-   **`cota()`** no editor (menu ▸ **Executar**) e veja o número na aba
-   **Execuções**. Se estiver em 0, os envios voltam amanhã sozinhos, sem mexer em
-   nada.
+   Se `DESTINO` estiver em `SEU_EMAIL@EXEMPLO.COM`, o Google **aceita**, marca
+   como **executado** e ninguém recebe. O script agora **recusa na hora**, com
+   aviso — e o `resumo()` mostra o endereço que está lá.
+3. **Erro de digitação no endereço.** O `resumo()` imprime o destinatário exato:
+   confira letra por letra (um `gmai.com` ou um espaço no fim passam batido e o
+   Google aceita o envio).
+4. **Spam / filtros.** E-mail automático de script novo cai em Spam com muita
+   frequência. No Gmail, confira também **Promoções**/**Atualizações** e a busca
+   `in:anywhere PegaVaga`. Pode levar alguns minutos.
+5. **Cota do dia.** Contas comuns: **100 destinatários por dia**. Rode a função
+   **`cota()`** e veja o número em **Execuções**. Se estiver em 0, os envios
+   voltam amanhã sozinhos, sem mexer em nada.
    *Espaço no **Drive** não tem relação com isso:* enviar e-mail não gasta
    armazenamento, então disco cheio não explica um envio que não chega.
-4. **Endereço errado.** Na aba **Execuções** cada envio agora registra o
+6. **Endereço errado de verdade.** Na aba **Execuções** cada envio registra o
    destinatário e a cota restante — é o que diz, sem adivinhação, para onde o
    e-mail foi.
 
 **O teste mais fiel de todos é o `--testar` do terminal**, porque usa *exatamente*
-o caminho do relato de verdade (POST no `/exec` → `doPost` → `MailApp`). Se ele
-chega e o botão do editor não, o problema é a constante `DESTINO` (causa nº 1).
+o caminho do relato de verdade. Se ele chega e o botão do editor não, o problema
+está no destinatário (itens 2 a 4), não no entregador.
 
 ---
 
