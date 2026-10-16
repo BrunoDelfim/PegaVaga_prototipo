@@ -290,3 +290,4 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 14/10/2026 | Pop-up fecha ao perder o foco (com o seletor de arquivo como única exceção) | `0.7.19` | `b83eb3b` |
 | 14/10/2026 | Entregador dos relatos em um comando (`tools/configurar-relato.sh`) + `--testar` de ponta a ponta com servidor de mentira | `0.7.20` | `c55e8be` |
 | 14/10/2026 | Guia do aviso “O Google não verificou este app” (o “desenvolvedor” citado é o próprio usuário; Avançado ▸ não seguro ▸ Permitir) | `0.7.21` | `04c6bc8` |
+| 16/10/2026 | Entregador **ligado e testado** (`--testar` → `ok`, e-mail recebido) · e-mail de teste se identifica como “TESTE MANUAL” (o relato real leva navegador/SO, fila e configuração) | `0.7.22` | `6d443cf` |
