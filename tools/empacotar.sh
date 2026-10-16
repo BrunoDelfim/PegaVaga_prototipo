@@ -82,6 +82,40 @@ if command -v unzip >/dev/null 2>&1; then
     exit 1
   fi
 
+  # Ícones fora do git (arquivo novo não versionado) deixariam a extensão sem
+  # ícone na loja — é barato conferir e caro descobrir depois.
+  if grep -q '^icons/.*\.png$' <<< "$conteudo"; then
+    echo "ok: os ícones entraram no pacote"
+  else
+    echo "ERRO: o zip saiu sem os ícones (confira se estão versionados)." >&2
+    exit 1
+  fi
+
+  # O env.js guarda o destinatário dos relatos e fica **fora do git**: o git
+  # archive só empacota o que é versionado, então ele entra aqui, depois. Sem ele
+  # a extensão funciona (relatos ficam locais), mas o aviso é explícito.
+  if [ -f env.js ]; then
+    if command -v python3 >/dev/null 2>&1; then
+      python3 - "$OUT" <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1], 'a') as pacote:
+    pacote.write('env.js', 'env.js')
+PY
+      echo "ok: env.js incluído no pacote (destinatário dos relatos)"
+    else
+      echo "AVISO: env.js existe, mas sem python3 ele não entrou no zip." >&2
+    fi
+
+    if grep -qE "reportEndpoint:[[:space:]]*''" env.js; then
+      echo "AVISO: env.js está sem entregador (reportEndpoint vazio): os relatos ficam locais." >&2
+    fi
+  else
+    echo "AVISO: sem env.js — o pacote sai sem destinatário (os relatos ficam locais)." >&2
+  fi
+
+  conteudo="$(unzip -Z1 "$OUT")"
   echo "Conteúdo de $(basename "$OUT"):"
   sed 's/^/  /' <<< "$conteudo"
 else

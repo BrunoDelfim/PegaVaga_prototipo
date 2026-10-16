@@ -42,7 +42,7 @@ A versão vive no `manifest.json` (campo `version`). A regra de avanço é:
 Em resumo: o **último número** é o contador do dia a dia (0–9) e o **do meio** só
 muda quando ele estoura.
 
-Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.17`) — é ela que o
+Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.18`) — é ela que o
 script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
@@ -324,6 +324,19 @@ e os **últimos 50 erros** que a automação registrou — cada um com a hora e 
 trecho onde aconteceu (ex.: `clicar com mouse humanizado: Cannot read properties
 of null`).
 
+Na mesma seção fica a lista de **Relatos de erro**: quando a automação encontra um
+problema de verdade (uma **rajada** de erros ou a página **sem a lista de vagas**),
+a extensão **congela um diagnóstico** naquele instante e **avisa por notificação**:
+
+- **Enviar diagnóstico** — manda o relato em **um clique**, sem abrir nada (precisa
+  do entregador configurado: veja [`tools/RELATO.md`](tools/RELATO.md));
+- **Manter local** — o relato fica no computador, listado em **Configurações →
+  Diagnóstico**, com o status (`Pendente` · `Enviado em …` · `Mantido local`) e as
+  ações **Enviar agora**, **Copiar diagnóstico**, **Baixar JSON** e **Descartar**.
+
+O envio é a **única** coisa que sai do navegador, e só no clique — a
+[`PRIVACY.md`](PRIVACY.md) descreve exatamente o que vai no relato.
+
 Antes eram `catch` mudos: o erro desaparecia sem deixar rastro e não havia como
 saber por que uma vaga falhou. Agora todo `catch` do `content.js` registra o que
 houve (só dois, de condições normais e previsíveis, ficam de fora de propósito).
@@ -447,7 +460,7 @@ item.
 
 ```bash
 bash tools/empacotar.sh          # empacota o commit atual (HEAD)
-bash tools/empacotar.sh v0.7.17   # empacota uma tag — é o que se publica
+bash tools/empacotar.sh v0.7.18   # empacota uma tag — é o que se publica
 ```
 
 O script roda os testes antes (não gera zip com teste vermelho), monta

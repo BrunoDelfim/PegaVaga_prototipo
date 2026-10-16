@@ -25,12 +25,25 @@ https://github.com/BrunoDelfim/PegaVaga_prototipo/blob/development/PRIVACY.md
 
 ## 3. Privacy practices → Data usage
 
-**Nenhuma categoria de dados é marcada.** A loja considera “coletado” o dado que
-**sai do dispositivo**; o PegaVaga só usa `chrome.storage.local`, no perfil do
-próprio usuário. (A seção “O que a extensão guarda” da política detalha cada item
-— transparência sem declarar coleta que não existe.)
+**Depende de uma escolha sua.** A única coisa que pode sair do dispositivo é o
+**relato de erro** — e só quando o usuário clica em *Enviar diagnóstico*:
 
-As três certificações do formulário são **verdadeiras** para esta extensão:
+- **Sem entregador configurado** (sem `env.js`, ou com `reportEndpoint` vazio):
+  **não marque nenhuma categoria**. Nada sai do dispositivo.
+- **Com o entregador configurado**: marque a categoria que corresponde ao
+  conteúdo do relato — ele leva a **configuração da extensão e o log de erros**,
+  ou seja, **“User activity”** — e cole esta justificativa:
+
+  > Relatório de erro do próprio usuário, enviado **apenas** quando ele clica em
+  > “Enviar diagnóstico”, para diagnóstico e correção de falhas. O conteúdo é a
+  > versão da extensão, o navegador, a configuração escolhida e os últimos erros
+  > registrados — nunca as vagas capturadas, os links ou o CSV. O usuário pode,
+  > em vez de enviar, manter o relatório só no computador dele (copiar ou baixar
+  > em JSON), e a política de privacidade descreve os dois caminhos.
+
+As três certificações seguem **verdadeiras** (marque as três): a transferência
+para o serviço de e-mail acontece **a pedido do usuário**, só para o fim
+declarado, e está descrita na política.
 
 - [x] Não vendo nem transfiro dados de usuário a terceiros, fora dos usos aprovados.
 - [x] Não uso nem transfiro dados de usuário para fins não relacionados ao meu

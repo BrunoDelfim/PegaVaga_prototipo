@@ -25,6 +25,20 @@ const SHARED = globalThis.PegaVagaShared;
 const STORAGE = SHARED.STORAGE;
 const MSG = SHARED.MSG;
 
+/* Configuração de ambiente (`env.js`): destinatário e entregador dos relatos.
+ * O arquivo fica fora do git (o `.gitignore` cuida) e pode não existir — sem ele
+ * os relatos ficam locais e nada sai do navegador. */
+try {
+  importScripts('env.js');
+} catch (error) {
+  /* sem env.js: relatos ficam locais */
+}
+
+const ENV = globalThis.PegaVagaEnv || {};
+const REPORT_ENDPOINT = String(ENV.reportEndpoint || '').trim();
+const REPORT_TOKEN = String(ENV.reportToken || '').trim();
+const REPORT_EMAIL = String(ENV.reportEmail || '').trim();
+
 const ALARM_NAME = 'pegavaga-tick';
 const ALARM_BADGE_RESET = 'pegavaga-badge-reset'; // virada do dia: zera o contador
 const TICK_MINUTES = 1;
@@ -33,7 +47,7 @@ const LINKEDIN_TAB_PATTERN = 'https://www.linkedin.com/*';
 /* Luzinha do ícone: o ponto colorido é desenhado por cima do próprio logo. Se o
  * canvas não estiver disponível, o selo colorido no canto assume o recado. */
 const ICON_SIZES = [16, 32];
-const ICON_FILES = { 16: 'icons/pg-16.png', 32: 'icons/pg-48.png' };
+const ICON_FILES = { 16: 'icons/lg_pv_16.png', 32: 'icons/lg_pv_32.png' };
 
 /* -------------------------------------------------------------------------- */
 /* Ciclo de vida                                                               */
@@ -114,6 +128,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: true, shown: Boolean(shown) })
     );
     return true; // a resposta vem depois (a notificação é assíncrona)
+  }
+
+  if (message.type === MSG.REPORT) {
+    // Relato de erro criado: a extensão avisa e oferece o envio.
+    showReportNotification(message).then((shown) =>
+      sendResponse({ ok: true, shown: Boolean(shown) })
+    );
+    return true; // idem: a notificação é assíncrona
+  }
+
+  if (message.type === MSG.REPORT_SEND) {
+    sendPendingReport(message.id).then((enviado) => sendResponse({ ok: Boolean(enviado) }));
+    return true;
+  }
+
+  if (message.type === MSG.REPORT_KEEP) {
+    keepPendingReport(message.id).then((mantido) => sendResponse({ ok: Boolean(mantido) }));
+    return true;
   }
 
   return false;
@@ -548,7 +580,7 @@ async function showHelpNotification(message, sender) {
   try {
     await chrome.notifications.create(HELP_NOTIFICATION_ID, {
       type: 'basic',
-      iconUrl: 'icons/pg-128.png',
+      iconUrl: 'icons/lg_pv_128.png',
       title: 'PegaVaga precisa de ajuda para continuar',
       message:
         'Não consegui preencher ' +
@@ -623,7 +655,7 @@ async function showRunEndNotification(message) {
   try {
     await chrome.notifications.create(DONE_NOTIFICATION_ID, {
       type: 'basic',
-      iconUrl: 'icons/pg-128.png',
+      iconUrl: 'icons/lg_pv_128.png',
       title: texto.title,
       message: texto.message,
       priority: texto.urgent ? 2 : 0,
@@ -643,6 +675,158 @@ async function focusRunTab() {
   const tabId = await resolveHelpTabId();
   if (tabId == null) return;
   await focusTabId(tabId);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Relatos de erro (fila local + envio em um clique)                          */
+/* -------------------------------------------------------------------------- */
+
+const REPORT_NOTIFICATION_ID = 'pegavaga-report';
+const STATUS_NOTIFICATION_ID = 'pegavaga-status';
+let reportNotifiedAt = 0; // agrupa: uma notificação por rajada, não por erro
+
+/** Lê a lista de relatos do storage (sempre um array). */
+function readReports() {
+  return chrome.storage.local
+    .get(STORAGE.reports)
+    .then((dados) => (Array.isArray(dados[STORAGE.reports]) ? dados[STORAGE.reports] : []))
+    .catch(() => []);
+}
+
+/** Confirmação curta (some sozinha) para uma ação que o usuário não vê. */
+async function notifyStatus(texto) {
+  if (!chrome.notifications) return;
+
+  try {
+    await chrome.notifications.create(STATUS_NOTIFICATION_ID, {
+      type: 'basic',
+      iconUrl: 'icons/lg_pv_128.png',
+      title: 'PegaVaga',
+      message: texto,
+      priority: 0,
+      requireInteraction: false,
+    });
+  } catch (error) {
+    /* sem notificação: o pop-up mostra o mesmo estado */
+  }
+}
+
+/**
+ * Avisa que a extensão teve um problema e oferece o relato.
+ *
+ * Com entregador configurado, o botão manda em **um clique** e nada abre para o
+ * usuário. Sem entregador, o botão traz a aba para frente: o relato fica pendente
+ * em Configurações → Diagnóstico, para copiar ou baixar.
+ */
+async function showReportNotification(message) {
+  if (!chrome.notifications) return false;
+
+  const agora = Date.now();
+  if (agora - reportNotifiedAt < 60000) return false; // uma por rajada
+  reportNotifiedAt = agora;
+
+  const relatos = await readReports();
+  const relato = (message && message.id && relatos.find((r) => r.id === message.id)) ||
+    SHARED.lastPendingReport(relatos);
+
+  const botoes = REPORT_ENDPOINT
+    ? [{ title: SHARED.t('Enviar diagnóstico') }, { title: SHARED.t('Manter local') }]
+    : [{ title: SHARED.t('Ver relato') }];
+
+  const corpo = relato
+    ? SHARED.t('O relato está pronto: {resumo}.', { resumo: SHARED.describeReport(relato) })
+    : SHARED.t('O relato está pronto em Configurações → Diagnóstico.');
+
+  try {
+    await chrome.notifications.create(REPORT_NOTIFICATION_ID, {
+      type: 'basic',
+      iconUrl: 'icons/lg_pv_128.png',
+      title: SHARED.t('PegaVaga teve um problema na varredura'),
+      message: corpo,
+      priority: 2,
+      requireInteraction: true,
+      buttons: botoes,
+    });
+    console.info('[PegaVaga] Notificação de relato criada.');
+    return true;
+  } catch (error) {
+    console.warn('[PegaVaga] Não consegui criar a notificação de relato:', error);
+    return false;
+  }
+}
+
+/**
+ * Manda o relato pendente mais recente pelo entregador configurado.
+ *
+ * O POST vai como formulário e em `no-cors`: é o que o Web App do Apps Script
+ * aceita **sem** precisar de permissão de host no manifest (nada de preflight).
+ * O preço disso é não poder ler a resposta — por isso o status vira "enviado"
+ * quando a requisição sai, e o histórico em Diagnóstico é a conferência.
+ */
+/** Manda um relato específico (ou o pendente mais recente, sem id). */
+async function sendPendingReport(id) {
+  const relatos = await readReports();
+  const pendente =
+    (id && relatos.find((item) => item.id === id)) || SHARED.lastPendingReport(relatos);
+
+  if (!pendente) return false;
+
+  if (!REPORT_ENDPOINT) {
+    await notifyStatus(SHARED.t('Sem destinatário configurado — o relato ficou pendente.'));
+    return false;
+  }
+
+  try {
+    const corpo = new URLSearchParams();
+    corpo.set('token', REPORT_TOKEN);
+    corpo.set('para', REPORT_EMAIL);
+    corpo.set(
+      'payload',
+      JSON.stringify({
+        id: pendente.id,
+        motivo: pendente.reason,
+        quando: pendente.when,
+        erros: pendente.errors,
+        diagnostico: pendente.payload,
+      })
+    );
+
+    await fetch(REPORT_ENDPOINT, { method: 'POST', mode: 'no-cors', body: corpo });
+
+    await chrome.storage.local.set({
+      [STORAGE.reports]: SHARED.markReport(relatos, pendente.id, 'enviado', {
+        channel: 'endpoint',
+      }),
+    });
+
+    console.info('[PegaVaga] Relato enviado:', pendente.id);
+    await notifyStatus(SHARED.t('Relato de erro enviado. Obrigado!'));
+    return true;
+  } catch (error) {
+    console.warn('[PegaVaga] Falha ao enviar o relato:', error);
+    await notifyStatus(
+      SHARED.t('Não consegui enviar agora: {motivo}', {
+        motivo: (error && error.message) || 'erro de rede',
+      })
+    );
+    return false;
+  }
+}
+
+/** O usuário escolheu guardar o relato só no computador dele. */
+async function keepPendingReport(id) {
+  const relatos = await readReports();
+  const pendente =
+    (id && relatos.find((item) => item.id === id)) || SHARED.lastPendingReport(relatos);
+
+  if (!pendente) return false;
+
+  await chrome.storage.local.set({
+    [STORAGE.reports]: SHARED.markReport(relatos, pendente.id, 'local'),
+  });
+
+  await notifyStatus(SHARED.t('Relato mantido no computador.'));
+  return true;
 }
 
 /** Manda a aba cancelar a vaga travada e avançar. Devolve se foi entregue. */
@@ -686,16 +870,30 @@ if (chrome.notifications) {
   chrome.notifications.onClicked.addListener((id) => {
     if (id === HELP_NOTIFICATION_ID) focusHelpTab();
     else if (id === DONE_NOTIFICATION_ID) focusRunTab();
+    else if (id === REPORT_NOTIFICATION_ID) focusRunTab();
   });
 
   chrome.notifications.onButtonClicked.addListener((id, index) => {
-    if (id !== HELP_NOTIFICATION_ID) return;
-
-    if (index === 0) {
-      focusHelpTab(); // "Preencher manualmente": traz a aba do LinkedIn para frente
-    } else if (index === 1) {
-      skipStuckJob(); // "Pular vaga": cancela a atual e avança
+    if (id === HELP_NOTIFICATION_ID) {
+      if (index === 0) {
+        focusHelpTab(); // "Preencher manualmente": traz a aba do LinkedIn para frente
+      } else if (index === 1) {
+        skipStuckJob(); // "Pular vaga": cancela a atual e avança
+      }
+      return;
     }
+
+    if (id !== REPORT_NOTIFICATION_ID) return;
+
+    // Sem entregador configurado o botão é só um: leva ao pop-up, onde o relato
+    // fica pendente com Copiar e Baixar JSON.
+    if (!REPORT_ENDPOINT) {
+      focusRunTab();
+      return;
+    }
+
+    if (index === 0) sendPendingReport();
+    else keepPendingReport();
   });
 }
 

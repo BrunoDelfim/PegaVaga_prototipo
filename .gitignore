@@ -26,6 +26,9 @@ node_modules/
 # --- Relatorios exportados ---
 pegavaga_*.csv
 
+# --- Ambiente local (destinatario dos relatos, endpoint, token) ---
+env.js
+
 # --- Logs ---
 *.log
 npm-debug.log*

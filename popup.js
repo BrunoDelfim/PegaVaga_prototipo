@@ -24,6 +24,7 @@ const STORAGE_APPS_KEY = SHARED.STORAGE.apps;
 const STORAGE_GUARD_KEY = SHARED.STORAGE.guard;
 const STORAGE_THEME_KEY = SHARED.STORAGE.theme;
 const STORAGE_ERRORS_KEY = SHARED.STORAGE.errors;
+const STORAGE_REPORTS_KEY = SHARED.STORAGE.reports;
 
 const CSV_HEADERS = [
   'ID',
@@ -92,6 +93,7 @@ async function init() {
   await refresh();
   await loadGuard();
   await syncScanningState();
+  await renderReports();
 
   await initTheme();
   applyLanguage(); // traduz a tela e passa a acompanhar o que o render escrever
@@ -100,6 +102,158 @@ async function init() {
   chrome.runtime.onMessage.addListener(onRuntimeMessage);
   chrome.storage.onChanged.addListener(onStorageChanged);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Relatos de erro                                                            */
+/* -------------------------------------------------------------------------- */
+
+/** Texto do chip de status de um relato. */
+function reportStatusLabel(relato) {
+  if (relato.status === 'enviado') {
+    const quando = relato.sentAt
+      ? new Date(relato.sentAt).toLocaleString(SHARED.dateLocale())
+      : '';
+
+    return SHARED.t('Enviado em {quando}', { quando });
+  }
+
+  return relato.status === 'local' ? SHARED.t('Mantido local') : SHARED.t('Pendente');
+}
+
+/** Botão pequeno de uma ação do relato. */
+function reportButton(acao, rotulo) {
+  const botao = document.createElement('button');
+  botao.type = 'button';
+  botao.className = 'btn ghost';
+  botao.dataset.acao = acao;
+  botao.textContent = rotulo;
+  return botao;
+}
+
+/** Uma linha da lista: quando, motivo, status e as ações. */
+function buildReportRow(relato) {
+  const item = document.createElement('li');
+  item.className = 'report ' + (relato.status || 'pendente');
+  item.dataset.id = relato.id;
+
+  const topo = document.createElement('div');
+  topo.className = 'report-top';
+
+  const quando = document.createElement('b');
+  quando.textContent = SHARED.describeReport(relato);
+
+  const status = document.createElement('span');
+  status.textContent = reportStatusLabel(relato);
+
+  topo.append(quando, status);
+
+  const motivo = document.createElement('div');
+  motivo.className = 'report-motivo';
+  motivo.textContent = SHARED.reportReasonLabel(relato.reason);
+
+  const acoes = document.createElement('div');
+  acoes.className = 'report-actions';
+
+  // "Enviar agora" não aparece no que já foi enviado.
+  if (relato.status !== 'enviado') acoes.appendChild(reportButton('enviar', 'Enviar agora'));
+  acoes.appendChild(reportButton('copiar', 'Copiar diagnóstico'));
+  acoes.appendChild(reportButton('baixar', 'Baixar JSON'));
+  acoes.appendChild(reportButton('descartar', 'Descartar'));
+
+  item.append(topo, motivo, acoes);
+  return item;
+}
+
+/** Desenha a lista de relatos (mais recente em cima) e a linha de resumo. */
+async function renderReports() {
+  if (!els.reportsList) return;
+
+  const dados = await chrome.storage.local.get(STORAGE_REPORTS_KEY);
+  const relatos = Array.isArray(dados[STORAGE_REPORTS_KEY]) ? dados[STORAGE_REPORTS_KEY] : [];
+  const resumo = SHARED.summarizeReports(relatos);
+
+  els.reportsHint.textContent = resumo.pending
+    ? SHARED.t('{n} relato(s) pendente(s)', { n: resumo.pending })
+    : SHARED.t('Nada pendente por aqui.');
+
+  els.reportsList.textContent = '';
+
+  for (const relato of relatos.slice().reverse()) {
+    els.reportsList.appendChild(buildReportRow(relato));
+  }
+}
+
+/**
+ * Ações de um relato: **enviar** (pelo service worker, que é quem tem o
+ * entregador), **copiar** o diagnóstico, **baixar** o JSON ou **descartar**.
+ */
+async function onReportAction(event) {
+  const botao =
+    event.target && event.target.closest ? event.target.closest('button[data-acao]') : null;
+
+  if (!botao || !els.reportsList.contains(botao)) return;
+
+  const linha = botao.closest('li[data-id]');
+  const id = linha && linha.dataset.id;
+  if (!id) return;
+
+  const dados = await chrome.storage.local.get(STORAGE_REPORTS_KEY);
+  const relatos = Array.isArray(dados[STORAGE_REPORTS_KEY]) ? dados[STORAGE_REPORTS_KEY] : [];
+  const relato = relatos.find((item) => item.id === id);
+  if (!relato) return;
+
+  const acao = botao.dataset.acao;
+
+  if (acao === 'enviar') {
+    try {
+      const resposta = await chrome.runtime.sendMessage({ type: MSG.REPORT_SEND, id: id });
+      const foi = Boolean(resposta && resposta.ok);
+
+      setStatus(
+        foi
+          ? SHARED.t('Relato de erro enviado. Obrigado!')
+          : SHARED.t('Não consegui enviar agora: {motivo}', { motivo: SHARED.t('sem destinatário') }),
+        foi ? 'ok' : 'error'
+      );
+    } catch (error) {
+      setStatus(SHARED.t('Não consegui enviar agora: {motivo}', { motivo: error.message }), 'error');
+    }
+
+    await renderReports();
+    return;
+  }
+
+  if (acao === 'copiar') {
+    const copiou = await copyText(relato.payload || '');
+    setStatus(
+      copiou
+        ? SHARED.t('Diagnóstico copiado. Cole no relato do problema (confira antes).')
+        : SHARED.t('Não consegui copiar o diagnóstico — veja o console do pop-up.'),
+      copiou ? 'ok' : 'error'
+    );
+    return;
+  }
+
+  if (acao === 'baixar') {
+    downloadFile(
+      JSON.stringify(relato, null, 2),
+      'pegavaga_relato_' + timestampForFilename() + '.json',
+      'application/json'
+    );
+    setStatus(SHARED.t('Relato salvo em JSON.'), 'ok');
+    return;
+  }
+
+  if (acao === 'descartar') {
+    await chrome.storage.local.set({
+      [STORAGE_REPORTS_KEY]: relatos.filter((item) => item.id !== id),
+    });
+    await renderReports();
+    setStatus(SHARED.t('Relato descartado.'), 'ok');
+  }
+}
+
+
 
 /* -------------------------------------------------------------------------- */
 /* Campos obrigatórios                                                        */
@@ -273,6 +427,8 @@ function cacheElements() {
   els.termSparkTotal = document.getElementById('term-spark-total');
   els.btnExportFailures = document.getElementById('btn-export-failures');
   els.btnDiag = document.getElementById('btn-diag');
+  els.reportsHint = document.getElementById('reports-hint');
+  els.reportsList = document.getElementById('reports-list');
   els.btnBackup = document.getElementById('btn-backup');
   els.btnRestore = document.getElementById('btn-restore');
   els.inputRestore = document.getElementById('input-restore');
@@ -317,6 +473,7 @@ function bindEvents() {
   els.btnExportFailures.addEventListener('click', onExportFailuresClick);
   els.btnClear.addEventListener('click', onClearClick);
   if (els.btnDiag) els.btnDiag.addEventListener('click', onCopyDiagnostics);
+  if (els.reportsList) els.reportsList.addEventListener('click', onReportAction);
 
   // Backup da configuração: salvar, escolher arquivo, confirmar ou desistir.
   els.btnBackup.addEventListener('click', onBackupClick);
@@ -1903,6 +2060,9 @@ function onStorageChanged(changes, areaName) {
   if (areaName !== 'local') return;
 
   if (changes[STORAGE_JOBS_KEY]) refresh();
+
+  // Relato criado (a varredura achou problema) ou status mudado: redesenha a lista.
+  if (changes[STORAGE_REPORTS_KEY]) renderReports();
 
   if (changes[STORAGE_GUARD_KEY]) renderGuard(changes[STORAGE_GUARD_KEY].newValue || null);
 

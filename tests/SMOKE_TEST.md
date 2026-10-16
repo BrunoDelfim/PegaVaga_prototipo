@@ -285,6 +285,31 @@ fim — e não siga adiante antes de entender a falha.
 - [ ] Nada do que você **digita** é traduzido: termos, localização e respostas do
       formulário ficam iguais.
 
+### U. Relato de erro (fila local e envio)
+Para não depender de um erro real, injete um relato de teste (console do pop-up:
+botão direito dentro dele → **Inspecionar** → Console):
+```js
+chrome.storage.local.set({ pegavaga_reports: [ {
+  id: 'r-teste', at: Date.now(), when: 'teste', reason: 'rajada',
+  errors: [ { at: 'teste', where: 'teste', message: 'erro de teste' } ],
+  payload: 'diagnóstico de teste', status: 'pendente', sentAt: null, channel: null } ] });
+```
+- [ ] Aba **Configurações → Diagnóstico**: aparece **Relatos de erro** com uma
+      linha **Pendente**, o motivo (“rajada de erros”) e os botões.
+- [ ] **Copiar diagnóstico** copia o texto e mostra o toast de sucesso.
+- [ ] **Baixar JSON** salva `pegavaga_relato_….json` (abra e confira o conteúdo).
+- [ ] **Descartar** remove a linha da lista (e some do storage).
+- [ ] **Sem entregador configurado** (`env.js` vazio): **Enviar agora** avisa que
+      não há destinatário e o relato continua **Pendente**.
+- [ ] **Com o entregador configurado**: **Enviar agora** → a linha vira **Enviado
+      em …** e uma notificação confirma o envio; **confira o e-mail** na caixa de
+      entrada configurada.
+- [ ] Erro de verdade: com a varredura rodando, provoque uma rajada (ex.: deixe a
+      internet cair por um tempo) → aparece a **notificação de problema** com os
+      botões, e o botão **Enviar diagnóstico** manda em um clique.
+- [ ] Os relatos sobrevivem a fechar/reabrir o pop-up e **não** são apagados por
+      **Limpar vagas capturadas**.
+
 ## Antes de publicar (teste final)
 
 1. Rode **este roteiro inteiro num perfil limpo** do Chrome (item 5 do checklist).

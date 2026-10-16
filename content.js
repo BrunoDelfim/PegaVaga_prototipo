@@ -52,6 +52,7 @@
   const STORAGE_SETTINGS_KEY = STORAGE.settings || 'pegavaga_settings';
   const STORAGE_GUARD_KEY = STORAGE.guard || 'pegavaga_guard';
   const STORAGE_ERRORS_KEY = STORAGE.errors || 'pegavaga_errors';
+  const STORAGE_REPORTS_KEY = STORAGE.reports || 'pegavaga_reports';
 
   // Quantos erros ficam guardados para o "copiar diagnóstico" do pop-up.
   const ERROR_KEEP = SHARED.ERROR_KEEP || 50;
@@ -641,6 +642,7 @@
 
     state.errors.push({
       at: new Date().toLocaleString('pt-BR'),
+      ts: Date.now(), // carimbo para a janela da rajada (o `at` é só exibição)
       where: String(where || '?'),
       message: String(motivo).slice(0, 300),
     });
@@ -654,6 +656,61 @@
       // Último recurso: se nem gravar os erros der certo, não há mais onde registrar.
       chrome.storage.local.set({ [STORAGE_ERRORS_KEY]: state.errors }).catch(() => {});
     }, CONFIG.persistDebounceMs);
+
+    // Rajada de erros é o sintoma que mais dói: vira um relato (um só — o
+    // pushReport cuida do cooldown) e o service worker mostra a notificação.
+    if (SHARED.burstReason(state.errors)) createReport('rajada');
+  }
+
+  /**
+   * Monta o relato (diagnóstico **congelado** neste instante) e o enfileira no
+   * storage. Quem mostra a notificação é o service worker; aqui só gravamos.
+   *
+   * Nunca chama `noteError`: falhar ao criar o relato não pode gerar outro.
+   */
+  async function createReport(reason) {
+    try {
+      const settings = state.settings || (await getSettings());
+
+      const payload = SHARED.buildDiagnostics({
+        version: chrome.runtime.getManifest().version,
+        ua: navigator.userAgent,
+        count: Object.keys(state.jobs).length,
+        dropped: state.dropped,
+        lastRun: state.lastRun
+          ? new Date(state.lastRun).toLocaleString(SHARED.dateLocale())
+          : '',
+        apps: state.apps.length,
+        run: state.run,
+        guard: state.guard,
+        dryRun: Boolean(settings.apply && settings.apply.dryRun),
+        settings: settings, // leva junto as respostas do formulário, de propósito
+        errors: state.errors,
+      });
+
+      const relato = SHARED.buildReport({
+        reason: reason,
+        errors: state.errors,
+        payload: payload,
+        at: Date.now(),
+      });
+
+      const data = await chrome.storage.local.get(STORAGE_REPORTS_KEY);
+      const resultado = SHARED.pushReport(data[STORAGE_REPORTS_KEY], relato, {
+        now: Date.now(),
+      });
+
+      if (!resultado.added) return null; // mesmo problema, ainda dentro do cooldown
+
+      await chrome.storage.local.set({ [STORAGE_REPORTS_KEY]: resultado.list });
+      sendRuntime({ type: MSG.REPORT, id: relato.id, reason: relato.reason });
+
+      console.info('[PegaVaga] Relato de erro registrado:', relato.id, reason);
+      return relato;
+    } catch (falha) {
+      console.warn('[PegaVaga] Não consegui registrar o relato:', falha);
+      return null;
+    }
   }
 
   async function loadState() {
@@ -2641,6 +2698,10 @@
     state.run = next;
     await saveRun(next);
     broadcastProgress();
+
+    // "Não achei a lista de vagas" é problema de verdade (a página mudou ou está
+    // bloqueada): vale um relato — o cooldown evita um por página visitada.
+    if (problem) createReport('sem-lista');
   }
 
   /* ------------------------------------------------------------------------ */

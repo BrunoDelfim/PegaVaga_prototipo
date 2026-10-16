@@ -38,6 +38,17 @@ eq('content_scripts matches', manifest.content_scripts[0].matches, ['https://www
 ok('host_permissions linkedin', manifest.host_permissions.includes('https://www.linkedin.com/*'));
 ok('versao semver', /^\d+\.\d+\.\d+$/.test(manifest.version), manifest.version);
 
+// Ícone renomeado/esquecido é erro silencioso: a extensão fica sem ícone e o zip
+// sai incompleto. Aqui todo caminho citado tem de existir no disco.
+const iconesCitados = [
+  ...new Set(
+    [...read('manifest.json').matchAll(/icons\/[\w.-]+\.png/g), ...read('background.js').matchAll(/icons\/[\w.-]+\.png/g)]
+      .map((achado) => achado[0])
+  ),
+];
+ok('ha icones citados', iconesCitados.length >= 4);
+eq('todo icone citado existe', iconesCitados.filter((caminho) => !fs.existsSync(ROOT + caminho)), []);
+
 section('1. Exports do shared.js');
 require(ROOT + 'shared.js');
 const S = globalThis.PegaVagaShared;
@@ -97,7 +108,7 @@ ok('smoke test cita os avisos do app', smoke.includes('conta e risco') && smoke.
 const allSrc = ['shared.js', 'background.js', 'content.js', 'popup.js'].map(read).join('\n');
 ok('sem storage.sync (nada vai para a conta Google)', !/storage\.sync/.test(allSrc));
 ok('sem XMLHttpRequest/WebSocket/sendBeacon', !/XMLHttpRequest|WebSocket|sendBeacon/.test(allSrc));
-ok('fetch so de arquivo da propria extensao', (allSrc.match(/fetch\([^)]*\)/g) || []).every((c) => c.includes('chrome.runtime.getURL')));
+ok('fetch so de arquivo da propria extensao ou do entregador de relatos', (allSrc.match(/fetch\([^)]*\)/g) || []).every((chamada) => chamada.includes('chrome.runtime.getURL') || chamada.includes('REPORT_ENDPOINT')));
 ok('popup sem script/estilo remoto', !/<script[^>]+src="https?:/.test(popupHtml) && !/@import\s+url\(https?:/.test(popupHtml));
 ok('PRIVACY.md existe e cita o storage local', fs.existsSync(ROOT + 'PRIVACY.md') && read('PRIVACY.md').includes('chrome.storage.local'));
 ok('PRIVACY.md afirma que nada sai do navegador', /nada sai do seu navegador/i.test(read('PRIVACY.md')));
@@ -469,6 +480,76 @@ ok('pausa humana obedece ao parar', /function humanPause\(baseMs, ratio\) \{\s*\
 ok('a pausa desiste no abort', /function pause\(ms\)[\s\S]{0,260}state\.abort \? true : null/.test(contentJs));
 ok('aba reage a fila removida no storage', /changes\[STORAGE_RUN_KEY\][\s\S]{0,260}state\.abort = true;[\s\S]{0,80}wakeWaiters\(\)/.test(contentJs));
 
+section('18c. Relatos de erro (fila local)');
+const agoraRelato = new Date(2026, 9, 14, 20, 0).getTime();
+const errosRajada = [
+  { ts: agoraRelato - 1000, where: 'clicar', message: 'boom' },
+  { ts: agoraRelato - 2000, where: 'clicar', message: 'boom' },
+  { ts: agoraRelato - 3000, where: 'clicar', message: 'boom' },
+];
+
+eq('rajada de 3 erros vale relato', S.burstReason(errosRajada, { now: agoraRelato }), 'rajada');
+eq('dois erros nao valem', S.burstReason(errosRajada.slice(0, 2), { now: agoraRelato }), '');
+eq('erro antigo sai da janela', S.burstReason(errosRajada, { now: agoraRelato + 6 * 60 * 1000 }), '');
+eq('errorsSince corta pela janela', S.errorsSince(errosRajada, agoraRelato - 2500).length, 2);
+eq('errorsSince tolera lixo', S.errorsSince(null, 0).length, 0);
+
+const relatoBase = S.buildReport({
+  reason: 'rajada',
+  errors: errosRajada,
+  payload: 'diagnostico congelado',
+  at: agoraRelato,
+  when: '14/10/2026, 20:00',
+});
+eq('relato nasce pendente', relatoBase.status, 'pendente');
+eq('relato guarda o motivo', relatoBase.reason, 'rajada');
+eq('relato congela o diagnostico', relatoBase.payload, 'diagnostico congelado');
+eq('relato tem id com o carimbo', relatoBase.id, 'r-' + agoraRelato);
+eq('relato corta a lista de erros', S.buildReport({ errors: new Array(30).fill(errosRajada[0]), at: agoraRelato }).errors.length, 10);
+ok('relato corta o diagnostico gigante', S.buildReport({ payload: 'x'.repeat(50000), at: agoraRelato }).payload.length === 20000);
+
+const fila = S.pushReport([], relatoBase, { now: agoraRelato });
+eq('relato entra na fila', fila.list.length, 1);
+ok('relato adicionado volta como added', fila.added && fila.added.id === relatoBase.id);
+const repetido = S.pushReport(fila.list, S.buildReport({ reason: 'rajada', errors: errosRajada, at: agoraRelato + 60000 }), { now: agoraRelato + 60000 });
+eq('mesmo problema nao entra de novo', repetido.list.length, 1);
+eq('mesmo problema nao volta como added', repetido.added, null);
+const outroMotivo = S.pushReport(fila.list, S.buildReport({ reason: 'sem-lista', errors: [{ ts: agoraRelato, where: 'x', message: 'y' }], at: agoraRelato + 60000 }), { now: agoraRelato + 60000 });
+eq('motivo diferente entra', outroMotivo.list.length, 2);
+const depoisDoCooldown = S.pushReport(fila.list, S.buildReport({ reason: 'rajada', errors: errosRajada, at: agoraRelato + 31 * 60 * 1000 }), { now: agoraRelato + 31 * 60 * 1000 });
+eq('passado o cooldown entra de novo', depoisDoCooldown.list.length, 2);
+
+const cheia = S.pushReport(new Array(9).fill(0).map((zero, i) => S.buildReport({ reason: 'erro' + i, errors: [{ ts: agoraRelato - i, where: 'w' + i, message: 'm' + i }], at: agoraRelato - i })), S.buildReport({ reason: 'novo', errors: [], at: agoraRelato }), { now: agoraRelato });
+eq('lista respeita o teto', cheia.list.length, S.REPORTS_MAX);
+
+const marcada = S.markReport(fila.list, relatoBase.id, 'enviado', { now: agoraRelato + 1000, channel: 'endpoint' });
+eq('marcar enviado muda o status', marcada[0].status, 'enviado');
+eq('marcar enviado guarda a hora', marcada[0].sentAt, agoraRelato + 1000);
+eq('marcar enviado guarda o canal', marcada[0].channel, 'endpoint');
+eq('marcar mantem o resto', marcada[0].payload, 'diagnostico congelado');
+eq('marcar id desconhecido nao estraga a lista', S.markReport(fila.list, 'r-nao-existe', 'enviado').length, 1);
+eq('marcar como local nao guarda hora', S.markReport(fila.list, relatoBase.id, 'local')[0].sentAt, null);
+
+eq('resumo da fila', JSON.stringify(S.summarizeReports(marcada)), '{"total":1,"pending":0,"sent":1,"kept":0}');
+eq('resumo de lista invalida', JSON.stringify(S.summarizeReports(null)), '{"total":0,"pending":0,"sent":0,"kept":0}');
+eq('pendente mais recente', S.lastPendingReport([relatoBase, S.buildReport({ reason: 'sem-lista', at: agoraRelato + 5 })][0] ? [relatoBase] : []) === relatoBase && S.lastPendingReport([{ status: 'enviado', id: 'x' }]) === null, true);
+eq('sem pendente devolve null', S.lastPendingReport([{ id: 'x', status: 'enviado' }]), null);
+ok('descricao do relato', S.describeReport(relatoBase).includes('3 erro(s)') && S.describeReport(relatoBase).includes('14/10/2026, 20:00'));
+ok('rotulo do motivo', S.reportReasonLabel('rajada') === 'rajada de erros' && S.reportReasonLabel('sei-la') === 'erro na automação');
+
+// Fiação: quem cria é o content, quem envia é o service worker.
+ok('content cria relato na rajada e sem lista', /burstReason\(state\.errors\)\) createReport\('rajada'\)/.test(contentJs) && /if \(problem\) createReport\('sem-lista'\)/.test(contentJs));
+ok('content congela o diagnostico', /createReport\(reason\)[\s\S]{0,700}buildDiagnostics\(/.test(contentJs) && /createReport\(reason\)[\s\S]{0,900}buildReport\(/.test(contentJs));
+ok('relato nao gera relato (sem laco)', !/catch[\s\S]{0,200}noteError/.test(contentJs.slice(contentJs.indexOf('async function createReport'), contentJs.indexOf('async function createReport') + 900)));
+const bgRelato = read('background.js');
+ok('background le o env com tolerancia', /try \{\s*\n\s*importScripts\('env\.js'\)/.test(bgRelato));
+ok('background envia pelo endpoint configurado', bgRelato.includes("mode: 'no-cors'") && bgRelato.includes('REPORT_ENDPOINT'));
+ok('background agrupa a notificacao de relato', /reportNotifiedAt/.test(bgRelato) && bgRelato.includes('REPORT_NOTIFICATION_ID'));
+ok('background tem os dois botoes do relato', bgRelato.includes("sendPendingReport()") || bgRelato.includes('sendPendingReport(message.id)'));
+ok('popup lista os relatos e envia', popupJs.includes('function renderReports') && popupJs.includes('MSG.REPORT_SEND') && popupJs.includes('data-acao'));
+ok('env de exemplo documentado e o real fora do git', read('env.example.js').includes('reportEndpoint') && read('.gitignore').includes('env.js'));
+ok('empacotador inclui o env.js', packSh.includes("zipfile") && packSh.includes('env.js'));
+
 section('19. Idioma da interface (pt/en)');
 const marcadoresDe = (s) => [...String(s).matchAll(/\{([a-z0-9_]+)\}/gi)].map((m) => m[1]).sort().join(',');
 const neutrosI18n = ['PegaVaga', 'English', 'https://www.linkedin.com/jobs/search/'];
@@ -531,6 +612,7 @@ const IGNORAR_I18N = [
   /^[a-z0-9_.:-]+$/i, /^[.#\[>]/, /^[A-Z_]+$/, /px$|^\d|^\s*$/,
   /https?:|[<>{}();=]|\\|function |querySelector|classList|use strict|text\/csv/,
   /^\[PegaVaga\]/, /^(prev|full|light|hint ok|failure)$/, /^[a-z_]+$/,
+  /^[a-z-]+( [a-z-]+)*$/, // nomes de classe CSS ("btn ghost", "report pendente")
   /^(ID|Titulo|Empresa|Link|Descricao|Capturado em|Termo|Tentativas|Candidatado em|Ultima tentativa|Status da candidatura|Motivo da nao candidatura)$/,
   /(sistema|navegador) não identificado/, // só no diagnóstico, que é em pt
 ];

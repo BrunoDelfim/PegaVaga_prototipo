@@ -584,6 +584,25 @@
         box-shadow: 0 0 0 3px var(--danger-soft);
       }
 
+      /* Relatos de erro: uma linha por relato, com o status e as ações. */
+      .reports { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 0; padding: 0; list-style: none; }
+      .reports:empty { display: none; }
+      .report {
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--muted);
+        border-radius: var(--r-sm);
+        padding: 7px 9px;
+        background: var(--card);
+      }
+      .report.pendente { border-left-color: var(--warn); }
+      .report.enviado { border-left-color: var(--ok); }
+      .report-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .report-top b { font-size: var(--fs-sm); color: var(--text); font-weight: 600; }
+      .report-top span { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+      .report-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+      .report-actions .btn { padding: 3px 7px; font-size: var(--fs-xs); }
+      .report-motivo { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+
       .group { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
       /* O primeiro grupo do painel não tem nada acima: o traço viraria um risco solto. */
       .settings-body > .group:first-child { margin-top: 0; padding-top: 0; border-top: none; }
@@ -1213,6 +1232,10 @@
               </svg>
               Copiar diagnóstico
             </button>
+
+            <span class="sub">Relatos de erro</span>
+            <p class="hint" id="reports-hint"></p>
+            <ul class="reports" id="reports-list"></ul>
           </div>
 
           <p class="hint" id="settings-hint">Salvo automaticamente.</p>

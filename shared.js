@@ -19,6 +19,7 @@ globalThis.PegaVagaShared = (() => {
     guard: 'pegavaga_guard', // bloqueio temporário detectado (proteção da conta)
     theme: 'pegavaga_theme', // 'light' | 'dark' escolhido na lâmpada do cabeçalho
     errors: 'pegavaga_errors', // últimos erros registrados (base do "copiar diagnóstico")
+    reports: 'pegavaga_reports', // relatos de erro (fila local, com status)
   };
 
   /* Tipos de mensagem trocadas entre pop-up, content script e agendador. */
@@ -33,6 +34,9 @@ globalThis.PegaVagaShared = (() => {
     HELP_CLEAR: 'PEGAVAGA_HELP_CLEAR', // content → background: fecha a notificação
     SKIP: 'PEGAVAGA_SKIP', // pop-up/notificação → content: pula a vaga travada
     DONE: 'PEGAVAGA_DONE', // content → background: varredura terminou (ou parou por proteção)
+    REPORT: 'PEGAVAGA_REPORT', // content → background: relato de erro criado (mostrar notificação)
+    REPORT_SEND: 'PEGAVAGA_REPORT_SEND', // pop-up → background: envia este relato
+    REPORT_KEEP: 'PEGAVAGA_REPORT_KEEP', // pop-up → background: mantém este relato local
   };
 
   const LINKEDIN_SEARCH_URL = 'https://www.linkedin.com/jobs/search/';
@@ -345,6 +349,37 @@ globalThis.PegaVagaShared = (() => {
     'URL de busca no LinkedIn': 'LinkedIn search URL',
     'Termos de vaga': 'Job terms',
     'Informe pelo menos 1 termo — é obrigatório para iniciar.': 'Enter at least 1 term — it is required to start.',
+
+    /* Relatos de erro */
+    '{n} erro(s) · {quando}': '{n} error(s) · {quando}',
+    'rajada de erros': 'burst of errors',
+    'página sem a lista de vagas': 'page without the job list',
+    'erro na automação': 'automation error',
+    'Relatos de erro': 'Error reports',
+    'Pendente': 'Pending',
+    'Enviado': 'Sent',
+    'Enviado em {quando}': 'Sent on {quando}',
+    'sem destinatário': 'no destination',
+    'Relato salvo em JSON.': 'Report saved as JSON.',
+    'Relato descartado.': 'Report discarded.',
+    'Mantido local': 'Kept locally',
+    'Enviar agora': 'Send now',
+    'Baixar JSON': 'Download JSON',
+    'Descartar': 'Discard',
+    'Nenhum relato registrado.': 'No reports recorded.',
+    'Nada pendente por aqui.': 'Nothing pending here.',
+    '{n} relato(s) pendente(s)': '{n} pending report(s)',
+    'Enviar diagnóstico': 'Send diagnostics',
+    'Manter local': 'Keep locally',
+    'Ver relato': 'View report',
+    'PegaVaga teve um problema na varredura': 'PegaVaga hit a problem while scanning',
+    'Relato de erro enviado. Obrigado!': 'Error report sent. Thank you!',
+    'Não consegui enviar agora: {motivo}': 'Could not send it now: {motivo}',
+    'Sem destinatário configurado — o relato ficou pendente.': 'No destination configured — the report is pending.',
+    'Relato mantido no computador.': 'Report kept on this computer.',
+    'O envio vai sair do navegador: confira o texto antes.': 'Sending leaves the browser: check the text first.',
+    'O relato está pronto: {resumo}.': 'The report is ready: {resumo}.',
+    'O relato está pronto em Configurações → Diagnóstico.': 'The report is ready in Settings → Diagnostics.',
     'Termos de vaga (vários, separados por vírgula ou um por linha)': 'Job terms (several, separated by commas or one per line)',
     'Ex.: Brasil, São Paulo, Remoto': 'E.g. Brazil, São Paulo, Remote',
     'desenvolvedor frontend, react, node.js': 'frontend developer, react, node.js',
@@ -872,6 +907,152 @@ globalThis.PegaVagaShared = (() => {
    * Monta a fila de termos: um item por termo, varrido em sequência. Sem termos
    * cadastrados, cai no modo antigo (varre a página de vagas aberta).
    */
+  /* ------------------------------------------------------------------------ */
+  /* Relatos de erro (fila local, com status)                                  */
+  /* ------------------------------------------------------------------------ */
+
+  const REPORTS_MAX = 10; // relatos guardados
+  const REPORT_PAYLOAD_MAX = 20000; // teto do diagnóstico congelado no relato
+  const REPORT_BURST_WINDOW_MS = 5 * 60 * 1000; // janela da rajada de erros
+  const REPORT_BURST_COUNT = 3; // erros na janela que já valem um relato
+  const REPORT_COOLDOWN_MS = 30 * 60 * 1000; // sem repetir o mesmo problema antes disso
+
+  const REPORT_REASONS = {
+    rajada: 'rajada de erros',
+    'sem-lista': 'página sem a lista de vagas',
+    erro: 'erro na automação',
+  };
+
+  /** Erros do buffer que aconteceram a partir de `since` (usa o carimbo `ts`). */
+  function errorsSince(errors, since) {
+    return (Array.isArray(errors) ? errors : []).filter(
+      (item) => Number(item && item.ts) >= Number(since || 0)
+    );
+  }
+
+  /**
+   * Vale um relato? Hoje: **rajada** (3+ erros na janela de 5 minutos). A outra
+   * situação que gera relato — a página sem lista de vagas — vem de fora, porque
+   * quem sabe disso é o content script.
+   */
+  function burstReason(errors, options) {
+    const o = options || {};
+    const now = Number.isFinite(o.now) ? o.now : Date.now();
+    const janela = o.windowMs || REPORT_BURST_WINDOW_MS;
+    const minimo = o.count || REPORT_BURST_COUNT;
+
+    return errorsSince(errors, now - janela).length >= minimo ? 'rajada' : '';
+  }
+
+  /** Assinatura do problema: mesmo motivo + mesmo primeiro erro = mesmo relato. */
+  function reportFingerprint(report) {
+    const r = report || {};
+    const primeiro = (Array.isArray(r.errors) ? r.errors[0] : null) || {};
+
+    return [r.reason || '', primeiro.where || '', primeiro.message || ''].join('|');
+  }
+
+  /**
+   * Monta o relato. O diagnóstico vem **congelado** (quem o monta é o content
+   * script, no momento do erro): enviar depois não pode descrever outro momento.
+   */
+  function buildReport(dados) {
+    const d = dados || {};
+    const at = Number.isFinite(d.at) ? d.at : Date.now();
+
+    return {
+      id: 'r-' + at,
+      at: at,
+      when: d.when || new Date(at).toLocaleString('pt-BR'),
+      reason: d.reason || 'erro',
+      errors: (Array.isArray(d.errors) ? d.errors : []).slice(-10),
+      payload: String(d.payload || '').slice(0, REPORT_PAYLOAD_MAX),
+      status: 'pendente',
+      sentAt: null,
+      channel: null,
+    };
+  }
+
+  /** Texto curto para a lista de relatos ("3 erro(s) · 14/10/2026, 19:58"). */
+  function describeReport(report) {
+    const r = report || {};
+
+    return t('{n} erro(s) · {quando}', {
+      n: Array.isArray(r.errors) ? r.errors.length : 0,
+      quando: r.when || '',
+    });
+  }
+
+  /** Nome do motivo, no idioma da interface. */
+  function reportReasonLabel(reason) {
+    return t(REPORT_REASONS[reason] || REPORT_REASONS.erro);
+  }
+
+  /**
+   * Enfileira um relato: corta a lista no teto e **não repete** o mesmo problema
+   * (mesma assinatura) dentro do cooldown — senão uma rajada viraria cinco
+   * notificações e cinco e-mails.
+   *
+   * @returns {{ list: Object[], added: Object|null }} `added` nulo = já existia
+   */
+  function pushReport(list, report, options) {
+    const o = options || {};
+    const now = Number.isFinite(o.now) ? o.now : Date.now();
+    const cooldown = o.cooldownMs == null ? REPORT_COOLDOWN_MS : o.cooldownMs;
+    const max = o.max || REPORTS_MAX;
+    const atual = (Array.isArray(list) ? list : []).filter(Boolean);
+    const assinatura = reportFingerprint(report);
+
+    const repetido = atual.some(
+      (item) => reportFingerprint(item) === assinatura && now - Number(item.at) < cooldown
+    );
+
+    if (repetido) return { list: atual, added: null };
+
+    return { list: atual.concat([report]).slice(-max), added: report };
+  }
+
+  /** Marca o relato ('pendente' | 'enviado' | 'local') e devolve a lista nova. */
+  function markReport(list, id, status, options) {
+    const o = options || {};
+    const now = Number.isFinite(o.now) ? o.now : Date.now();
+
+    return (Array.isArray(list) ? list : []).map((item) => {
+      if (!item || item.id !== id) return item;
+
+      return Object.assign({}, item, {
+        status: status,
+        sentAt: status === 'enviado' ? now : item.sentAt,
+        channel: o.channel || item.channel,
+      });
+    });
+  }
+
+  /** Contagem para a tela ("1 pendente") e para o diagnóstico. */
+  function summarizeReports(list) {
+    const resumo = { total: 0, pending: 0, sent: 0, kept: 0 };
+
+    for (const item of Array.isArray(list) ? list : []) {
+      if (!item) continue;
+
+      resumo.total += 1;
+      if (item.status === 'enviado') resumo.sent += 1;
+      else if (item.status === 'local') resumo.kept += 1;
+      else resumo.pending += 1;
+    }
+
+    return resumo;
+  }
+
+  /** O relato pendente mais recente (é o que a notificação oferece). */
+  function lastPendingReport(list) {
+    const pendentes = (Array.isArray(list) ? list : []).filter(
+      (item) => item && item.status === 'pendente'
+    );
+
+    return pendentes.length ? pendentes[pendentes.length - 1] : null;
+  }
+
   /**
    * O que falta para poder iniciar uma varredura. Hoje são obrigatórios: **URL do
    * LinkedIn**, **localização** e **pelo menos 1 termo** — sem isso a extensão não
@@ -2173,6 +2354,21 @@ globalThis.PegaVagaShared = (() => {
     parseSettings,
     buildRunQueue,
     describeMissing,
+
+    /* Relatos de erro */
+    REPORTS_MAX,
+    REPORT_BURST_COUNT,
+    REPORT_BURST_WINDOW_MS,
+    REPORT_COOLDOWN_MS,
+    errorsSince,
+    burstReason,
+    buildReport,
+    pushReport,
+    markReport,
+    summarizeReports,
+    lastPendingReport,
+    describeReport,
+    reportReasonLabel,
     computeQuota,
     jitter,
     applyOutcomeLabel,
