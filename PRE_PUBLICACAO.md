@@ -292,3 +292,4 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 14/10/2026 | Guia do aviso “O Google não verificou este app” (o “desenvolvedor” citado é o próprio usuário; Avançado ▸ não seguro ▸ Permitir) | `0.7.21` | `04c6bc8` |
 | 16/10/2026 | Entregador **ligado e testado** (`--testar` → `ok`, e-mail recebido) · e-mail de teste se identifica como “TESTE MANUAL” (o relato real leva navegador/SO, fila e configuração) | `0.7.22` | `6d443cf` |
 | 16/10/2026 | Diagnóstico do entregador: `testeDeEnvio` recusa `DESTINO` de exemplo, `cota()` mostra a cota do dia, log de destinatário/cota em Execuções e guia de clonagem/segredos | `0.7.23` | `b6a06a0` |
+| 16/10/2026 | `resumo()` (ver o que está configurado, token mascarado) e régua única `enderecoValido` no `doPost` — o teste pegou que `SEU_EMAIL@EXEMPLO.COM` passava e respondia `ok` | `0.7.24` | `1fe761f` |
