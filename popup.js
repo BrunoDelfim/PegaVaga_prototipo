@@ -76,6 +76,7 @@ let appsCache = [];
 let runCache = null;
 let breakCache = null;
 let pendingRestore = null; // configuração lida de um arquivo, esperando a confirmação
+let segurarFoco = false; // true = não fechar o pop-up (há diálogo do sistema no meio)
 let guardCache = null; // proteção da conta em vigor (ou null)
 let scanCache = false; // o content script está varrendo agora?
 
@@ -88,6 +89,7 @@ async function init() {
   bindChartTips();
   bindTabs();
   bindTerms();
+  bindBlurClose();
 
   await loadSettingsToForm();
   await refresh();
@@ -101,6 +103,30 @@ async function init() {
 
   chrome.runtime.onMessage.addListener(onRuntimeMessage);
   chrome.storage.onChanged.addListener(onStorageChanged);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Fechar ao perder o foco                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * O Chrome já fecha o pop-up quando ele perde o foco, mas nem sempre — e quem
+ * clica fora espera que ele saia. Aqui o fechamento fica explícito.
+ *
+ * A única exceção é o **seletor de arquivo** da restauração: o diálogo do sistema
+ * tira o foco do pop-up, e ali o usuário espera voltar para confirmar. Por isso o
+ * fluxo levanta `segurarFoco` ao abrir o seletor e ele volta ao normal assim que
+ * o pop-up recupera o foco (escolhendo ou cancelando o arquivo).
+ */
+function bindBlurClose() {
+  window.addEventListener('blur', () => {
+    if (segurarFoco) return;
+    window.close();
+  });
+
+  window.addEventListener('focus', () => {
+    segurarFoco = false;
+  });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -477,7 +503,12 @@ function bindEvents() {
 
   // Backup da configuração: salvar, escolher arquivo, confirmar ou desistir.
   els.btnBackup.addEventListener('click', onBackupClick);
-  els.btnRestore.addEventListener('click', () => els.inputRestore.click());
+  els.btnRestore.addEventListener('click', () => {
+    // O seletor de arquivo é um diálogo do sistema: ele tira o foco do pop-up e
+    // o usuário espera voltar para confirmar. Só aqui o fechamento é segurado.
+    segurarFoco = true;
+    els.inputRestore.click();
+  });
   els.inputRestore.addEventListener('change', onRestoreFile);
   els.btnRestoreGo.addEventListener('click', onRestoreConfirm);
   els.btnRestoreCancel.addEventListener('click', onRestoreCancel);

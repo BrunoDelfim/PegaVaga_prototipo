@@ -69,6 +69,13 @@ fim — e não siga adiante antes de entender a falha.
       pular, exportar, limpar) e some sozinho — verde/ok, âmbar/aviso, vermelho/erro.
 - [ ] **Estado vazio**: com 0 vagas aparece “Ainda não capturei nenhuma vaga…”;
       some assim que entra a primeira.
+- [ ] **Fecha ao perder o foco**: com o pop-up aberto, clique fora dele (na página,
+      na barra do Chrome, em outro programa) → ele **fecha**.
+      *Obs.: com o **Inspecionar** (DevTools) aberto no pop-up, o Chrome costuma
+      segurá-lo — é comportamento do navegador, não da extensão.*
+- [ ] O **seletor de arquivo** da restauração (Configurações → Backup) continua
+      funcionando: escolher o arquivo **mantém** o pop-up aberto com o aviso de
+      confirmação, e cancelar também não fecha nada.
 
 ### B. Gráficos e resumo
 - [ ] **Donut** (Início): fatias de candidatadas / já candidatadas / falharam / na

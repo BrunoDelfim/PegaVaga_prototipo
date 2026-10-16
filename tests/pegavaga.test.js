@@ -550,6 +550,11 @@ ok('popup lista os relatos e envia', popupJs.includes('function renderReports') 
 ok('env de exemplo documentado e o real fora do git', read('env.example.js').includes('reportEndpoint') && read('.gitignore').includes('env.js'));
 ok('empacotador inclui o env.js', packSh.includes("zipfile") && packSh.includes('env.js'));
 
+section('18d. Pop-up fecha ao perder o foco');
+ok('popup fecha no blur', /window\.addEventListener\('blur'[\s\S]{0,140}window\.close\(\)/.test(popupJs));
+ok('segurar o foco so no seletor de arquivo', /segurarFoco = true;[\s\S]{0,90}inputRestore\.click\(\)/.test(popupJs));
+ok('foco de volta libera o fechamento', /window\.addEventListener\('focus'[\s\S]{0,90}segurarFoco = false/.test(popupJs));
+
 section('19. Idioma da interface (pt/en)');
 const marcadoresDe = (s) => [...String(s).matchAll(/\{([a-z0-9_]+)\}/gi)].map((m) => m[1]).sort().join(',');
 const neutrosI18n = ['PegaVaga', 'English', 'https://www.linkedin.com/jobs/search/'];
