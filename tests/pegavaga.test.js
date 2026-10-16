@@ -871,8 +871,85 @@ ok('guia diz que o desenvolvedor citado e o proprio usuario', /é o seu próprio
 ok('guia diz que a permissao pedida e so enviar e-mail', /script\.send_mail/.test(guiaRelato));
 ok('guia oferece a saida sem Google (Web3Forms)', /Web3Forms/.test(guiaRelato));
 ok(
+  'guia explica por que o teste do editor pode nao chegar',
+  /Executou, mas o e-mail não chega/.test(guiaRelato) && /DESTINO/.test(guiaRelato)
+);
+ok(
+  'guia explica o que acontece se clonarem o repositorio',
+  /Se alguém clonar o repositório/.test(guiaRelato) && /o próprio/.test(guiaRelato)
+);
+
+// O script do Google agora recusa destino de exemplo (o Google aceitava o envio
+// e ninguém recebia) e registra a cota em Execuções.
+const scriptGoogle = read('tools/relato-apps-script.gs');
+ok(
+  'script do Google recusa DESTINO de exemplo',
+  /function destinoEmBranco/.test(scriptGoogle) && /SEU_EMAIL@EXEMPLO\.COM/.test(scriptGoogle)
+);
+ok(
+  'script do Google mostra a cota do dia',
+  /function cota/.test(scriptGoogle) && /getRemainingDailyQuota/.test(scriptGoogle)
+);
+ok(
+  'script do Google recusa relato sem destinatario',
+  /destinatario nao configurado/.test(scriptGoogle)
+);
+
+// O .gs não roda no CI (depende do MailApp), mas dá para garantir que é
+// JavaScript válido: um erro de sintaxe ali só apareceria dentro do editor do
+// Google, do jeito mais confuso possível.
+let gsValido = true;
+let gsErro = '';
+try {
+  new Function(scriptGoogle);
+} catch (erro) {
+  gsValido = false;
+  gsErro = String(erro && erro.message);
+}
+ok('script do Google e JavaScript valido', gsValido, gsErro);
+
+// O que garante que o destinatario e o token ficam fora do repositorio: o
+// .gitignore (env.js e os zips) e o exemplo com os campos vazios. E a regua
+// final: nenhum endpoint de verdade pode existir em arquivo versionado.
+const ignorados = read('.gitignore');
+ok('env.js fora do git', /^env\.js$/m.test(ignorados));
+ok('zips fora do git', /^\*\.zip$/m.test(ignorados));
+
+const exemploEnv = read('env.example.js');
+ok(
+  'env.example.js nao traz valor nenhum preenchido',
+  /reportEmail: ''/.test(exemploEnv) &&
+    /reportEndpoint: ''/.test(exemploEnv) &&
+    /reportToken: ''/.test(exemploEnv)
+);
+
+const arquivosVersionados = [
+  'manifest.json',
+  'shared.js',
+  'background.js',
+  'content.js',
+  'popup.html',
+  'popup.js',
+  'env.example.js',
+  'README.md',
+  'PRIVACY.md',
+  'LOJA.md',
+  'PRE_PUBLICACAO.md',
+  'tools/RELATO.md',
+  'tools/configurar-relato.sh',
+  'tools/relato-apps-script.gs',
+  'tools/empacotar.sh',
+  'tests/SMOKE_TEST.md',
+  'tests/fixtures/servidor-relato.js',
+];
+const comEndpointDeVerdade = arquivosVersionados.filter((f) =>
+  /script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}/.test(read(f))
+);
+eq('nenhum endpoint real em arquivo versionado', comEndpointDeVerdade, []);
+
+ok(
   'cabecalho do script .gs avisa do app nao verificado',
-  /não verificou este app/.test(read('tools/relato-apps-script.gs'))
+  /não verificou este app/.test(scriptGoogle)
 );
 
 const ajuda = rodarConfig(['--help']);

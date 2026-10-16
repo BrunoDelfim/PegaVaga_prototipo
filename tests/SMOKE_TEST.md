@@ -321,6 +321,10 @@ chrome.storage.local.set({ pegavaga_reports: [ {
 - [ ] Com a URL do `/exec` já no lugar: `bash tools/configurar-relato.sh --testar`
       responde **OK** e o **e-mail de teste chega**; com o token trocado de
       propósito, ele avisa **“recusou o token”** (e o `--testar` sai com erro).
+- [ ] No editor do Google, **`Executar ▸ testeDeEnvio`** chega no e-mail da
+      constante **`DESTINO`** (se disser “executado” e não chegar, ver a seção
+      **“Executou, mas o e-mail não chega”** do `tools/RELATO.md`), e
+      **`Executar ▸ cota`** mostra quanto resta da cota do dia em **Execuções**.
 
 ## Antes de publicar (teste final)
 

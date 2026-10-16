@@ -133,6 +133,10 @@ corporativo).
    > **Se preferir não passar por essa tela**, a **Opção B (Web3Forms)** abaixo
    > não usa conta Google nem autorização — só uma chave recebida por e-mail.
 
+   > **Se o “Executar” disser que rodou mas o e-mail não chegar**, veja a seção
+   > **“Executou, mas o e-mail não chega”** no fim deste documento: na maioria das
+   > vezes é a constante `DESTINO` que ficou no valor de exemplo.
+
 5. **Implantar** → **Nova implantação** → engrenagem ▸ **App da Web** →
    - *Descrição*: `PegaVaga relatos`
    - *Executar como*: **eu (seu e-mail)**
@@ -207,6 +211,71 @@ coisas mudam junto — e essa é a hora de ajustar:
 
 Quem **não** configurar o entregador (nenhum `reportEndpoint`) não tem nada
 disso: nesse caso nada sai do navegador e a declaração continua “não coleta”.
+
+---
+
+## “Executou, mas o e-mail não chega”
+
+Na ordem do que costuma ser — e como descobrir qual é o seu caso:
+
+1. **A constante `DESTINO` ficou no valor de exemplo.** É a causa nº 1, e a mais
+   confusa, porque **o `--testar` pode chegar enquanto este teste não chega**:
+   - o `testeDeEnvio` (botão **▶ Executar** no editor) manda para a constante
+     **`DESTINO`**;
+   - o relato da extensão manda para o campo **`para`**, que vem no POST (o
+     `reportEmail` do `env.js`) e **substitui** o `DESTINO`.
+
+   Com `DESTINO` em `SEU_EMAIL@EXEMPLO.COM`, o Google **aceita**, marca como
+   **executado** e ninguém recebe. O script agora **recusa na hora**, com aviso,
+   em vez de mandar para o vazio.
+2. **Spam.** E-mail automático de script novo cai em Spam com muita frequência —
+   confira também **Promoções**/**Atualizações** no Gmail.
+3. **Cota do dia.** Contas comuns: **100 destinatários por dia**. Rode a função
+   **`cota()`** no editor (menu ▸ **Executar**) e veja o número na aba
+   **Execuções**. Se estiver em 0, os envios voltam amanhã sozinhos, sem mexer em
+   nada.
+   *Espaço no **Drive** não tem relação com isso:* enviar e-mail não gasta
+   armazenamento, então disco cheio não explica um envio que não chega.
+4. **Endereço errado.** Na aba **Execuções** cada envio agora registra o
+   destinatário e a cota restante — é o que diz, sem adivinhação, para onde o
+   e-mail foi.
+
+**O teste mais fiel de todos é o `--testar` do terminal**, porque usa *exatamente*
+o caminho do relato de verdade (POST no `/exec` → `doPost` → `MailApp`). Se ele
+chega e o botão do editor não, o problema é a constante `DESTINO` (causa nº 1).
+
+---
+
+## Se alguém clonar o repositório (o que é seu e o que é de cada um)
+
+**O que é seu e não vai para o Git:** o `env.js` — e-mail, URL e token — está no
+`.gitignore`. Conferido: o `env.js` não aparece em **nenhum** commit, e a URL e o
+token do seu entregador não existem em ponto nenhum do histórico (busquei pelo
+identificador da URL no `git log -S` de todas as refs: zero resultados). Os zips
+de `dist/` também não são versionados.
+
+**Quem clona recebe** o `env.example.js` **vazio**, o `tools/configurar-relato.sh`
+e este guia. Cada pessoa faz **o próprio** entregador:
+
+1. cria **o próprio** projeto no Apps Script (a conta é dela), com **o próprio**
+   e-mail no `DESTINO` e **a própria** senha no `TOKEN`;
+2. implanta como App da Web (acesso “qualquer pessoa”) e roda
+   `bash tools/configurar-relato.sh --email … --endpoint … --token …` + `--testar`.
+
+Se a pessoa **não** fizer nada disso, nada quebra: os relatos ficam locais
+(**Copiar** / **Baixar JSON**) e nada sai do navegador.
+
+**Cuidado com o zip.** O pacote de distribuição **leva** o `env.js` — sem ele a
+versão publicada não teria como enviar. Então:
+
+- não deixe o `dist/*.zip` num lugar aberto (release público no GitHub, Drive
+  compartilhado, anexo em fórum): quem pegar o zip fica com a **sua** URL e o
+  **seu** token, e os relatos daquela pessoa podem cair na sua caixa — além de
+  consumir a sua cota;
+- em compensação, ninguém consegue **ler** nada com isso: o endpoint só sabe
+  enviar e-mail para o destinatário configurado;
+- se vazar demais, **rotacione**: Apps Script ▸ Implantar ▸ Gerenciar
+  implantações ▸ editar (gera URL nova) e troque o `TOKEN` nos dois lados.
 
 ---
 
