@@ -17,7 +17,15 @@ const porta = Number(process.argv[3] || 8765);
 http
   .createServer((req, res) => {
     if (req.method === 'POST') {
-      req.resume();
+      let corpo = '';
+      req.on('data', (pedaco) => {
+        corpo += pedaco;
+      });
+      req.on('end', () => {
+        // PV_ECO=1 mostra o corpo recebido: é como se confere, sem achismo, o que
+        // o --testar manda no POST (o teste em si não precisa dessa saída).
+        if (process.env.PV_ECO === '1') console.log('--- corpo recebido ---\n' + corpo);
+      });
       res.writeHead(302, { Location: `http://127.0.0.1:${porta}/resultado` });
       res.end();
       return;

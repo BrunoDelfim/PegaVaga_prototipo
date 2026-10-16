@@ -849,6 +849,16 @@ const subirServidorFalso = async (modo) => {
 ok('script existe', fs.existsSync(ROOT + SCRIPT_RELATO));
 ok('servidor de teste existe', fs.existsSync(ROOT + 'tests/fixtures/servidor-relato.js'));
 
+// O --testar manda um relato de mentira, e o e-mail precisa dizer isso: senão o
+// teste chega sem navegador nem configuração e parece que a extensão esqueceu
+// de mandar (foi a dúvida real de quem configurou).
+const scriptRelato = read(SCRIPT_RELATO);
+ok('--testar marca o relato como teste manual', /TESTE MANUAL/.test(scriptRelato));
+ok(
+  '--testar diz onde vao o navegador e a configuracao',
+  /navegador\/sistema\s+operacional/.test(scriptRelato) && /configuração completa/.test(scriptRelato)
+);
+
 // O aviso "O Google não verificou este app" é a primeira parede de quem configura
 // o entregador: o guia precisa dizer que é esperado, que o "desenvolvedor" da
 // tela é o próprio usuário e por onde se sai (Avançado ▸ não seguro ▸ Permitir).

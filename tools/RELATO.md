@@ -51,6 +51,17 @@ reconhece os casos comuns e diz o que fazer: `token invalido` (token diferente d
 login do Google (a implantação não está em “qualquer pessoa”) e 404/HTML (URL
 errada — precisa terminar em `/exec`).
 
+**O que o `--testar` manda — e o que ele não manda.** Ele envia um relato **de
+mentira**, marcado como “**TESTE MANUAL**”, com o sistema e o Node de quem
+rodou o comando. De propósito, **não** leva navegador, fila nem configuração:
+quem está mandando é o terminal, não a extensão — então ele não tem esses dados
+para mandar. O e-mail **de verdade** é que começa com a versão + o
+**navegador/sistema operacional** (`navigator.userAgent`) e segue com o estado da
+fila, a **configuração completa** (termos, cotas, horários, filtros e as
+respostas do formulário) e os últimos erros — o texto que a extensão monta com
+`SHARED.buildDiagnostics()` no instante do erro. Você pode ver esse texto sem
+depender de e-mail: **Configurações → Copiar diagnóstico** no pop-up.
+
 ---
 
 ## Qual usar? (recomendação)

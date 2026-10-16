@@ -121,7 +121,46 @@ testar() {
   echo "Testando $endpoint ..."
 
   local payload saida codigo corpo corpo_limpo titulo
-  payload='{"id":"teste-manual","motivo":"teste do entregador","quando":"'"$(date '+%d/%m/%Y %H:%M')"'","erros":[{"at":"agora","where":"configurar-relato.sh","message":"relato de teste, pode ignorar"}],"diagnostico":"teste manual do tools/configurar-relato.sh"}'
+  local quando maquina
+  quando="$(date '+%d/%m/%Y %H:%M')"
+  maquina="$(uname -sr 2>/dev/null || echo 'sistema não identificado') · Node $(node -v 2>/dev/null || echo '?')"
+
+  # O texto abaixo vai no campo `diagnostico` do e-mail. Ele é **de propósito**
+  # diferente do relato de verdade: aqui não há navegador, fila nem configuração
+  # para enviar (o teste roda fora da extensão), então ele diz o que é e onde
+  # esses dados aparecem no relato real — para ninguém achar que a extensão
+  # esqueceu de mandar.
+  local diagnostico
+  diagnostico="PegaVaga — diagnóstico (TESTE MANUAL)
+Versão (teste manual) · $maquina
+Gerado em $quando
+
+Este é um teste do entregador, feito por tools/configurar-relato.sh — não é um
+relato da extensão, e por isso ele NÃO traz navegador, fila nem configuração.
+
+No relato de verdade, este trecho começa com a versão e o navegador/sistema
+operacional do usuário (navigator.userAgent) e segue com o estado da fila, a
+configuração completa (termos, cotas, horários, filtros, respostas do
+formulário) e os últimos erros registrados.
+
+Se este e-mail chegou, o caminho extensão → entregador → e-mail está funcionando."
+
+  payload="$(DIAGNOSTICO="$diagnostico" QUANDO="$quando" node -e '
+    const dados = {
+      id: "teste-manual",
+      motivo: "teste do entregador",
+      quando: process.env.QUANDO,
+      erros: [
+        {
+          at: "agora",
+          where: "tools/configurar-relato.sh",
+          message: "relato de teste, pode ignorar",
+        },
+      ],
+      diagnostico: process.env.DIAGNOSTICO,
+    };
+    process.stdout.write(JSON.stringify(dados));
+  ')"
 
   # Sem `-X POST`: o `-d` já faz o POST, e no redirecionamento (302) o curl volta
   # para GET — que é como o Web App do Apps Script devolve a resposta. Forçar
