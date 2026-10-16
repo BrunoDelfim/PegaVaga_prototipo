@@ -90,6 +90,38 @@ corporativo).
    clique em **▶ Executar**. O Google vai pedir autorização — é o **seu** script
    pedindo para enviar e-mail em seu nome: autorize. **Você deve receber um
    e-mail de teste.** Se chegou, o entregador está bom.
+
+   > ### ⚠ Se aparecer “**O Google não verificou este app**”
+   >
+   > Vista essa tela com calma: ela é **esperada** e quer dizer só uma coisa — o
+   > script é **seu**, roda na **sua** conta e não passou pela **verificação do
+   > Google**, um processo obrigatório apenas para apps publicados para o público
+   > (o seu é de uso pessoal, [não precisa
+   > dela](https://developers.google.com/apps-script/guides/services/authorization)
+   > — o aviso é genérico e aparece para qualquer permissão “sensível”, como
+   > enviar e-mail).
+   >
+   > **Repare no e-mail que a tela chama de “desenvolvedor”: é o seu próprio.**
+   > Ele aparece ali porque quem publicou o script foi você, não um terceiro.
+   >
+   > Para seguir:
+   > 1. Clique em **Avançado** (no canto de baixo da tela).
+   > 2. Clique em **Acessar «nome do projeto» (não seguro)** — em algumas versões
+   >    as palavras saem como “Acesse … (não seguro)”. É aqui que muita gente para
+   >    achando que é golpe; não é: o código é exatamente o arquivo que você
+   >    acabou de colar e pode reler.
+   > 3. Na tela “**PegaVaga relatos quer acessar sua Conta do Google**”, clique em
+   >    **Permitir**.
+   >
+   > A permissão pedida é **uma só**: enviar e-mail em seu nome
+   > (`script.send_mail`), usada **apenas** pelo `MailApp.sendEmail` deste script
+   > (não há leitura de Gmail, Drive ou contatos). Depois disso, rodar o
+   > **`testeDeEnvio`** de novo já não mostra aviso nenhum. Se você clicou em
+   > **Voltar para a segurança**, nada quebrou: é só executar a função outra vez.
+   >
+   > **Se preferir não passar por essa tela**, a **Opção B (Web3Forms)** abaixo
+   > não usa conta Google nem autorização — só uma chave recebida por e-mail.
+
 5. **Implantar** → **Nova implantação** → engrenagem ▸ **App da Web** →
    - *Descrição*: `PegaVaga relatos`
    - *Executar como*: **eu (seu e-mail)**

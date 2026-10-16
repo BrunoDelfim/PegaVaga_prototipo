@@ -849,6 +849,22 @@ const subirServidorFalso = async (modo) => {
 ok('script existe', fs.existsSync(ROOT + SCRIPT_RELATO));
 ok('servidor de teste existe', fs.existsSync(ROOT + 'tests/fixtures/servidor-relato.js'));
 
+// O aviso "O Google não verificou este app" é a primeira parede de quem configura
+// o entregador: o guia precisa dizer que é esperado, que o "desenvolvedor" da
+// tela é o próprio usuário e por onde se sai (Avançado ▸ não seguro ▸ Permitir).
+const guiaRelato = read('tools/RELATO.md');
+ok(
+  'guia explica o aviso do app nao verificado',
+  /O Google não verificou este app/.test(guiaRelato) && /Avançado/.test(guiaRelato) && /não seguro/.test(guiaRelato)
+);
+ok('guia diz que o desenvolvedor citado e o proprio usuario', /é o seu próprio/.test(guiaRelato));
+ok('guia diz que a permissao pedida e so enviar e-mail', /script\.send_mail/.test(guiaRelato));
+ok('guia oferece a saida sem Google (Web3Forms)', /Web3Forms/.test(guiaRelato));
+ok(
+  'cabecalho do script .gs avisa do app nao verificado',
+  /não verificou este app/.test(read('tools/relato-apps-script.gs'))
+);
+
 const ajuda = rodarConfig(['--help']);
 ok('--help sai limpo', ajuda.code === 0 && /--endpoint/.test(ajuda.out) && /--testar/.test(ajuda.out));
 

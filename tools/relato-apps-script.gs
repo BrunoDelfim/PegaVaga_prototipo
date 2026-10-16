@@ -16,6 +16,10 @@
  *      O Google vai pedir autorização (é o seu próprio script pedindo para
  *      enviar e-mail em seu nome) → autorize. Você deve receber um e-mail de
  *      teste. Se chegar, o entregador está funcionando.
+ *      Se aparecer “O Google não verificou este app”: é o aviso padrão para
+ *      script pessoal com permissão sensível (o “desenvolvedor” citado é você).
+ *      Siga em **Avançado** ▸ **Acessar «projeto» (não seguro)** ▸ **Permitir**.
+ *      Detalhes em tools/RELATO.md.
  *   5. **Implantar** → **Nova implantação** → tipo **App da Web** →
  *      *Executar como*: **eu** · *Quem tem acesso*: **qualquer pessoa** →
  *      **Implantar**. Copie a URL que termina em `/exec`.
