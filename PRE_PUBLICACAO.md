@@ -73,11 +73,17 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   characters”, docs de *Prepare your extension*) — encurtar aqui (o
   `tools/empacotar.sh` avisa enquanto isso). A descrição longa vai no campo da
   loja, não no manifest.
-  - [ ] Decidir o **entregador dos relatos** antes de escrever o formulário:
+  - [x] Decidir o **entregador dos relatos** antes de escrever o formulário:
     configurado (`bash tools/configurar-relato.sh …` + `--testar`) a resposta do
     *Data usage* é a versão “com envio no clique”; sem ele, é “não coleta”.
     [`LOJA.md`](LOJA.md) tem os dois textos prontos e
     [`tools/RELATO.md`](tools/RELATO.md) tem o passo a passo.
+    **Decidido em 16/10/2026: entregador LIGADO** (Google Apps Script, destino
+    `brn.dfm@gmail.com`); `--testar` respondeu `ok` (o script rodou, o token bateu
+    e o `MailApp.sendEmail` foi chamado — a chegada do e-mail na caixa de entrada
+    é a conferência de quem configurou).
+    Portanto, no painel: marcar **“User activity”** e usar a justificativa da
+    versão “com envio no clique”.
   *Feito em:* —
 
 - [ ] **5. Teste em perfil limpo (smoke test completo)**

@@ -70,5 +70,7 @@ código atual):
 
 Não é só promessa: o CI reprova se o código começar a contrariar a política —
 `node tests/pegavaga.test.js` tem guardas que falham se aparecer `storage.sync`,
-`XMLHttpRequest`, `WebSocket`, `sendBeacon`, script remoto no pop-up ou qualquer
-`fetch` que não seja de arquivo da própria extensão.
+`XMLHttpRequest`, `WebSocket`, `sendBeacon`, script remoto no pop-up ou **qualquer
+`fetch` além de dois**: o de um **ícone da própria extensão** e o do **envio do
+relato de erro** (`background.js`, no endpoint que você configurar no `env.js`) —
+esse só dispara no clique do usuário em *Enviar diagnóstico*.
