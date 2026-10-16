@@ -271,3 +271,4 @@ estiverem congelados, e `11`, `12`, `14` são tranquilamente pós-publicação.
 | 13/10/2026 | Correção: rótulos quebrados em duas linhas ficavam em português (16 nós) | `0.7.16` | `16f9082` |
 | 13/10/2026 | Correção: **Parar** agora é imediato (acorda as esperas, pausa abortável e reage à fila removida) | `0.7.17` | `bcc3d84` |
 | 14/10/2026 | **Relatos de erro**: fila local com status (pendente/enviado/local), notificação com “Enviar diagnóstico” e lista em Diagnóstico · destinatário no `env.js` | `0.7.18` | `f47da07` |
+| 14/10/2026 | Pop-up fecha ao perder o foco (com o seletor de arquivo como única exceção) | `0.7.19` | `b83eb3b` |
