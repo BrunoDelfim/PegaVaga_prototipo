@@ -43,10 +43,15 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
   certificações) e a **justificativa de cada permissão**.
   *Antes de escrever, conferi o código:* não há `storage.sync`, `XMLHttpRequest`,
   `WebSocket`, `sendBeacon`, script remoto nem URL externa além do próprio
-  `linkedin.com`; o único `fetch` é de um ícone da extensão. **Sete guardas
-  novos** no teste transformam isso em CI: se alguém introduzir qualquer um
-  desses, o teste falha (conferi que os guardas reprovam de verdade, com exemplos
-  violando).
+  `linkedin.com`. **Sete guardas novos** no teste transformam isso em CI: se
+  alguém introduzir qualquer um desses, o teste falha (conferi que os guardas
+  reprovam de verdade, com exemplos violando).
+  *Atualização (14/10, relatos de erro):* apareceu **um** `fetch` que sai do
+  navegador — o envio do relato, e **só** no clique do usuário. O guarda foi
+  ajustado para permitir exatamente ele (e continuar reprovando qualquer outro);
+  [`PRIVACY.md`](PRIVACY.md) e [`LOJA.md`](LOJA.md) passaram a descrever esse
+  envio e o formulário de *Data usage* ganhou os dois casos (com e sem
+  entregador configurado).
 
 - [x] **3. Aviso de risco/beta dentro da extensão**
   O README tem o aviso (“área cinzenta do LinkedIn; use por sua conta e risco”),
@@ -62,12 +67,17 @@ Legenda: `[ ]` pendente · `[x]` feito · `[~]` parcial
 
 - [ ] **4. Material da loja**
   Descrição curta e longa, **screenshots** (640×400), tile promocional
-  **440×280** e o ícone 128 (já existe em `icons/pg-128.png`).
+  **440×280** e o ícone 128 (já existe em `icons/lg_pv_128.png`).
   ⚠ Achado ao fazer o item 10: a **descrição do `manifest.json` tem 305
   caracteres** e a loja pede **até 132** (“A string of no more than 132
   characters”, docs de *Prepare your extension*) — encurtar aqui (o
   `tools/empacotar.sh` avisa enquanto isso). A descrição longa vai no campo da
   loja, não no manifest.
+  - [ ] Decidir o **entregador dos relatos** antes de escrever o formulário:
+    configurado (`bash tools/configurar-relato.sh …` + `--testar`) a resposta do
+    *Data usage* é a versão “com envio no clique”; sem ele, é “não coleta”.
+    [`LOJA.md`](LOJA.md) tem os dois textos prontos e
+    [`tools/RELATO.md`](tools/RELATO.md) tem o passo a passo.
   *Feito em:* —
 
 - [ ] **5. Teste em perfil limpo (smoke test completo)**

@@ -768,6 +768,131 @@ eq('sem idioma en o texto fica em pt', S.syncText('Início', null, 'pt').texto, 
 eq('texto desconhecido fica como esta', S.syncText('???', null, 'en').texto, '???');
 eq('espacos das pontas sobrevivem', S.syncText('\n   Início\n ', null, 'en').texto, '\n   Home\n ');
 
+section('19c. tools/configurar-relato.sh (entregador dos relatos)');
+
+const cp = require('child_process');
+const os = require('os');
+const net = require('net');
+const http = require('http');
+const path = require('path');
+
+const SCRIPT_RELATO = 'tools/configurar-relato.sh';
+const tmpEnv = path.join(os.tmpdir(), 'pegavaga-env-teste-' + process.pid + '.js');
+
+/** Roda o configurador e devolve { code, out } sem estourar no erro. */
+const rodarConfig = (args) => {
+  try {
+    const out = cp.execFileSync('bash', [SCRIPT_RELATO, ...args], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return { code: 0, out };
+  } catch (erro) {
+    return {
+      code: erro.status == null ? 1 : erro.status,
+      out: String(erro.stdout || '') + String(erro.stderr || ''),
+    };
+  }
+};
+
+/** Lê o env.js gerado do jeito que a extensão lê (executando o arquivo). */
+const lerEnvGerado = (arquivo) => {
+  const caixa = {};
+  require('vm').runInNewContext(fs.readFileSync(arquivo, 'utf8'), caixa);
+  return caixa.PegaVagaEnv || {};
+};
+
+const porta_livre = () =>
+  new Promise((resolve) => {
+    const s = net.createServer();
+    s.listen(0, '127.0.0.1', () => {
+      const p = s.address().port;
+      s.close(() => resolve(p));
+    });
+  });
+
+const esperarPorta = (porta, limiteMs = 6000) =>
+  new Promise((resolve) => {
+    const inicio = Date.now();
+    const tentar = () => {
+      const req = http.get(
+        { host: '127.0.0.1', port: porta, path: '/ping', timeout: 600 },
+        (res) => {
+          res.resume();
+          resolve(true);
+        }
+      );
+      const desistir = () => {
+        req.destroy();
+        if (Date.now() - inicio > limiteMs) resolve(false);
+        else setTimeout(tentar, 120);
+      };
+      req.on('error', desistir);
+      req.on('timeout', desistir);
+    };
+    tentar();
+  });
+
+/** Sobe o servidor de mentira e espera ele atender. */
+const subirServidorFalso = async (modo) => {
+  const porta = await porta_livre();
+  const processo = cp.spawn(
+    process.execPath,
+    ['tests/fixtures/servidor-relato.js', modo, String(porta)],
+    { cwd: ROOT, stdio: 'ignore' }
+  );
+  const pronto = await esperarPorta(porta);
+  return { porta, processo, pronto };
+};
+
+ok('script existe', fs.existsSync(ROOT + SCRIPT_RELATO));
+ok('servidor de teste existe', fs.existsSync(ROOT + 'tests/fixtures/servidor-relato.js'));
+
+const ajuda = rodarConfig(['--help']);
+ok('--help sai limpo', ajuda.code === 0 && /--endpoint/.test(ajuda.out) && /--testar/.test(ajuda.out));
+
+const gravou = rodarConfig([
+  '--arquivo', tmpEnv,
+  '--email', 'relato.teste@exemplo.com',
+  '--endpoint', 'https://exemplo.invalido/exec',
+  '--token', 's3nh4-secreta',
+  '-q',
+]);
+eq('grava o env.js (codigo 0)', gravou.code, 0);
+
+const envGerado = lerEnvGerado(tmpEnv);
+eq('destino gravado', envGerado.reportEmail, 'relato.teste@exemplo.com');
+eq('endpoint gravado', envGerado.reportEndpoint, 'https://exemplo.invalido/exec');
+eq('token gravado', envGerado.reportToken, 's3nh4-secreta');
+
+const mostra = rodarConfig(['--arquivo', tmpEnv, '--mostrar']);
+ok('--mostrar avisa que o envio esta LIGADO', /LIGADO/.test(mostra.out));
+ok('--mostrar nao imprime o token', !mostra.out.includes('s3nh4-secreta') && /\.\.\./.test(mostra.out));
+
+rodarConfig(['--arquivo', tmpEnv, '--token', 'outro-token', '-q']);
+const envParcial = lerEnvGerado(tmpEnv);
+eq(
+  'trocar so o token mantem destino e endpoint',
+  [envParcial.reportEmail, envParcial.reportEndpoint, envParcial.reportToken],
+  ['relato.teste@exemplo.com', 'https://exemplo.invalido/exec', 'outro-token']
+);
+
+ok('endpoint sem https e recusado', rodarConfig(['--arquivo', tmpEnv, '--endpoint', 'ftp://x']).code !== 0);
+ok('email sem arroba e recusado', rodarConfig(['--arquivo', tmpEnv, '--email', 'semarroba']).code !== 0);
+ok('opcao desconhecida e recusada', rodarConfig(['--foo']).code !== 0);
+
+const tmpVazio = tmpEnv + '.vazio';
+rodarConfig(['--arquivo', tmpVazio, '--limpar', '-q']);
+const envVazio = lerEnvGerado(tmpVazio);
+eq('--limpar zera tudo', [envVazio.reportEmail, envVazio.reportEndpoint, envVazio.reportToken], ['', '', '']);
+
+const semEntregador = rodarConfig(['--arquivo', tmpVazio, '--testar']);
+ok('--testar sem endpoint avisa e falha', semEntregador.code !== 0 && /nada para testar/.test(semEntregador.out));
+
+const mostraVazio = rodarConfig(['--arquivo', tmpVazio, '--mostrar']);
+ok('--mostrar sem endpoint diz que o envio esta DESLIGADO', /DESLIGADO/.test(mostraVazio.out));
+
 section('20. Espera por evento (assincrono)');
 (async () => {
   const sig = S.createSignal();
@@ -789,6 +914,43 @@ section('20. Espera por evento (assincrono)');
   const pA = S.waitUntil(sigA, () => (flag ? 'ok' : null), 5000, 0);
   setTimeout(() => { flag = true; sigA.wake(); }, 20);
   eq('waitUntil acorda no sinal', await pA, 'ok');
+
+  // --testar de ponta a ponta, contra um servidor que imita o Apps Script:
+  // o POST volta 302 e a resposta ("ok") vem no endereco de retorno, como no
+  // Google. Este teste e o que guarda o `curl -X POST -L` (que entrava em laco).
+  const bom = await subirServidorFalso('ok');
+  ok('servidor de mentira (entregador bom) subiu', bom.pronto);
+  try {
+    const arquivoBom = tmpEnv + '.srv';
+    rodarConfig(['--arquivo', arquivoBom, '--email', 'a@b.com', '--endpoint', 'http://127.0.0.1:' + bom.porta + '/exec', '--token', 'tk', '-q']);
+    const testeBom = rodarConfig(['--arquivo', arquivoBom, '--testar']);
+    ok(
+      '--testar reconhece o entregador bom',
+      testeBom.code === 0 && /OK — o entregador rodou/.test(testeBom.out),
+      testeBom.out.trim()
+    );
+  } finally {
+    bom.processo.kill();
+  }
+
+  const ruim = await subirServidorFalso('token');
+  ok('servidor de mentira (token errado) subiu', ruim.pronto);
+  try {
+    const arquivoRuim = tmpEnv + '.srv2';
+    rodarConfig(['--arquivo', arquivoRuim, '--email', 'a@b.com', '--endpoint', 'http://127.0.0.1:' + ruim.porta + '/exec', '--token', 'outro', '-q']);
+    const testeRuim = rodarConfig(['--arquivo', arquivoRuim, '--testar']);
+    ok(
+      '--testar avisa que o token foi recusado',
+      testeRuim.code !== 0 && /recusou o token/.test(testeRuim.out),
+      testeRuim.out.trim()
+    );
+  } finally {
+    ruim.processo.kill();
+  }
+
+  [tmpEnv, tmpEnv + '.vazio', tmpEnv + '.srv', tmpEnv + '.srv2'].forEach((arquivo) => {
+    try { fs.unlinkSync(arquivo); } catch (erro) { /* nada a limpar */ }
+  });
 
   console.log('\n=========================================');
   console.log('RESULTADO: ' + pass + ' passaram, ' + failures.length + ' falharam');

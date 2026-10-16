@@ -13,6 +13,46 @@ O relato de erro do PegaVaga tem duas partes independentes:
 
 ---
 
+## O caminho curto (recomendado)
+
+Depois de ter a URL do `/exec` (passos 1–5 da Opção A abaixo), **não é preciso
+editar JavaScript**: um comando escreve o `env.js` para você.
+
+```bash
+# 1. aponta o destinatário e o entregador
+bash tools/configurar-relato.sh \
+  --email 'seu-email@gmail.com' \
+  --endpoint 'https://script.google.com/macros/s/AKfy..../exec' \
+  --token 'a-mesma-senha-do-TOKEN'
+
+# 2. confere o que ficou configurado (o token sai mascarado)
+bash tools/configurar-relato.sh --mostrar
+
+# 3. manda um relato de teste e mostra a resposta do entregador
+bash tools/configurar-relato.sh --testar
+
+# 4. regera o pacote (o env.js entra no zip)
+bash tools/empacotar.sh v<versão>
+```
+
+Outros dois comandos:
+
+- `--limpar` — zera tudo: o envio volta a ser **só local** (nada sai do navegador).
+- `--arquivo CAMINHO` — escreve em outro lugar (útil para testar sem mexer no seu).
+
+Para trocar **só** o token depois, repita o comando passando apenas `--token`: o
+que você não passar fica como estava. (O `--mostrar` diz **LIGADO**/**DESLIGADO**
+conforme exista ou não um `reportEndpoint`.)
+
+O `--testar` fala direto com o entregador, **fora** da extensão: se ele responder
+**OK** e o e-mail chegar, qualquer problema posterior não é o entregador. Ele
+reconhece os casos comuns e diz o que fazer: `token invalido` (token diferente do
+`TOKEN` do script), `erro:` (o script rodou e falhou — ver *Execuções*), página de
+login do Google (a implantação não está em “qualquer pessoa”) e 404/HTML (URL
+errada — precisa terminar em `/exec`).
+
+---
+
 ## Qual usar? (recomendação)
 
 | | **Google Apps Script** (recomendado) | **Web3Forms** |
@@ -56,18 +96,30 @@ corporativo).
    - *Quem tem acesso*: **qualquer pessoa**  ← sem isso a extensão não consegue
      postar (ela não tem login no seu Google)
    - Clique em **Implantar** e **copie a URL** que termina em **`/exec`**.
-6. No repositório, abra **`env.js`** (está no `.gitignore`, não vai para o Git) e
-   preencha:
+6. No repositório, aponte o destinatário em **um comando** (por baixo ele escreve
+   o `env.js`, que está no `.gitignore`):
+   ```bash
+   bash tools/configurar-relato.sh \
+     --email 'seu-email@gmail.com' \
+     --endpoint 'https://script.google.com/macros/s/AKfy..../exec' \
+     --token 'uma-senha-simples-sua'   # igual ao TOKEN do script
+   ```
+   *Se preferir editar à mão*, o `env.js` aceita exatamente isto:
    ```js
    globalThis.PegaVagaEnv = {
      reportEmail: 'seu-email@gmail.com',
      reportEndpoint: 'https://script.google.com/macros/s/AKfy..../exec',
-     reportToken: 'uma-senha-simples-sua',   // igual ao TOKEN do script
+     reportToken: 'uma-senha-simples-sua',
    };
    ```
-7. **Regere o pacote** (o empacotador avisa se o `env.js` ficar de fora):
+7. **Confira antes de empacotar** — o teste fala com o entregador por fora da
+   extensão (não precisa de navegador):
    ```bash
-   bash tools/empacotar.sh v0.7.18    # ou a versão atual
+   bash tools/configurar-relato.sh --testar     # deve responder OK
+   ```
+8. **Regere o pacote** (o empacotador avisa se o `env.js` ficar de fora):
+   ```bash
+   bash tools/empacotar.sh v<versão>
    ```
    e reinstale a extensão pelo zip (ou apenas **🔄 Atualizar** se você usa a
    pasta carregada sem compactação).

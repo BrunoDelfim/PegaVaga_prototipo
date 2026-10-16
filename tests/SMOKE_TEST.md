@@ -316,6 +316,11 @@ chrome.storage.local.set({ pegavaga_reports: [ {
       botões, e o botão **Enviar diagnóstico** manda em um clique.
 - [ ] Os relatos sobrevivem a fechar/reabrir o pop-up e **não** são apagados por
       **Limpar vagas capturadas**.
+- [ ] `bash tools/configurar-relato.sh --mostrar` diz **LIGADO**/**DESLIGADO**
+      certo e **não** imprime o token (só `abcd...yz`).
+- [ ] Com a URL do `/exec` já no lugar: `bash tools/configurar-relato.sh --testar`
+      responde **OK** e o **e-mail de teste chega**; com o token trocado de
+      propósito, ele avisa **“recusou o token”** (e o `--testar` sai com erro).
 
 ## Antes de publicar (teste final)
 

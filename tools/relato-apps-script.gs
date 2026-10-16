@@ -19,10 +19,11 @@
  *   5. **Implantar** → **Nova implantação** → tipo **App da Web** →
  *      *Executar como*: **eu** · *Quem tem acesso*: **qualquer pessoa** →
  *      **Implantar**. Copie a URL que termina em `/exec`.
- *   6. No repositório do PegaVaga, abra o `env.js` e preencha:
- *        reportEmail: 'seu-email@gmail.com',
- *        reportEndpoint: 'https://script.google.com/macros/s/...../exec',
- *        reportToken: 'a mesma senha do TOKEN acima',
+ *   6. No repositório do PegaVaga, aponte o destinatário (ele escreve o env.js):
+ *        bash tools/configurar-relato.sh --email 'seu-email@gmail.com' \
+ *          --endpoint 'https://script.google.com/macros/s/...../exec' \
+ *          --token 'a mesma senha do TOKEN acima'
+ *      e confira com:  bash tools/configurar-relato.sh --testar
  *   7. Reponha a extensão (o `tools/empacotar.sh` inclui o `env.js` no zip).
  *      A partir daí o botão **Enviar diagnóstico** manda o relato em um clique,
  *      sem abrir nada para o usuário.
