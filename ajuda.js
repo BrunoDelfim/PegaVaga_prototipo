@@ -16,15 +16,7 @@
   const t = SHARED.t;
   const MARGEM = 16; // distância do canto do desktop
 
-  const dados = (function () {
-    try {
-      const bruto = new URLSearchParams(location.search).get('dados') || '{}';
-      const objeto = JSON.parse(decodeURIComponent(bruto));
-      return objeto && typeof objeto === 'object' ? objeto : {};
-    } catch (error) {
-      return {};
-    }
-  })();
+  const dados = SHARED.parseAjudaDados(typeof location === 'undefined' ? '' : location.search);
 
   const avisoId = String(dados.avisoId || '');
   const campos = Array.isArray(dados.campos) ? dados.campos : [];

@@ -1121,6 +1121,24 @@ eq('escolherRotulo devolve -1 sem alvo', S.escolherRotulo(['Sim'], ''), -1);
 eq('escolherRotulo devolve -1 sem lista', S.escolherRotulo([], 'sim'), -1);
 eq('escolherRotulo devolve -1 quando nada casa', S.escolherRotulo(['Talvez'], 'sim'), -1);
 
+// O `URLSearchParams` já decodifica: um `decodeURIComponent` a mais quebrava
+// respostas com "%" ("Até 100%") — este teste é a trava contra a volta do bug.
+const contextoJanelinha = S.parseAjudaDados(
+  '?dados=' +
+    encodeURIComponent(
+      JSON.stringify({
+        avisoId: 'pegavaga-ajuda:7:p1',
+        titulo: 'Dev',
+        campos: [{ rotulo: 'Salário?', opcoes: ['Até 100%'] }],
+      })
+    )
+);
+eq('parseAjudaDados le o contexto', contextoJanelinha.avisoId, 'pegavaga-ajuda:7:p1');
+eq('parseAjudaDados preserva o "%" (sem decode duplo)', contextoJanelinha.campos[0].opcoes[0], 'Até 100%');
+eq('parseAjudaDados tolera vazio', S.parseAjudaDados(''), {});
+eq('parseAjudaDados tolera json invalido', S.parseAjudaDados('?dados=nada'), {});
+eq('parseAjudaDados tolera texto solto', S.parseAjudaDados('?dados=' + encodeURIComponent('"texto"')), {});
+
 eq('medidas da janelinha', [S.JANELINHA.largura, S.JANELINHA.altura], [372, 470]);
 // `chrome.windows` (usado na janelinha de ajuda) NÃO pede permissão: criar, mover
 // e fechar janelas é livre; a permissão `windows` só serviria para ler a URL/título

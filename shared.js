@@ -2221,6 +2221,21 @@ globalThis.PegaVagaShared = (() => {
   }
 
   /**
+   * Contexto que vem na URL da janelinha (`?dados=<json>`). O `URLSearchParams`
+   * **já desfaz** a codificação — decodificar de novo quebrava respostas com `%`
+   * (ex.: "100%"). Devolve `{}` quando o texto não é JSON.
+   */
+  function parseAjudaDados(search) {
+    try {
+      const bruto = new URLSearchParams(search || '').get('dados') || '{}';
+      const objeto = JSON.parse(bruto);
+      return objeto && typeof objeto === 'object' ? objeto : {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  /**
    * Índice do rótulo que corresponde ao que o usuário escolheu na janelinha.
    * Casa o texto **exato** antes de "contém" — senão "Sim" pegaria
    * "Sim, com restrições" — e é assim que a resposta cai na opção **original**
@@ -2425,6 +2440,7 @@ globalThis.PegaVagaShared = (() => {
     JANELINHA,
     ajudaId,
     lerAjudaId,
+    parseAjudaDados,
     escolherRotulo,
 
     /* Relatos de erro */
