@@ -228,10 +228,12 @@ do dia — quase sempre isso já responde.
 
 Depois do `resumo()`, as causas na ordem:
 
-1. **A função errada no menu.** Parece bobo, mas é comum: o Google deixa o menu no
-   `myFunction` (ou em outra função) e o ▶ Executar roda **aquilo** — a execução
-   aparece como concluída e nada acontece. Confira se o nome no menu é
-   **`testeDeEnvio`** (ou `resumo`).
+1. **A função errada no menu — foi o caso que aconteceu de verdade.** O Google
+   deixa o menu de funções apontando para outra função (o `myFunction` padrão, ou
+   a última que você abriu) e o ▶ Executar roda **aquela**: a execução aparece
+   como **concluída** e nada acontece. Confira se o nome no menu é
+   **`testeDeEnvio`** (ou `resumo`) — são dois segundos de conferência e resolvem
+   a maioria dos casos.
 2. **A constante `DESTINO` no valor de exemplo.** É a causa clássica — e a mais
    confusa, porque **o `--testar` pode chegar enquanto este teste não chega**:
    - o `testeDeEnvio` manda para a constante **`DESTINO`**;

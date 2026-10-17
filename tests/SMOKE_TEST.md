@@ -322,9 +322,10 @@ chrome.storage.local.set({ pegavaga_reports: [ {
       responde **OK** e o **e-mail de teste chega**; com o token trocado de
       propósito, ele avisa **“recusou o token”** (e o `--testar` sai com erro).
 - [ ] No editor do Google, **`Executar ▸ testeDeEnvio`** chega no e-mail da
-      constante **`DESTINO`** (se disser “executado” e não chegar, ver a seção
-      **“Executou, mas o e-mail não chega”** do `tools/RELATO.md`), e
-      **`Executar ▸ cota`** mostra quanto resta da cota do dia em **Execuções**.
+      constante **`DESTINO`** — conferindo antes que a função escolhida no
+      **menu é `testeDeEnvio`** (com outra selecionada, o ▶ Executar “conclui” e
+      não faz nada) —, e **`Executar ▸ resumo`** mostra destinatário, token
+      mascarado e cota em **Execuções**.
 
 ## Antes de publicar (teste final)
 
