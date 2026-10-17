@@ -32,6 +32,8 @@ FILES=(
   content.js
   popup.html
   popup.js
+  ajuda.html
+  ajuda.js
   icons
 )
 

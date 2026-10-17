@@ -327,6 +327,30 @@ chrome.storage.local.set({ pegavaga_reports: [ {
       não faz nada) —, e **`Executar ▸ resumo`** mostra destinatário, token
       mascarado e cota em **Execuções**.
 
+### V. Janelinha de ajuda (pergunta sem resposta)
+Para provocar sem depender do sorteio de vagas: use uma vaga com **pergunta
+personalizada** (resposta não salva) e deixe a automação chegar ao formulário.
+- [ ] O cartão abre numa **janela própria**, no **canto inferior direito** do
+      desktop: **só barra de título e borda** — sem aba, sem barra de endereço,
+      sem menu.
+- [ ] O cartão mostra a vaga (título — empresa) e **um controle por pergunta**;
+      numa pergunta de lista, as opções são **as mesmas do LinkedIn**.
+- [ ] **Aplicar e continuar**: a resposta entra no campo, o formulário avança e a
+      varredura segue sozinha (a notificação de ajuda **não** aparece).
+- [ ] A resposta fica **salva**: numa vaga seguinte com a mesma pergunta, a
+      extensão responde sozinha (confira em Configurações → respostas).
+- [ ] **Vou preencher à mão**: a aba do LinkedIn vem para a frente e o cartão
+      fecha; a automação espera você terminar.
+- [ ] **Pular esta vaga**: a vaga é descartada e a varredura vai para a próxima.
+- [ ] **✕ (fechar)**: fecha sem decidir e a varredura **não fica parada** (volta
+      ao caminho de sempre, com a notificação).
+- [ ] Arrastar pelo cabeçalho move a janela; fechar e reabrir **lembra a
+      posição**.
+- [ ] **Parar varredura** com o cartão aberto: o cartão some.
+- [ ] Fechar a **aba** do LinkedIn com o cartão aberto: o cartão some.
+- [ ] Se a janela não puder abrir, aparece a **notificação** de ajuda e a vaga
+      continua esperando — sem descarte silencioso.
+
 ## Antes de publicar (teste final)
 
 1. Rode **este roteiro inteiro num perfil limpo** do Chrome (item 5 do checklist).

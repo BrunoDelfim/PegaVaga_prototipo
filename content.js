@@ -149,6 +149,8 @@
     breakPollMs: 500, // intervalo de checagem durante pausas longas
     guardCooldownMs: 3600000, // descanso após sinal de limite do LinkedIn (1 h)
     guardTextLimit: 20000, // quanto do texto da página lemos procurando avisos
+    ajudaEsperaMs: 300000, // quanto esperamos a sua resposta na janelinha (5 min)
+    ajudaPollMs: 500, // rede de segurança da espera (a resposta chega por mensagem)
   };
 
   /* ------------------------------------------------------------------------ */
@@ -304,6 +306,7 @@
     interruptTimer: null, // checagem de popup agendada pelas mutações
     helpRequested: false, // estamos esperando a sua ajuda numa vaga travada?
     helpSkip: false, // você pediu para pular a vaga travada
+    ajuda: null, // pedido de ajuda aberto na janelinha ({ id, avisoId, resolver })
   };
 
   /* ------------------------------------------------------------------------ */
@@ -1787,6 +1790,84 @@
   /* ---- Ajuda: quando a vaga trava num campo que só o usuário preenche ------ */
 
   /**
+   * Descreve os campos travados para a janelinha: `{ rotulo, tipo, opcoes }`.
+   * `opcoes` são as opções **originais** do LinkedIn (select/rádio) — é o que a
+   * janelinha mostra e o que a resposta precisa casar na hora de escrever.
+   */
+  function descreverCamposAjuda(modal, missing) {
+    const alvo = (Array.isArray(missing) ? missing : []).filter(Boolean).slice(0, 3);
+    const campos = [];
+    const vistos = new Set();
+
+    let elementos = [];
+    try {
+      elementos = Array.from(
+        modal.querySelectorAll('input, select, textarea, [role="combobox"]')
+      );
+    } catch (error) {
+      noteError('descrever os campos do cartão', error);
+      return campos;
+    }
+
+    for (const el of elementos) {
+      const tipo = String(el.type || '').toLowerCase();
+      if (tipo === 'hidden' || tipo === 'checkbox' || tipo === 'file') continue;
+      if (String(el.value || '').trim()) continue;
+
+      const rotulo = fieldLabel(el) || '';
+      if (!rotulo || vistos.has(rotulo)) continue;
+
+      // Só o que o usuário apontou como travado (quando sabemos quais são).
+      if (alvo.length && !alvo.some((item) => normalize(rotulo).includes(normalize(item)))) continue;
+
+      vistos.add(rotulo);
+
+      const opcoes = opcoesDoCampo(el, modal);
+      campos.push({
+        rotulo: clean(rotulo).slice(0, 90),
+        tipo: tipo === 'number' ? 'numero' : opcoes.length ? 'lista' : 'texto',
+        opcoes: opcoes,
+      });
+
+      if (campos.length >= 3) break;
+    }
+
+    // Não casou com o campo: pelo menos deixa o usuário escrever sobre o rótulo.
+    if (!campos.length) {
+      alvo.forEach((item) => campos.push({ rotulo: String(item), tipo: 'texto', opcoes: [] }));
+    }
+
+    return campos;
+  }
+
+  /** Opções de um select ou dos rádios do mesmo grupo (até 12, sem vazios). */
+  function opcoesDoCampo(el, modal) {
+    const tag = String(el.tagName || '').toLowerCase();
+    const tipo = String(el.type || '').toLowerCase();
+
+    try {
+      if (tag === 'select') {
+        return Array.from(el.options || [])
+          .filter((opcao) => !opcao.disabled && String(opcao.value) !== '')
+          .map((opcao) => clean(opcao.textContent))
+          .filter(Boolean)
+          .slice(0, 12);
+      }
+
+      if (tipo === 'radio') {
+        return radioGroup(modal, el)
+          .map((radio) => fieldLabel(radio) || String(radio.value || ''))
+          .filter(Boolean)
+          .slice(0, 12);
+      }
+    } catch (error) {
+      noteError('ler as opções do campo travado', error);
+    }
+
+    return [];
+  }
+
+  /**
    * O formulário parou num campo que a extensão não sabe responder (pergunta
    * personalizada, sem valor salvo no LinkedIn). Em vez de descartar a vaga, a
    * gente **pede a sua ajuda**: notificação na área de trabalho, a aba do
@@ -1819,6 +1900,38 @@
       labels.join(', '),
       opts && opts.step ? '(o clique não avança)' : '(o botão está desabilitado)'
     );
+
+    // 1º caminho: a **janelinha do desktop**, com os campos travados e as opções
+    // originais do LinkedIn. Você responde ali e a automação preenche e segue.
+    // Se ela não abrir, o caminho de sempre (notificação) continua valendo.
+    const decisao = await pedirAjuda({
+      motivo: opts && opts.step ? 'clique' : 'campo',
+      titulo: job.title || '',
+      empresa: job.company || '',
+      campos: descreverCamposAjuda(modal, labels),
+    });
+
+    if (decisao && decisao.acao === 'aplicar') {
+      const aplicados = await aplicarRespostaNosCampos(modal, decisao.resposta);
+
+      if (aplicados > 0) {
+        await salvarRespostas(decisao.resposta);
+        console.info('[PegaVaga] Respostas do cartão aplicadas:', aplicados);
+
+        state.helpRequested = false;
+        state.helpSkip = false;
+        await setRunHelp(null);
+        notifyHelpDone();
+
+        return 'resolved';
+      }
+
+      // Não achamos onde escrever (ou o formulário já saiu da tela): não finge
+      // que deu certo — segue para a notificação, e você assume à mão.
+      console.warn('[PegaVaga] nenhuma resposta do cartão pôde ser escrita no formulário.');
+    }
+
+    if (decisao && decisao.acao === 'pular') return 'skip';
 
     // O service worker mostra a notificação e, no clique, traz esta aba à frente.
     notifyHelp(labels, job.title || '');
@@ -1895,6 +2008,109 @@
   }
 
   /** Pede ao service worker a notificação de ajuda (o clique traz a aba à frente). */
+  /**
+   * Onde a janelinha deve nascer: canto inferior direito do desktop. Quem enxerga
+   * o `screen` é a aba (o service worker não tem essa API).
+   */
+  function posicaoDaJanelinha() {
+    try {
+      return {
+        left: Math.max(0, (window.screen.availWidth || 1280) - SHARED.JANELINHA.largura - 16),
+        top: Math.max(0, (window.screen.availHeight || 800) - SHARED.JANELINHA.altura - 16),
+      };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Pede a ajuda na **janelinha do desktop**. Devolve `{ acao, resposta }` ou
+   * `null` quando a janelinha não abriu (aí o chamador usa a notificação de
+   * sempre). Um pedido por vez: quem decide é você, não a fila.
+   */
+  async function pedirAjuda(dados) {
+    if (state.ajuda) return null;
+
+    const pedido = {
+      id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+      avisoId: '',
+      resolver: null,
+    };
+
+    state.ajuda = pedido;
+
+    try {
+      const aviso = await new Promise((resolve) => {
+        try {
+          chrome.runtime.sendMessage(
+            {
+              type: MSG.AJUDA_PEDIDO,
+              pedidoId: pedido.id,
+              motivo: (dados && dados.motivo) || '',
+              titulo: (dados && dados.titulo) || '',
+              empresa: (dados && dados.empresa) || '',
+              campos: (dados && dados.campos) || [],
+              posicao: posicaoDaJanelinha(),
+            },
+            (resposta) => resolve(resposta || null)
+          );
+        } catch (error) {
+          noteError('abrir o cartão de ajuda', error);
+          resolve(null);
+        }
+      });
+
+      if (!aviso || !aviso.ok) {
+        console.info(
+          '[PegaVaga] janelinha de ajuda não abriu:',
+          (aviso && aviso.motivo) || 'sem resposta do service worker'
+        );
+        return null;
+      }
+
+      pedido.avisoId = aviso.id || '';
+
+      return await esperarDecisao(pedido);
+    } finally {
+      state.ajuda = null;
+
+      // Some com a janelinha se ela ainda estiver aberta (prazo, Parar): ela não
+      // pode ficar na tela pedindo algo que não existe mais.
+      if (pedido.avisoId) {
+        try {
+          chrome.runtime.sendMessage({ type: MSG.AJUDA_FECHAR, avisoId: pedido.avisoId });
+        } catch (error) {
+          // Sem worker agora: a janelinha se fecha sozinha ao responder.
+          console.info('[PegaVaga] não avisei o worker para fechar a janelinha:', error && error.message);
+        }
+      }
+    }
+  }
+
+  /** Espera a decisão da janelinha (o case AJUDA_RESPOSTA resolve este pedido). */
+  function esperarDecisao(pedido) {
+    return new Promise((resolve) => {
+      let pronto = false;
+
+      const fim = (resultado) => {
+        if (pronto) return;
+        pronto = true;
+        clearInterval(checagem);
+        resolve(resultado || { acao: '', resposta: null });
+      };
+
+      pedido.resolver = fim;
+
+      // Prazo + "Parar Varredura": o que vier primeiro encerra a espera.
+      const inicio = Date.now();
+      const checagem = setInterval(() => {
+        if (state.abort || Date.now() - inicio >= CONFIG.ajudaEsperaMs) {
+          fim({ acao: '', resposta: null });
+        }
+      }, CONFIG.ajudaPollMs);
+    });
+  }
+
   function notifyHelp(missing, jobTitle) {
     sendRuntime({
       type: MSG.HELP,
@@ -2041,6 +2257,124 @@
     fireFieldEvents(field);
 
     return clean(question || value).slice(0, 60);
+  }
+
+  /** Primeiro campo do formulário cujo rótulo corresponde à pergunta. */
+  function acharCampoPorRotulo(modal, chave) {
+    let elementos = [];
+
+    try {
+      elementos = Array.from(
+        modal.querySelectorAll('input, select, textarea, [role="combobox"]')
+      );
+    } catch (error) {
+      noteError('achar o campo da resposta', error);
+      return null;
+    }
+
+    for (const el of elementos) {
+      const tipo = String(el.type || '').toLowerCase();
+      if (tipo === 'hidden' || tipo === 'checkbox' || tipo === 'file') continue;
+
+      const rotulo = normalize(fieldLabel(el) || '');
+      if (rotulo && (rotulo.includes(chave) || chave.includes(rotulo))) return el;
+    }
+
+    return null;
+  }
+
+  /**
+   * Escreve a resposta que você deu na janelinha nos campos travados.
+   * `resposta` é `{ 'rótulo do campo': 'texto escolhido' }`; o texto é casado com
+   * a opção **original** do LinkedIn (`SHARED.escolherRotulo`) — se só houvesse
+   * "contém", "Sim" cairia em "Sim, com restrições".
+   *
+   * Devolve **quantos** campos conseguiu escrever: zero é resposta honesta (a
+   * vaga segue incompleta), não um "deu certo" mentiroso.
+   */
+  async function aplicarRespostaNosCampos(modal, resposta) {
+    if (!modal || !resposta || typeof resposta !== 'object') return 0;
+
+    let aplicados = 0;
+
+    for (const rotulo of Object.keys(resposta)) {
+      const alvo = String(resposta[rotulo] == null ? '' : resposta[rotulo]).trim();
+      if (!alvo) continue;
+
+      const campo = acharCampoPorRotulo(modal, normalize(rotulo));
+      if (!campo) continue;
+
+      const tag = String(campo.tagName || '').toLowerCase();
+      const tipo = String(campo.type || '').toLowerCase();
+
+      if (tipo === 'radio') {
+        const grupo = radioGroup(modal, campo);
+        const rotulos = grupo.map((radio) => fieldLabel(radio) || String(radio.value || ''));
+        const escolhido = grupo[SHARED.escolherRotulo(rotulos, alvo)];
+
+        if (!escolhido) continue;
+
+        humanClick((escolhido.labels && escolhido.labels[0]) || escolhido);
+        if (!escolhido.checked) {
+          escolhido.checked = true;
+          fireFieldEvents(escolhido);
+        }
+
+        aplicados += 1;
+        continue;
+      }
+
+      if (tag === 'select') {
+        const opcoes = Array.from(campo.options || []).filter(
+          (opcao) => !opcao.disabled && String(opcao.value) !== ''
+        );
+        const escolhida = opcoes[SHARED.escolherRotulo(opcoes.map((o) => clean(o.textContent)), alvo)];
+
+        if (!escolhida) continue;
+
+        setNativeValue(campo, escolhida.value);
+        fireFieldEvents(campo);
+        aplicados += 1;
+        continue;
+      }
+
+      if (tipo === 'hidden' || tipo === 'file' || tipo === 'checkbox') continue;
+
+      setNativeValue(campo, alvo);
+      fireFieldEvents(campo);
+      aplicados += 1;
+    }
+
+    return aplicados;
+  }
+
+  /**
+   * Guarda as respostas da janelinha na configuração (`apply.answers`), para a
+   * próxima vaga com a mesma pergunta já ser respondida sozinha.
+   */
+  async function salvarRespostas(resposta) {
+    if (!resposta || typeof resposta !== 'object') return;
+
+    const chaves = Object.keys(resposta).filter((chave) => chave && String(resposta[chave] || '').trim());
+    if (!chaves.length) return;
+
+    try {
+      const data = await chrome.storage.local.get(STORAGE_SETTINGS_KEY);
+      const settings = SHARED.parseSettings(data[STORAGE_SETTINGS_KEY]);
+      const answers = Object.assign({}, settings.apply.answers);
+
+      chaves.slice(0, 6).forEach((chave) => {
+        answers[String(chave).slice(0, 80)] = String(resposta[chave]).slice(0, 200);
+      });
+
+      settings.apply.answers = answers;
+
+      await chrome.storage.local.set({ [STORAGE_SETTINGS_KEY]: settings });
+      state.settings = settings;
+      broadcastProgress();
+    } catch (error) {
+      noteError('guardar as respostas do cartão', error);
+    }
   }
 
   /**
@@ -3160,6 +3494,16 @@
           sendResponse({ ok: true, skipping: true });
         } else {
           sendResponse({ ok: false, reason: 'nothing_to_skip' });
+        }
+        break;
+
+      case MSG.AJUDA_RESPOSTA:
+        // A decisão veio da janelinha (o worker entregou para esta aba).
+        if (state.ajuda && typeof state.ajuda.resolver === 'function') {
+          state.ajuda.resolver({ acao: message.acao || '', resposta: message.resposta || null });
+          sendResponse({ ok: true });
+        } else {
+          sendResponse({ ok: false, reason: 'sem_pedido' });
         }
         break;
 

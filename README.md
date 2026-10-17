@@ -42,7 +42,7 @@ A versão vive no `manifest.json` (campo `version`). A regra de avanço é:
 Em resumo: o **último número** é o contador do dia a dia (0–9) e o **do meio** só
 muda quando ele estoura.
 
-Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.24`) — é ela que o
+Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.25`) — é ela que o
 script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
@@ -296,16 +296,28 @@ Com **“Pedir a minha ajuda”** ligado (padrão), em vez de descartar a vaga o
 PegaVaga:
 
 1. **Mantém o formulário aberto** e pausa a vaga (não descarta, não pula);
-2. Manda uma **notificação na área de trabalho** — *“PegaVaga precisa de ajuda
-   para continuar”* — dizendo o nome da vaga e o campo que ficou pendente;
-3. A notificação tem o botão **“Preencher manualmente”**, que **traz a aba do
-   LinkedIn para frente** (clicar no corpo da notificação também foca a aba) —
-   é só completar o campo na tela;
-4. Quando você preenche o obrigatório, o LinkedIn **reabilita o botão** e o
-   PegaVaga **retoma sozinho**, seguindo com a candidatura;
-5. Não quer preencher? Clique em **“Pular vaga”** (na notificação) ou em
-   **“⏭ Pular vaga atual”** (no pop-up): a candidatura atual é cancelada e a
-   varredura segue para a próxima.
+2. Abre o **cartão de resposta numa janela própria**, no canto inferior direito do
+   desktop: uma janela **popup** do Chrome, **só com a barra de título e a borda**
+   (sem aba, sem barra de endereço, sem menu);
+3. O cartão mostra a **vaga** e **um controle por pergunta travada** — numa
+   pergunta de lista, as opções são **as mesmas do LinkedIn**. Você responde e
+   clica em **“Aplicar e continuar”**: o PegaVaga **escreve a resposta no campo**
+   (casando com a opção original: `Sim` não cai em `Sim, com restrições`) e a
+   candidatura **segue sozinha** — e a resposta fica **salva** para as próximas
+   vagas com a mesma pergunta;
+4. Se preferir digitar você mesmo, **“Vou preencher à mão”** traz a aba do
+   LinkedIn para frente e a automação espera; quando o campo estiver preenchido,
+   ela **retoma sozinha**;
+5. Não quer a vaga? **“Pular esta vaga”** cancela a candidatura atual (sem gastar
+   cota) e a varredura segue para a próxima;
+6. O cartão pode ser **arrastado** pelo cabeçalho e **lembra onde foi deixado**.
+   Fechar no **✕** não trava nada: a vaga volta ao caminho de sempre.
+
+> Se a janela não puder abrir (sistema que bloqueia janelas, `windows`
+> indisponível), o PegaVaga usa o caminho antigo: **notificação na área de
+> trabalho** — *“PegaVaga precisa de ajuda para continuar”* — com os botões
+> **“Preencher manualmente”** (foca a aba) e **“Pular vaga”**. A vaga nunca é
+> descartada em silêncio.
 
 > Enquanto uma vaga espera por você, o pop-up mostra a faixa
 > **“✋ PegaVaga precisa de ajuda”** e a **luz fica vermelha**. Se ninguém
@@ -461,7 +473,7 @@ item.
 
 ```bash
 bash tools/empacotar.sh          # empacota o commit atual (HEAD)
-bash tools/empacotar.sh v0.7.24   # empacota uma tag — é o que se publica
+bash tools/empacotar.sh v0.7.25   # empacota uma tag — é o que se publica
 ```
 
 O script roda os testes antes (não gera zip com teste vermelho), monta

@@ -117,6 +117,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message.type === MSG.AJUDA_PEDIDO) {
+    // A aba travou num campo: abre a janelinha no desktop. O resultado diz se deu
+    // certo — se não, o content script cai na notificação de sempre.
+    mostrarAjuda(message, sender).then((resultado) => sendResponse(resultado));
+    return true; // a janela é assíncrona
+  }
+
+  if (message.type === MSG.AJUDA_RESPOSTA_JANELA) {
+    // A decisão veio da janelinha: leva para a aba certa e fecha a janelinha.
+    responderAjuda(message.avisoId, message.acao, message.resposta).then((ok) =>
+      sendResponse({ ok: Boolean(ok) })
+    );
+    return true;
+  }
+
+  if (message.type === MSG.AJUDA_FECHAR) {
+    // A aba desistiu do pedido (prazo, Parar): recolhe a janelinha se ela ainda existe.
+    fecharJanelaAjuda(message.avisoId);
+    sendResponse({ ok: true });
+    return false;
+  }
+
   if (message.type === MSG.SKIP) {
     skipStuckJob().then((skipped) => sendResponse({ ok: Boolean(skipped) }));
     return true; // a resposta vem depois (precisa da aba)
@@ -554,6 +576,139 @@ function sendToTab(tabId, message) {
 /* Ajuda: quando uma vaga trava num campo que só o usuário sabe preencher      */
 /* -------------------------------------------------------------------------- */
 
+/* -------------------------------------------------------------------------- */
+/* Pedido de ajuda: a janelinha no desktop                                    */
+/* -------------------------------------------------------------------------- */
+
+// A janelinha (ajuda.html) abre como JANELA POPUP do Chrome: sem aba, sem barra
+// de endereço e sem menu — só a barra de título e a borda do sistema. É o mais
+// "capado" que o navegador oferece, e de propósito NUNCA caímos para uma janela
+// normal (ela traz barra de endereço e abas). Se a janela não abrir, o content
+// script usa a notificação de sempre — a vaga nunca é descartada em silêncio.
+const ajudasAbertas = new Map(); // id do pedido → id da janela do Chrome
+
+async function mostrarAjuda(dados, sender) {
+  if (!chrome.windows || typeof chrome.windows.create !== 'function') {
+    return { ok: false, motivo: 'sem_api_windows' };
+  }
+
+  const pedidoId = String((dados && dados.pedidoId) || '');
+  const tabId = sender && sender.tab && sender.tab.id != null ? sender.tab.id : null;
+
+  if (!pedidoId) return { ok: false, motivo: 'sem_pedido' };
+  if (tabId == null) return { ok: false, motivo: 'sem_aba' };
+
+  const id = SHARED.ajudaId(tabId, pedidoId);
+
+  // O contexto (vaga, motivo e os campos) viaja na URL: a janelinha abre já
+  // sabendo o que desenhar — um <select> com as opções ORIGINAIS do LinkedIn, ou
+  // um <input> para texto. Teto de 6 campos: cartão ilegível não ajuda ninguém.
+  const contexto = encodeURIComponent(
+    JSON.stringify({
+      avisoId: id, // é o que a janelinha manda de volta (o id carrega a aba)
+      motivo: (dados && dados.motivo) || '',
+      titulo: (dados && dados.titulo) || '',
+      empresa: (dados && dados.empresa) || '',
+      campos: Array.isArray(dados && dados.campos) ? dados.campos.slice(0, 6) : [],
+    })
+  );
+  const url = chrome.runtime.getURL('ajuda.html') + '?dados=' + contexto;
+
+  const janela = {
+    url: url,
+    type: 'popup',
+    width: SHARED.JANELINHA.largura,
+    height: SHARED.JANELINHA.altura,
+    focused: true,
+  };
+
+  // A posição vem da aba (ela enxerga o `screen`; o service worker não). Se o
+  // Chrome recusar a posição, tentamos de novo sem ela — mas SEMPRE como popup.
+  const posicao =
+    dados && dados.posicao && Number.isFinite(dados.posicao.left) && Number.isFinite(dados.posicao.top)
+      ? { left: Math.round(dados.posicao.left), top: Math.round(dados.posicao.top) }
+      : null;
+
+  let criada = null;
+  let recusa = '';
+
+  for (const tentativa of posicao ? [Object.assign({}, janela, posicao), janela] : [janela]) {
+    try {
+      criada = await chrome.windows.create(tentativa);
+      break;
+    } catch (error) {
+      recusa = String((error && error.message) || error);
+    }
+  }
+
+  const windowId = criada && criada.id != null ? criada.id : null;
+  if (windowId == null) return { ok: false, motivo: 'create_falhou:' + (recusa || 'sem_id') };
+
+  ajudasAbertas.set(id, windowId);
+
+  try {
+    await chrome.windows.update(windowId, { focused: true, drawAttention: true });
+  } catch (error) {
+    /* focar é cortesia: a janela já existe e funciona */
+  }
+
+  return { ok: true, id: id, recusa: recusa || '' };
+}
+
+/** Fecha a janelinha do pedido (sem erro se ela já saiu). */
+function fecharJanelaAjuda(ajudaId) {
+  const windowId = ajudasAbertas.get(ajudaId);
+
+  if (windowId == null) return;
+
+  try {
+    const resultado = chrome.windows.remove(windowId);
+    if (resultado && typeof resultado.catch === 'function') resultado.catch(() => {});
+  } catch (error) {
+    /* a janela já saiu */
+  }
+
+  ajudasAbertas.delete(ajudaId);
+}
+
+/** Traz a aba da vaga para frente — é o que "Vou preencher à mão" precisa. */
+async function focarAbaAjuda(tabId) {
+  try {
+    const aba = await chrome.tabs.update(tabId, { active: true });
+    const windowId = aba && aba.windowId != null ? aba.windowId : null;
+
+    if (windowId != null && chrome.windows && typeof chrome.windows.update === 'function') {
+      await chrome.windows.update(windowId, { focused: true });
+    }
+
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * A decisão veio da janelinha: entrega à aba que está esperando e fecha a janela.
+ * Ação vazia é o "fechei sem decidir" — ela TAMBÉM avisa a aba; sem isso a
+ * varredura ficava parada até o prazo acabar, parecendo que a extensão travou.
+ */
+async function responderAjuda(ajudaId, acao, resposta) {
+  const alvo = SHARED.lerAjudaId(ajudaId);
+
+  fecharJanelaAjuda(ajudaId);
+
+  if (!alvo) return false;
+
+  if (acao === 'manual') await focarAbaAjuda(alvo.tabId);
+
+  return sendToTab(alvo.tabId, {
+    type: MSG.AJUDA_RESPOSTA,
+    pedidoId: alvo.pedidoId,
+    acao: acao || '',
+    resposta: resposta || null,
+  });
+}
+
 const HELP_NOTIFICATION_ID = 'pegavaga-help';
 let helpTabId = null; // aba que pediu ajuda (é ela que o clique traz para frente)
 
@@ -902,6 +1057,21 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   if (helpTabId != null && tabId === helpTabId) {
     helpTabId = null;
     clearHelpNotification();
+  }
+
+  // A aba que esperava a decisão sumiu: a janelinha não tem mais para quem
+  // responder — fecha para não ficar órfã no desktop.
+  for (const [ajudaId, windowId] of ajudasAbertas) {
+    const alvo = SHARED.lerAjudaId(ajudaId);
+    if (!alvo || alvo.tabId !== tabId) continue;
+
+    try {
+      chrome.windows.remove(windowId, () => void chrome.runtime.lastError);
+    } catch (error) {
+      /* a janela já saiu */
+    }
+
+    ajudasAbertas.delete(ajudaId);
   }
 });
 

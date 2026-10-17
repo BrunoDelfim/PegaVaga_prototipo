@@ -20,7 +20,14 @@ globalThis.PegaVagaShared = (() => {
     theme: 'pegavaga_theme', // 'light' | 'dark' escolhido na lâmpada do cabeçalho
     errors: 'pegavaga_errors', // últimos erros registrados (base do "copiar diagnóstico")
     reports: 'pegavaga_reports', // relatos de erro (fila local, com status)
+    // { left, top } — onde a janelinha de ajuda foi deixada da última vez.
+    pos: 'pegavaga_ajuda_pos',
   };
+
+  /* A janelinha do pedido de ajuda: largura fixa e altura de criação. Ela abre
+   * como JANELA POPUP do Chrome (só barra de título + borda do sistema: sem aba,
+   * sem barra de endereço, sem menu) — é o mais "capado" que o navegador oferece. */
+  const JANELINHA = { largura: 372, altura: 470 };
 
   /* Tipos de mensagem trocadas entre pop-up, content script e agendador. */
   const MSG = {
@@ -32,6 +39,10 @@ globalThis.PegaVagaShared = (() => {
     RESUME: 'PEGAVAGA_RESUME',
     HELP: 'PEGAVAGA_HELP', // content → background: mostra a notificação de ajuda
     HELP_CLEAR: 'PEGAVAGA_HELP_CLEAR', // content → background: fecha a notificação
+    AJUDA_PEDIDO: 'PEGAVAGA_AJUDA_PEDIDO', // content → background: abre a janelinha de ajuda
+    AJUDA_RESPOSTA: 'PEGAVAGA_AJUDA_RESPOSTA', // background → content: a decisão do usuário
+    AJUDA_FECHAR: 'PEGAVAGA_AJUDA_FECHAR', // content → background: recolhe a janelinha
+    AJUDA_RESPOSTA_JANELA: 'PEGAVAGA_AJUDA_RESPOSTA_JANELA', // janelinha → background
     SKIP: 'PEGAVAGA_SKIP', // pop-up/notificação → content: pula a vaga travada
     DONE: 'PEGAVAGA_DONE', // content → background: varredura terminou (ou parou por proteção)
     REPORT: 'PEGAVAGA_REPORT', // content → background: relato de erro criado (mostrar notificação)
@@ -311,6 +322,19 @@ globalThis.PegaVagaShared = (() => {
    * marcadores `{ nome }` têm de ser os mesmos dos dois lados (há teste).
    */
   const UI_EN = {
+    /* Janelinha do pedido de ajuda (ajuda.html/ajuda.js) */
+    'PegaVaga precisa de você': 'PegaVaga needs you',
+    'Fechar (a vaga segue o caminho de sempre)': 'Close (the job takes the usual path)',
+    'Responda os campos abaixo (com as opções originais do LinkedIn) e a extensão preenche e segue sozinha.':
+      'Answer the fields below (with LinkedIn\u2019s original options) and the extension fills them in and carries on.',
+    'Aplicar e continuar': 'Apply and continue',
+    'Vou preencher à mão': 'I\u2019ll fill it in myself',
+    'Pular esta vaga': 'Skip this job',
+    'Não consegui ler o campo travado. Assuma à mão ou pule esta vaga.':
+      'I couldn\u2019t read the stuck field. Take over manually or skip this job.',
+    'Escolha uma opção': 'Choose an option',
+    'Sua resposta': 'Your answer',
+
     /* Pop-up: cabeçalho, abas e cards do Início */
     'Rastreamento de vagas do LinkedIn': 'LinkedIn job tracking',
     'Início': 'Home',
@@ -2172,6 +2196,48 @@ globalThis.PegaVagaShared = (() => {
     };
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* Pedido de ajuda: a janelinha e as respostas que voltam dela              */
+  /* ------------------------------------------------------------------------ */
+
+  /**
+   * Id do pedido de ajuda. Ele carrega a **aba** e o **pedido**, porque é por ele
+   * que a decisão volta para a aba certa (a janelinha não fala com o LinkedIn).
+   */
+  function ajudaId(tabId, pedidoId) {
+    return 'pegavaga-ajuda:' + String(tabId == null ? '' : tabId) + ':' + String(pedidoId || '');
+  }
+
+  /** Desfaz o `ajudaId`; `null` quando o texto não é um id nosso. */
+  function lerAjudaId(id) {
+    const partes = String(id || '').split(':');
+
+    if (partes.length !== 3 || partes[0] !== 'pegavaga-ajuda') return null;
+
+    const tabId = Number(partes[1]);
+    if (!Number.isFinite(tabId) || !partes[2]) return null;
+
+    return { tabId: tabId, pedidoId: partes[2] };
+  }
+
+  /**
+   * Índice do rótulo que corresponde ao que o usuário escolheu na janelinha.
+   * Casa o texto **exato** antes de "contém" — senão "Sim" pegaria
+   * "Sim, com restrições" — e é assim que a resposta cai na opção **original**
+   * do LinkedIn, e não numa parecida.
+   */
+  function escolherRotulo(rotulos, alvo) {
+    const desejado = plainText(alvo);
+    const lista = (Array.isArray(rotulos) ? rotulos : []).map((item) => plainText(item));
+
+    if (!desejado) return -1;
+
+    const exato = lista.indexOf(desejado);
+    if (exato >= 0) return exato;
+
+    return lista.findIndex((item) => item && item.indexOf(desejado) >= 0);
+  }
+
   /**
    * Monta o texto do "copiar diagnóstico" (relato de problema). Função pura:
    * recebe dados já lidos do storage e devolve o texto que vai para a área de
@@ -2354,6 +2420,12 @@ globalThis.PegaVagaShared = (() => {
     parseSettings,
     buildRunQueue,
     describeMissing,
+
+    /* Pedido de ajuda (janelinha no desktop) */
+    JANELINHA,
+    ajudaId,
+    lerAjudaId,
+    escolherRotulo,
 
     /* Relatos de erro */
     REPORTS_MAX,

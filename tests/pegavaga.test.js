@@ -1096,6 +1096,65 @@ ok('--testar sem endpoint avisa e falha', semEntregador.code !== 0 && /nada para
 const mostraVazio = rodarConfig(['--arquivo', tmpVazio, '--mostrar']);
 ok('--mostrar sem endpoint diz que o envio esta DESLIGADO', /DESLIGADO/.test(mostraVazio.out));
 
+section('21. Janelinha do pedido de ajuda');
+
+const ajudaHtml = read('ajuda.html');
+const ajudaJs = read('ajuda.js');
+const backgroundJs = read('background.js');
+
+ok('ajuda.html existe e carrega shared.js + ajuda.js', ajudaHtml.indexOf('src="shared.js"') < ajudaHtml.indexOf('src="ajuda.js"'));
+ok('ajuda.js usa a mensagem de resposta da janelinha', /AJUDA_RESPOSTA_JANELA/.test(ajudaJs));
+ok('janelinha tem os tres botoes (aplicar/manual/pular)', ['aplicar', 'manual', 'pular'].every((id) => ajudaHtml.includes('id="' + id + '"')));
+ok('janelinha guarda a posicao', /STORAGE\.pos/.test(ajudaJs));
+
+eq('ajudaId carrega aba e pedido', S.ajudaId(7, 'p1'), 'pegavaga-ajuda:7:p1');
+eq('lerAjudaId desfaz o id', S.lerAjudaId('pegavaga-ajuda:7:p1'), { tabId: 7, pedidoId: 'p1' });
+eq('lerAjudaId recusa id estranho', S.lerAjudaId('outra:coisa'), null);
+eq('lerAjudaId recusa aba nao numerica', S.lerAjudaId('pegavaga-ajuda:x:p1'), null);
+eq('lerAjudaId recusa pedido vazio', S.lerAjudaId('pegavaga-ajuda:7:'), null);
+eq('lerAjudaId tolera vazio', S.lerAjudaId(''), null);
+
+eq('escolherRotulo prefere o texto exato', S.escolherRotulo(['Sim, com restrições', 'Sim'], 'sim'), 1);
+eq('escolherRotulo aceita acento e caixa', S.escolherRotulo(['Não', 'Sim'], 'nao'), 0);
+eq('escolherRotulo cai no "contem" quando precisa', S.escolherRotulo(['Sim, com restrições'], 'sim'), 0);
+eq('escolherRotulo devolve -1 sem alvo', S.escolherRotulo(['Sim'], ''), -1);
+eq('escolherRotulo devolve -1 sem lista', S.escolherRotulo([], 'sim'), -1);
+eq('escolherRotulo devolve -1 quando nada casa', S.escolherRotulo(['Talvez'], 'sim'), -1);
+
+eq('medidas da janelinha', [S.JANELINHA.largura, S.JANELINHA.altura], [372, 470]);
+// `chrome.windows` (usado na janelinha de ajuda) NÃO pede permissão: criar, mover
+// e fechar janelas é livre; a permissão `windows` só serviria para ler a URL/título
+// das abas — e permissão a mais pesa na revisão da loja.
+ok('nenhuma permissao extra para abrir a janelinha', !manifest.permissions.includes('windows'));
+ok('empacotador leva a janelinha', /ajuda\.html/.test(read('tools/empacotar.sh')) && /ajuda\.js/.test(read('tools/empacotar.sh')));
+
+// Não pode existir caminho que abra a janelinha como janela NORMAL: é ela que traz
+// barra de endereço e abas (o pedido explícito é "só título e borda").
+const trechoJanela = backgroundJs.slice(backgroundJs.indexOf('async function mostrarAjuda'), backgroundJs.indexOf('function fecharJanelaAjuda'));
+eq('uma unica criacao de janela', (trechoJanela.match(/windows\.create\(/g) || []).length, 1);
+ok('a janela e sempre type popup', /type:\s*'popup'/.test(trechoJanela));
+ok('sem fallback para janela normal', !/setSelfAsOpener/.test(trechoJanela));
+ok('fecha a janela quando a aba some', /lerAjudaId[\s\S]{0,160}windows\.remove/.test(backgroundJs));
+
+ok('content pede a ajuda na janelinha', /async function pedirAjuda/.test(contentJs) && /AJUDA_PEDIDO/.test(contentJs));
+ok('content espera a decisao com prazo e Parar', /function esperarDecisao[\s\S]{0,900}state\.abort/.test(contentJs));
+ok('content descreve os campos com as opcoes originais', /function descreverCamposAjuda/.test(contentJs) && /function opcoesDoCampo/.test(contentJs));
+ok('content aplica a resposta no campo certo', /async function aplicarRespostaNosCampos/.test(contentJs) && /SHARED\.escolherRotulo/.test(contentJs));
+ok('content guarda as respostas para a proxima vaga', /async function salvarRespostas/.test(contentJs));
+ok(
+  'ajuda tenta a janelinha antes da notificacao',
+  contentJs.indexOf('await pedirAjuda(') < contentJs.indexOf('notifyHelp(labels, job.title', contentJs.indexOf('async function askForHelp'))
+);
+ok('decisao "pular" devolve skip', /decisao\.acao === 'pular'[\s\S]{0,20}return 'skip'/.test(contentJs));
+ok(
+  'sem escrita no formulario nao finge sucesso',
+  /nenhuma resposta do cartão pôde ser escrita/.test(contentJs)
+);
+
+eq('janelinha em ingles: aplicar', S.t('Aplicar e continuar', null, 'en'), 'Apply and continue');
+eq('janelinha em ingles: pular', S.t('Pular esta vaga', null, 'en'), 'Skip this job');
+eq('janelinha em portugues', S.t('Aplicar e continuar', null, 'pt'), 'Aplicar e continuar');
+
 section('20. Espera por evento (assincrono)');
 (async () => {
   const sig = S.createSignal();
