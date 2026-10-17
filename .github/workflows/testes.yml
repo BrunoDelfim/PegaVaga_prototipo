@@ -22,9 +22,14 @@ jobs:
       # O projeto não tem dependências: nada de npm install, o teste roda direto.
       - name: Checagem de sintaxe
         run: |
-          for f in shared.js background.js content.js popup.js; do
+          for f in shared.js background.js content.js popup.js ajuda.js; do
             node --check "$f"
           done
 
       - name: Testes
         run: node tests/pegavaga.test.js
+
+      # O worker roda de verdade num `chrome` falso: é o que garante que o
+      # pedido de ajuda abre a janelinha, a decisão volta e o badge conta.
+      - name: Worker (background.js)
+        run: node tests/worker.test.js

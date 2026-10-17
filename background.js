@@ -305,6 +305,20 @@ async function refreshBadge() {
  * ícone continuaria mostrando o número de ontem até algo mais acontecer.
  * O alarme é criado de novo a cada disparo (é assim que ele se mantém vivo).
  */
+/**
+ * Executa uma API do Chrome que pode devolver promise, promise recusada **ou
+ * nada** (várias delas só passaram a devolver promise no Chrome 111). Assim o
+ * `await` nunca explode com `undefined.catch` — o que derrubava o worker com uma
+ * rejection solta e deixava o alarme/retomada sem ser agendado.
+ */
+async function seguro(fn, padrao) {
+  try {
+    return await fn();
+  } catch (error) {
+    return padrao;
+  }
+}
+
 async function scheduleBadgeReset() {
   const agora = new Date();
   const virada = new Date(
@@ -316,7 +330,7 @@ async function scheduleBadgeReset() {
     5
   );
 
-  await chrome.alarms.create(ALARM_BADGE_RESET, { when: virada.getTime() }).catch(() => {});
+  await seguro(() => chrome.alarms.create(ALARM_BADGE_RESET, { when: virada.getTime() }));
 }
 
 /** Chama a API do ícone sem deixar promise solta nem derrubar o worker. */
@@ -395,7 +409,7 @@ async function syncAlarm() {
 
   const needed =
     state.settings.schedule.enabled || Boolean(state.run && state.run.paused) || Boolean(state.guard);
-  const existing = await chrome.alarms.get(ALARM_NAME).catch(() => null);
+  const existing = await seguro(() => chrome.alarms.get(ALARM_NAME), null);
 
   if (needed && !existing) {
     chrome.alarms.create(ALARM_NAME, {
@@ -406,7 +420,7 @@ async function syncAlarm() {
   }
 
   if (!needed && existing) {
-    await chrome.alarms.clear(ALARM_NAME).catch(() => {});
+    await seguro(() => chrome.alarms.clear(ALARM_NAME));
   }
 }
 
@@ -538,7 +552,7 @@ async function nudge(run) {
   if (delivered) return;
 
   if (run && run.tabId != null) {
-    await chrome.tabs.reload(run.tabId).catch(() => {});
+    await seguro(() => chrome.tabs.reload(run.tabId));
   }
 }
 
@@ -645,6 +659,22 @@ async function mostrarAjuda(dados, sender) {
   if (windowId == null) return { ok: false, motivo: 'create_falhou:' + (recusa || 'sem_id') };
 
   ajudasAbertas.set(id, windowId);
+
+  // Registra onde ela nasceu: se a janela abrir atrás de tudo (ou em outro
+  // monitor), o console do worker diz exatamente onde procurar.
+  try {
+    const info = await chrome.windows.get(windowId);
+    console.info(
+      '[PegaVaga] cartão de ajuda aberto na janela',
+      windowId,
+      'em',
+      info && info.left,
+      info && info.top,
+      '(' + ((info && info.width) || '?') + 'x' + ((info && info.height) || '?') + ')'
+    );
+  } catch (error) {
+    console.info('[PegaVaga] cartão de ajuda aberto na janela', windowId);
+  }
 
   try {
     await chrome.windows.update(windowId, { focused: true, drawAttention: true });

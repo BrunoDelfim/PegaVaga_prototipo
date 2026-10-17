@@ -151,6 +151,8 @@
     guardTextLimit: 20000, // quanto do texto da página lemos procurando avisos
     ajudaEsperaMs: 300000, // quanto esperamos a sua resposta na janelinha (5 min)
     ajudaPollMs: 500, // rede de segurança da espera (a resposta chega por mensagem)
+    ajudaPedidoMs: 5000, // quanto esperamos o worker responder ao pedido de abrir
+    ajudaAvisoMs: 45000, // cartão aberto e sem resposta: avisa também na notificação
   };
 
   /* ------------------------------------------------------------------------ */
@@ -1909,6 +1911,7 @@
       titulo: job.title || '',
       empresa: job.company || '',
       campos: descreverCamposAjuda(modal, labels),
+      labels: labels,
     });
 
     if (decisao && decisao.acao === 'aplicar') {
@@ -2023,6 +2026,23 @@
     }
   }
 
+  /** Resolve a promessa — ou desiste no prazo, com `padrao` (worker pode dormir). */
+  function comPrazo(promessa, ms, padrao) {
+    return new Promise((resolve) => {
+      let pronto = false;
+
+      const fim = (valor) => {
+        if (pronto) return;
+        pronto = true;
+        clearTimeout(timer);
+        resolve(valor);
+      };
+
+      const timer = setTimeout(() => fim(padrao), ms);
+      Promise.resolve(promessa).then(fim, () => fim(padrao));
+    });
+  }
+
   /**
    * Pede a ajuda na **janelinha do desktop**. Devolve `{ acao, resposta }` ou
    * `null` quando a janelinha não abriu (aí o chamador usa a notificação de
@@ -2039,26 +2059,32 @@
 
     state.ajuda = pedido;
 
+    let avisoTimer = null;
+
     try {
-      const aviso = await new Promise((resolve) => {
-        try {
-          chrome.runtime.sendMessage(
-            {
-              type: MSG.AJUDA_PEDIDO,
-              pedidoId: pedido.id,
-              motivo: (dados && dados.motivo) || '',
-              titulo: (dados && dados.titulo) || '',
-              empresa: (dados && dados.empresa) || '',
-              campos: (dados && dados.campos) || [],
-              posicao: posicaoDaJanelinha(),
-            },
-            (resposta) => resolve(resposta || null)
-          );
-        } catch (error) {
-          noteError('abrir o cartão de ajuda', error);
-          resolve(null);
-        }
-      });
+      const aviso = await comPrazo(
+        new Promise((resolve) => {
+          try {
+            chrome.runtime.sendMessage(
+              {
+                type: MSG.AJUDA_PEDIDO,
+                pedidoId: pedido.id,
+                motivo: (dados && dados.motivo) || '',
+                titulo: (dados && dados.titulo) || '',
+                empresa: (dados && dados.empresa) || '',
+                campos: (dados && dados.campos) || [],
+                posicao: posicaoDaJanelinha(),
+              },
+              (resposta) => resolve(resposta || null)
+            );
+          } catch (error) {
+            noteError('abrir o cartão de ajuda', error);
+            resolve(null);
+          }
+        }),
+        CONFIG.ajudaPedidoMs,
+        null
+      );
 
       if (!aviso || !aviso.ok) {
         console.info(
@@ -2070,8 +2096,22 @@
 
       pedido.avisoId = aviso.id || '';
 
+      // Segunda porta: o cartão pode abrir atrás de tudo (ou o gerenciador de
+      // janelas não dar foco). Se ele ficar sem resposta, a notificação avisa —
+      // e some sozinha quando a decisão chega.
+      avisoTimer = setTimeout(() => {
+        if (state.ajuda !== pedido || state.abort) return;
+
+        console.info('[PegaVaga] cartão aberto e sem resposta: avisando também na notificação.');
+        notifyHelp(
+          Array.isArray(dados && dados.labels) ? dados.labels : [],
+          (dados && dados.titulo) || ''
+        );
+      }, CONFIG.ajudaAvisoMs);
+
       return await esperarDecisao(pedido);
     } finally {
+      if (avisoTimer) clearTimeout(avisoTimer);
       state.ajuda = null;
 
       // Some com a janelinha se ela ainda estiver aberta (prazo, Parar): ela não

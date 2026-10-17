@@ -112,17 +112,31 @@
       const largura = SHARED.JANELINHA.largura;
       const altura = (janela && janela.height) || SHARED.JANELINHA.altura;
 
+      const telaLargura = window.screen.availWidth || largura;
+      const telaAltura = window.screen.availHeight || altura;
+
       let left = salva && Number.isFinite(salva.left) ? Number(salva.left) : null;
       let top = salva && Number.isFinite(salva.top) ? Number(salva.top) : null;
 
-      if (left == null || top == null) {
-        left = Math.max(0, (window.screen.availWidth || largura) - largura - MARGEM);
-        top = Math.max(0, (window.screen.availHeight || altura) - altura - MARGEM);
+      // A posição lembrada pode ser de outro monitor (ou de uma tela que não
+      // existe mais). Se cair fora, volta para o canto: cartão invisível trava a
+      // vaga sem ninguém ver o pedido.
+      const fora =
+        left == null ||
+        top == null ||
+        left < -8 ||
+        top < -8 ||
+        left > telaLargura - 40 ||
+        top > telaAltura - 40;
+
+      if (fora) {
+        left = Math.max(0, telaLargura - largura - MARGEM);
+        top = Math.max(0, telaAltura - altura - MARGEM);
       }
 
       await chrome.windows.update(janela.id, {
-        left: Math.round(left),
-        top: Math.round(top),
+        left: Math.max(0, Math.round(left)),
+        top: Math.max(0, Math.round(top)),
         focused: true,
         drawAttention: true,
       });
@@ -169,11 +183,31 @@
     });
   }
 
+  /** Resolve a promessa ou desiste no prazo (storage lento não trava o cartão). */
+  function comPrazo(promessa, ms, padrao) {
+    return new Promise((resolve) => {
+      let pronto = false;
+
+      const fim = (valor) => {
+        if (pronto) return;
+        pronto = true;
+        clearTimeout(timer);
+        resolve(valor);
+      };
+
+      const timer = setTimeout(() => fim(padrao), ms);
+      Promise.resolve(promessa).then(fim, () => fim(padrao));
+    });
+  }
+
   async function iniciar() {
     // Idioma: a mesma configuração do pop-up (o cartão é texto de interface).
+    // Idioma: a mesma configuração do pop-up — mas com prazo. Um storage lento
+    // não pode deixar o cartão sem desenhar (e sem os botões ligados).
+    const data = await comPrazo(chrome.storage.local.get(SHARED.STORAGE.settings), 2000, null);
+
     try {
-      const data = await chrome.storage.local.get(SHARED.STORAGE.settings);
-      SHARED.setLocale(SHARED.parseSettings(data[SHARED.STORAGE.settings]).locale);
+      SHARED.setLocale(SHARED.parseSettings(data && data[SHARED.STORAGE.settings]).locale);
     } catch (error) {
       /* sem configuração: fica no idioma do navegador */
     }
@@ -187,7 +221,14 @@
       elVaga.hidden = false;
     }
 
-    const controles = desenharCampos();
+    // Desenhar os campos não pode impedir os botões de funcionar: se o HTML do
+    // formulário vier estranho, o cartão ainda serve para "à mão" e "pular".
+    let controles = [];
+    try {
+      controles = desenharCampos();
+    } catch (error) {
+      console.error('[PegaVaga] não desenhei os campos do cartão:', error);
+    }
 
     if (!controles.length) {
       document.getElementById('msg').textContent = t(
@@ -226,5 +267,12 @@
     permitirArrastar();
   }
 
-  iniciar().catch(() => {});
+  iniciar().catch((error) => {
+    // Cartão morto é pior que cartão feio: conta o que houve na tela e deixa os
+    // caminhos "à mão"/"pular" à mão do usuário (o worker também tem a notificação).
+    console.error('[PegaVaga] cartão de ajuda falhou:', error);
+
+    const msg = document.getElementById('msg');
+    if (msg) msg.textContent = t('Não consegui montar o cartão aqui. Assuma à mão ou pule esta vaga.');
+  });
 })();

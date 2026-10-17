@@ -42,7 +42,7 @@ A versão vive no `manifest.json` (campo `version`). A regra de avanço é:
 Em resumo: o **último número** é o contador do dia a dia (0–9) e o **do meio** só
 muda quando ele estoura.
 
-Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.26`) — é ela que o
+Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.27`) — é ela que o
 script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
@@ -318,6 +318,12 @@ PegaVaga:
 > trabalho** — *“PegaVaga precisa de ajuda para continuar”* — com os botões
 > **“Preencher manualmente”** (foca a aba) e **“Pular vaga”**. A vaga nunca é
 > descartada em silêncio.
+>
+> Duas redes de segurança: se o cartão ficar **45 s sem resposta** (ele pode ter
+> aberto atrás da janela do navegador), a **notificação também aparece** — e some
+> quando você decide. E a posição é lembrada, mas **volta para o canto** se a
+> salva estiver fora da tela (outro monitor): cartão invisível não pode segurar a
+> vaga.
 
 > Enquanto uma vaga espera por você, o pop-up mostra a faixa
 > **“✋ PegaVaga precisa de ajuda”** e a **luz fica vermelha**. Se ninguém
@@ -473,7 +479,7 @@ item.
 
 ```bash
 bash tools/empacotar.sh          # empacota o commit atual (HEAD)
-bash tools/empacotar.sh v0.7.26   # empacota uma tag — é o que se publica
+bash tools/empacotar.sh v0.7.27   # empacota uma tag — é o que se publica
 ```
 
 O script roda os testes antes (não gera zip com teste vermelho), monta

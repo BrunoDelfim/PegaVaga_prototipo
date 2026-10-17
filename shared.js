@@ -332,6 +332,8 @@ globalThis.PegaVagaShared = (() => {
     'Pular esta vaga': 'Skip this job',
     'Não consegui ler o campo travado. Assuma à mão ou pule esta vaga.':
       'I couldn\u2019t read the stuck field. Take over manually or skip this job.',
+    'Não consegui montar o cartão aqui. Assuma à mão ou pule esta vaga.':
+      'I couldn\u2019t build the card here. Take over manually or skip this job.',
     'Escolha uma opção': 'Choose an option',
     'Sua resposta': 'Your answer',
 
