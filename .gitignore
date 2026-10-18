@@ -16,6 +16,8 @@ desktop.ini
 .clinerules
 # Notas de handoff para o agente/editor: ficam locais, nao vao para o repo.
 agent.md
+# Regras do agente do Zed (mesmo motivo: config local, nao documentacao)
+.rules
 
 # --- Dependencias ---
 node_modules/

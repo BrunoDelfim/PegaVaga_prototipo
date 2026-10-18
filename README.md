@@ -507,7 +507,8 @@ Como o pacote vem de `git archive`, entram só arquivos versionados e da lista
 explícita (`manifest.json`, os scripts `shared`, `background`, `content`, `popup`
 e `ajuda`, as páginas `popup.html` e `ajuda.html`, e `icons/`):
 `tests/`, `.github/`, os `.md` e o `.git` ficam de fora, e **não precisa de `zip`
-instalado** — o próprio git monta o zip. O `dist/` é ignorado pelo git.
+instalado** — o próprio git monta o zip. Os zips de `dist/` não são versionados
+(`*.zip` está no `.gitignore`).
 
 ## Antes de publicar
 
