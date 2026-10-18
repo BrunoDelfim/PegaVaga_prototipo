@@ -47,14 +47,13 @@ script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
 
-O trabalho acontece no branch **`development`**; o **`main`** é o espelho que o
-GitHub mostra por padrão (quem abre o repositório cai nele). Depois de cada
-release, leve o `main` junto — é fast-forward, não reescreve histórico:
+O trabalho acontece no branch **`development`**. O **`main`** é o branch que o
+GitHub mostra por padrão e **recebe mudanças por pull request** — nunca por push
+direto. Abra o PR de `development` para `main`, espere o check **Testes** ficar
+verde e faça o merge (merge commit ou rebase: assim o commit da tag fica no
+`main`; com *squash* ele não fica).
 
-```bash
-git checkout main && git merge --ff-only development && git push origin main
-git checkout development
-```
+- abrir o PR: `https://github.com/BrunoDelfim/PegaVaga_prototipo/compare/main...development?expand=1`
 
 ## Instalação (modo desenvolvedor)
 
