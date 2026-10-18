@@ -47,6 +47,15 @@ script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
 
+O trabalho acontece no branch **`development`**; o **`main`** é o espelho que o
+GitHub mostra por padrão (quem abre o repositório cai nele). Depois de cada
+release, leve o `main` junto — é fast-forward, não reescreve histórico:
+
+```bash
+git checkout main && git merge --ff-only development && git push origin main
+git checkout development
+```
+
 ## Instalação (modo desenvolvedor)
 
 1. Abra `chrome://extensions/`.
@@ -496,7 +505,8 @@ pasta**. Ele também avisa quando a versão do `HEAD` difere da tag escolhida e
 quando a descrição do manifest passa dos **132 caracteres** que a loja pede.
 
 Como o pacote vem de `git archive`, entram só arquivos versionados e da lista
-explícita (`manifest.json`, os quatro scripts, o `popup.html` e `icons/`):
+explícita (`manifest.json`, os scripts `shared`, `background`, `content`, `popup`
+e `ajuda`, as páginas `popup.html` e `ajuda.html`, e `icons/`):
 `tests/`, `.github/`, os `.md` e o `.git` ficam de fora, e **não precisa de `zip`
 instalado** — o próprio git monta o zip. O `dist/` é ignorado pelo git.
 
