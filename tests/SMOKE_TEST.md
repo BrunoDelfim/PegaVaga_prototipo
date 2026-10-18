@@ -353,6 +353,9 @@ personalizada** (resposta não salva) e deixe a automação chegar ao formulári
 - [ ] No console do **service worker** (`chrome://extensions` ▸ PegaVaga ▸
       “service worker”), a linha **`[PegaVaga] cartão de ajuda aberto na janela
       … em left top`** mostra onde ele nasceu.
+- [ ] No console da **página**, a linha do pedido começa com **`[PegaVaga]
+      v<versão>`**, igual à versão de `chrome://extensions` (se não começar, a
+      aba está com o `content.js` antigo: recarregue a extensão **e a aba**).
 - [ ] Badge do ícone: depois de uma candidatura **enviada**, o número do dia
       aparece; sem candidatura, ele fica **vazio** (não é bug).
 - [ ] **Parar varredura** com o cartão aberto: o cartão some.

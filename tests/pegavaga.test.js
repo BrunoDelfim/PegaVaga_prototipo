@@ -1184,18 +1184,26 @@ ok(
   'cartao sem resposta avisa na notificacao',
   /ajudaAvisoMs/.test(contentJs) && /state\.ajuda !== pedido/.test(contentJs)
 );
-// 3) o ajuda.js não restaura posição fora da tela (cartão invisível);
-ok('janelinha nao restaura posicao fora da tela', /telaLargura/.test(ajudaJs) && /const fora =/.test(ajudaJs));
+// 3) a posição é calculada no MONITOR DA ABA (`availLeft/availTop`), não no
+//    canto do monitor primário — e só reaproveita a lembrada se cair nele;
+ok(
+  'janelinha nasce no monitor da aba',
+  /async function posicaoDaJanelinha/.test(contentJs) && /availLeft/.test(contentJs) && /availTop/.test(contentJs)
+);
+ok('posicao lembrada so vale no monitor atual', /SHARED\.STORAGE\.pos/.test(contentJs) && /guardado\.left >= esquerda - 8/.test(contentJs));
 // 4) storage lento não deixa o cartão sem botões;
 ok('janelinha le o idioma com prazo', /comPrazo\(chrome\.storage\.local\.get/.test(ajudaJs));
-// 5) erro ao montar o cartão aparece na tela (não some calado);
+// 5) o log do pedido diz qual VERSÃO está rodando (build velho era invisível);
+ok('log do pedido traz a versao', /'\[PegaVaga\] v' \+ versao\(\)/.test(contentJs) && /getManifest\(\)\.version/.test(contentJs));
+// 6) erro ao montar o cartão aparece na tela (não some calado);
 ok('erro do cartao fica visivel', /console\.error\('\[PegaVaga\] cartão de ajuda falhou/.test(ajudaJs));
-// 6) APIs do Chrome que podem devolver `void` passam pelo `seguro()`
+// 7) o console diz a janela e a posicao em que o cartao nasceu;
+ok('worker registra onde a janela abriu', /cartão de ajuda aberto na janela/.test(backgroundJs));
+ok('content registra a janela do cartao', /cartão de ajuda na janela/.test(contentJs));
+// 8) APIs do Chrome que podem devolver `void` passam pelo `seguro()`
 //    (`undefined.catch` derrubava o worker com rejection solta);
 ok('alarmes usam seguro()', /seguro\(\(\) => chrome\.alarms\.create/.test(backgroundJs) && /seguro\(\(\) => chrome\.alarms\.get/.test(backgroundJs));
 ok('sem .catch direto em API que pode devolver void', !/chrome\.(alarms|tabs\.reload)[^\n]*\.catch\(/.test(backgroundJs));
-// 7) o console do worker diz onde a janela nasceu;
-ok('worker registra onde a janela abriu', /cartão de ajuda aberto na janela/.test(backgroundJs));
 
 eq('janelinha em ingles: aplicar', S.t('Aplicar e continuar', null, 'en'), 'Apply and continue');
 eq('janelinha em ingles: pular', S.t('Pular esta vaga', null, 'en'), 'Skip this job');

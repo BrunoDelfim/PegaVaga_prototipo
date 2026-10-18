@@ -14,7 +14,6 @@
 (function () {
   const SHARED = globalThis.PegaVagaShared;
   const t = SHARED.t;
-  const MARGEM = 16; // distância do canto do desktop
 
   const dados = SHARED.parseAjudaDados(typeof location === 'undefined' ? '' : location.search);
 
@@ -103,47 +102,11 @@
     return controles;
   }
 
-  /** Posição: onde foi deixada da última vez ou o canto inferior direito. */
-  async function posicionar() {
-    try {
-      const guardado = await chrome.storage.local.get(SHARED.STORAGE.pos);
-      const salva = guardado && guardado[SHARED.STORAGE.pos];
-      const janela = await chrome.windows.getCurrent();
-      const largura = SHARED.JANELINHA.largura;
-      const altura = (janela && janela.height) || SHARED.JANELINHA.altura;
+  /* A posição da janela é decidida por quem conhece o monitor da aba: o content
+   * script calcula (mesmo monitor da vaga) e o worker repassa no `windows.create`.
+   * Aqui só guardamos onde ela foi deixada, ao arrastar — assim a próxima já abre
+   * onde você trabalha. */
 
-      const telaLargura = window.screen.availWidth || largura;
-      const telaAltura = window.screen.availHeight || altura;
-
-      let left = salva && Number.isFinite(salva.left) ? Number(salva.left) : null;
-      let top = salva && Number.isFinite(salva.top) ? Number(salva.top) : null;
-
-      // A posição lembrada pode ser de outro monitor (ou de uma tela que não
-      // existe mais). Se cair fora, volta para o canto: cartão invisível trava a
-      // vaga sem ninguém ver o pedido.
-      const fora =
-        left == null ||
-        top == null ||
-        left < -8 ||
-        top < -8 ||
-        left > telaLargura - 40 ||
-        top > telaAltura - 40;
-
-      if (fora) {
-        left = Math.max(0, telaLargura - largura - MARGEM);
-        top = Math.max(0, telaAltura - altura - MARGEM);
-      }
-
-      await chrome.windows.update(janela.id, {
-        left: Math.max(0, Math.round(left)),
-        top: Math.max(0, Math.round(top)),
-        focused: true,
-        drawAttention: true,
-      });
-    } catch (error) {
-      /* posição é cortesia: o cartão já funciona onde abriu */
-    }
-  }
 
   /** Guarda onde a janela ficou (para a próxima abrir já no mesmo lugar). */
   function guardarPosicao(left, top) {
@@ -263,7 +226,6 @@
 
     if (controles.length && controles[0].el) controles[0].el.focus();
 
-    await posicionar();
     permitirArrastar();
   }
 

@@ -682,7 +682,7 @@ async function mostrarAjuda(dados, sender) {
     /* focar é cortesia: a janela já existe e funciona */
   }
 
-  return { ok: true, id: id, recusa: recusa || '' };
+  return { ok: true, id: id, janela: windowId, recusa: recusa || '' };
 }
 
 /** Fecha a janelinha do pedido (sem erro se ela já saiu). */

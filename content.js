@@ -1898,7 +1898,7 @@
     await setRunHelp(labels);
 
     console.info(
-      '[PegaVaga] Preciso de ajuda nesta vaga. Campo(s):',
+      '[PegaVaga] v' + versao() + ' · Preciso de ajuda nesta vaga. Campo(s):',
       labels.join(', '),
       opts && opts.step ? '(o clique não avança)' : '(o botão está desabilitado)'
     );
@@ -2011,16 +2011,61 @@
   }
 
   /** Pede ao service worker a notificação de ajuda (o clique traz a aba à frente). */
-  /**
-   * Onde a janelinha deve nascer: canto inferior direito do desktop. Quem enxerga
-   * o `screen` é a aba (o service worker não tem essa API).
-   */
-  function posicaoDaJanelinha() {
+  /** Versão carregada desta extensão — o log diz qual build está rodando. */
+  function versao() {
     try {
-      return {
-        left: Math.max(0, (window.screen.availWidth || 1280) - SHARED.JANELINHA.largura - 16),
-        top: Math.max(0, (window.screen.availHeight || 800) - SHARED.JANELINHA.altura - 16),
-      };
+      return chrome.runtime.getManifest().version;
+    } catch (error) {
+      return '?';
+    }
+  }
+
+  /**
+   * Onde a janelinha deve nascer: **no mesmo monitor da aba**, no canto inferior
+   * direito. Quem enxerga o `screen` é a aba (o service worker não tem a API).
+   *
+   * A posição lembrada só é reaproveitada se cair **neste** monitor: guardada em
+   * outro (ou numa tela que não existe mais), o cartão abriria fora da vista — e
+   * a vaga ficaria esperando um pedido que ninguém vê.
+   */
+  async function posicaoDaJanelinha() {
+    try {
+      const tela = window.screen;
+      const largura = SHARED.JANELINHA.largura;
+      const altura = SHARED.JANELINHA.altura;
+
+      // `availLeft/availTop` dizem onde este monitor começa. Sem eles o cartão
+      // nascia sempre no canto do monitor PRIMÁRIO.
+      const esquerda = Number.isFinite(tela.availLeft) ? tela.availLeft : 0;
+      const topo = Number.isFinite(tela.availTop) ? tela.availTop : 0;
+      const direita = esquerda + (tela.availWidth || 1280);
+      const base = topo + (tela.availHeight || 800);
+
+      let guardado = null;
+      try {
+        const data = await chrome.storage.local.get(SHARED.STORAGE.pos);
+        guardado = data && data[SHARED.STORAGE.pos];
+      } catch (error) {
+        guardado = null;
+      }
+
+      const salvo =
+        guardado &&
+        Number.isFinite(guardado.left) &&
+        Number.isFinite(guardado.top) &&
+        guardado.left >= esquerda - 8 &&
+        guardado.top >= topo - 8 &&
+        guardado.left <= direita - 40 &&
+        guardado.top <= base - 40
+          ? { left: Math.round(guardado.left), top: Math.round(guardado.top) }
+          : null;
+
+      return (
+        salvo || {
+          left: Math.round(direita - largura - 16),
+          top: Math.round(base - altura - 16),
+        }
+      );
     } catch (error) {
       return null;
     }
@@ -2062,6 +2107,10 @@
     let avisoTimer = null;
 
     try {
+      // A posição é resolvida ANTES de montar a mensagem (é assíncrona: lê a
+      // posição lembrada no storage).
+      const posicao = await posicaoDaJanelinha();
+
       const aviso = await comPrazo(
         new Promise((resolve) => {
           try {
@@ -2073,7 +2122,7 @@
                 titulo: (dados && dados.titulo) || '',
                 empresa: (dados && dados.empresa) || '',
                 campos: (dados && dados.campos) || [],
-                posicao: posicaoDaJanelinha(),
+                posicao: posicao,
               },
               (resposta) => resolve(resposta || null)
             );
@@ -2095,6 +2144,15 @@
       }
 
       pedido.avisoId = aviso.id || '';
+
+      console.info(
+        '[PegaVaga] cartão de ajuda na janela',
+        aviso.janela,
+        'em',
+        posicao && posicao.left,
+        posicao && posicao.top,
+        '— esperando sua resposta.'
+      );
 
       // Segunda porta: o cartão pode abrir atrás de tudo (ou o gerenciador de
       // janelas não dar foco). Se ele ficar sem resposta, a notificação avisa —

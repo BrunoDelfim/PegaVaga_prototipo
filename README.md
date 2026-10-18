@@ -42,7 +42,7 @@ A versão vive no `manifest.json` (campo `version`). A regra de avanço é:
 Em resumo: o **último número** é o contador do dia a dia (0–9) e o **do meio** só
 muda quando ele estoura.
 
-Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.27`) — é ela que o
+Ao publicar, a versão ganha uma **tag** anotada no git (`v0.7.28`) — é ela que o
 script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
@@ -325,6 +325,13 @@ PegaVaga:
 > salva estiver fora da tela (outro monitor): cartão invisível não pode segurar a
 > vaga.
 
+> **A versão nova está mesmo rodando?** A linha do pedido de ajuda no console da
+> página começa com `[PegaVaga] v<versão> · Preciso de ajuda nesta vaga…`. Se ela
+> **não** tiver o `v<versão>` (ou vier de um número de linha antigo), a aba ainda
+> está rodando o `content.js` de antes: recarregue a extensão em
+> `chrome://extensions` **e recarregue a aba do LinkedIn** — script de conteúdo
+> antigo continua vivo na aba até ela ser recarregada.
+
 > Enquanto uma vaga espera por você, o pop-up mostra a faixa
 > **“✋ PegaVaga precisa de ajuda”** e a **luz fica vermelha**. Se ninguém
 > aparecer em alguns minutos, a vaga é descartada para a varredura não travar (o
@@ -479,7 +486,7 @@ item.
 
 ```bash
 bash tools/empacotar.sh          # empacota o commit atual (HEAD)
-bash tools/empacotar.sh v0.7.27   # empacota uma tag — é o que se publica
+bash tools/empacotar.sh v0.7.28   # empacota uma tag — é o que se publica
 ```
 
 O script roda os testes antes (não gera zip com teste vermelho), monta

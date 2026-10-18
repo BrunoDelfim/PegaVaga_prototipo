@@ -205,6 +205,7 @@ const espera = (ms) => new Promise((r) => setTimeout(r, ms));
 
   confere('pedido responde ok', pedido && pedido.ok === true, pedido);
   confere('id carrega a aba', pedido && pedido.id === 'pegavaga-ajuda:9:p1', pedido);
+  confere('devolve a janela (para o log)', pedido && pedido.janela === 55, pedido);
   confere('criou UMA janela', criadas.length === 1, criadas.length);
   confere('a janela e popup', criadas[0] && criadas[0].type === 'popup', criadas[0] && criadas[0].type);
   confere(
