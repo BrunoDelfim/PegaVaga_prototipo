@@ -100,6 +100,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message) return false;
 
   if (message.type === MSG.PROGRESS) {
+    // Uma nova execução reabre a porta para notificações de ajuda.
+    parando = false;
+    clearTimeout(parandoTimer);
     refreshStatus(message);
     return false;
   }
@@ -150,6 +153,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: true, shown: Boolean(shown) })
     );
     return true; // a resposta vem depois (a notificação é assíncrona)
+  }
+
+  if (message.type === MSG.STOP_ALL) {
+    // "Parar" no pop-up: além de interromper a aba, recolhe o que vive fora dela
+    // (cartão de ajuda e notificações). Sem isso eles ficavam órfãos na tela.
+    pararTudo();
+    sendResponse({ ok: true });
+    return false;
   }
 
   if (message.type === MSG.REPORT) {
@@ -541,7 +552,9 @@ async function startRun(settings) {
 
 /** Encerra a execução: apaga a fila (fonte da verdade) e avisa a aba. */
 async function stopRun(run) {
-  clearHelpNotification();
+  // Agendador/parada automática: mesmo caminho do "Parar" do pop-up, para não
+  // deixar cartão nem notificação órfãos.
+  pararTudo();
   await chrome.storage.local.remove(STORAGE.run).catch(() => {});
   await sendToTab(run && run.tabId, { type: MSG.STOP });
 }
@@ -614,6 +627,14 @@ async function mostrarAjuda(dados, sender) {
 
   const id = SHARED.ajudaId(tabId, pedidoId);
 
+  // A posição vem da aba (ela enxerga o `screen`; o service worker não). Ela vai
+  // TAMBÉM no contexto da URL: o `windows.create` pode ignorar `left/top` em
+  // Wayland/alguns WMs, e o ajuda.js reaplica depois do primeiro render (B1).
+  const posicao =
+    dados && dados.posicao && Number.isFinite(dados.posicao.left) && Number.isFinite(dados.posicao.top)
+      ? { left: Math.round(dados.posicao.left), top: Math.round(dados.posicao.top) }
+      : null;
+
   // O contexto (vaga, motivo e os campos) viaja na URL: a janelinha abre já
   // sabendo o que desenhar — um <select> com as opções ORIGINAIS do LinkedIn,
   // botões de rádio/checkbox ou um <input> para texto. Teto de 6 campos: cartão
@@ -625,6 +646,7 @@ async function mostrarAjuda(dados, sender) {
       titulo: (dados && dados.titulo) || '',
       empresa: (dados && dados.empresa) || '',
       campos: Array.isArray(dados && dados.campos) ? dados.campos.slice(0, 6) : [],
+      posicao: posicao,
     })
   );
   const url = chrome.runtime.getURL('ajuda.html') + '?dados=' + contexto;
@@ -636,13 +658,6 @@ async function mostrarAjuda(dados, sender) {
     height: SHARED.JANELINHA.altura,
     focused: true,
   };
-
-  // A posição vem da aba (ela enxerga o `screen`; o service worker não). Se o
-  // Chrome recusar a posição, tentamos de novo sem ela — mas SEMPRE como popup.
-  const posicao =
-    dados && dados.posicao && Number.isFinite(dados.posicao.left) && Number.isFinite(dados.posicao.top)
-      ? { left: Math.round(dados.posicao.left), top: Math.round(dados.posicao.top) }
-      : null;
 
   let criada = null;
   let recusa = '';
@@ -661,6 +676,10 @@ async function mostrarAjuda(dados, sender) {
 
   ajudasAbertas.set(id, windowId);
 
+  if (posicao) {
+    console.info('[PegaVaga] cartão de ajuda: posição pedida em', posicao.left, posicao.top);
+  }
+
   // Registra onde ela nasceu: se a janela abrir atrás de tudo (ou em outro
   // monitor), o console do worker diz exatamente onde procurar.
   try {
@@ -671,8 +690,21 @@ async function mostrarAjuda(dados, sender) {
       'em',
       info && info.left,
       info && info.top,
-      '(' + ((info && info.width) || '?') + 'x' + ((info && info.height) || '?') + ')'
+      '(' + ((info && info.width) || '?') + 'x' + ((info && info.height) || '?') + ')',
+      'tipo',
+      (info && info.type) || '?'
     );
+
+    // `type: 'popup'` é a única forma de abrir sem aba/barra; se o Chrome ainda
+    // mostrar a barra de endereços, é decisão da UI do navegador/SO (não há API
+    // de extensão para escondê-la). O aviso deixa isso claro no diagnóstico.
+    if (info && info.type && info.type !== 'popup') {
+      console.warn(
+        '[PegaVaga] o Chrome abriu o cartão como janela',
+        info.type,
+        '— a barra de endereços depende do navegador/SO.'
+      );
+    }
   } catch (error) {
     console.info('[PegaVaga] cartão de ajuda aberto na janela', windowId);
   }
@@ -681,6 +713,31 @@ async function mostrarAjuda(dados, sender) {
     await chrome.windows.update(windowId, { focused: true, drawAttention: true });
   } catch (error) {
     /* focar é cortesia: a janela já existe e funciona */
+  }
+
+  // Reforço: alguns WMs só posicionam/focam depois que a janela termina de
+  // mapear. O ajuda.js também reforça isso no primeiro render. `state: 'normal'`
+  // evita que uma janela aberta maximizada ignore left/top.
+  const reforcos = posicao ? [400, 1200] : [500];
+  for (const atraso of reforcos) {
+    setTimeout(() => {
+      try {
+        const alvo = posicao
+          ? {
+              left: posicao.left,
+              top: posicao.top,
+              state: 'normal',
+              focused: true,
+              drawAttention: true,
+            }
+          : { focused: true, drawAttention: true };
+
+        const resultado = chrome.windows.update(windowId, alvo);
+        if (resultado && typeof resultado.catch === 'function') resultado.catch(() => {});
+      } catch (error) {
+        /* a janela já fechou */
+      }
+    }, atraso);
   }
 
   return { ok: true, id: id, janela: windowId, recusa: recusa || '' };
@@ -742,6 +799,10 @@ async function responderAjuda(ajudaId, acao, resposta) {
 
 const HELP_NOTIFICATION_ID = 'pegavaga-help';
 let helpTabId = null; // aba que pediu ajuda (é ela que o clique traz para frente)
+// "Parar" fecha as notificações; por alguns segundos, uma notificação de ajuda
+// atrasada (timer de 45 s do content) não pode ressuscitar na tela.
+let parando = false;
+let parandoTimer = null;
 
 /**
  * Mostra a notificação "PegaVaga precisa de ajuda". Clicar nela traz a aba do
@@ -753,6 +814,9 @@ async function showHelpNotification(message, sender) {
     console.warn('[PegaVaga] Notificações indisponíveis: recarregue a extensão para valer a permissão.');
     return false;
   }
+
+  // Chegou depois do "Parar": não recria o que acabamos de fechar.
+  if (parando) return false;
 
   const tabId = (sender && sender.tab && sender.tab.id) || (await resolveHelpTabId());
   helpTabId = tabId != null ? tabId : null;
@@ -786,13 +850,18 @@ async function showHelpNotification(message, sender) {
   }
 }
 
-/** Fecha a notificação de ajuda (se estiver aberta). */
-function clearHelpNotification() {
+/** Fecha uma notificação (se estiver aberta). */
+function clearNotification(id) {
   try {
-    chrome.notifications.clear(HELP_NOTIFICATION_ID, () => void chrome.runtime.lastError);
+    chrome.notifications.clear(id, () => void chrome.runtime.lastError);
   } catch (error) {
     /* notificações indisponíveis: nada a fechar */
   }
+}
+
+/** Fecha a notificação de ajuda (se estiver aberta). */
+function clearHelpNotification() {
+  clearNotification(HELP_NOTIFICATION_ID);
 }
 
 /** Traz uma aba (do LinkedIn) para frente, focando a janela dela também. */
@@ -939,6 +1008,37 @@ async function showReportNotification(message) {
     console.warn('[PegaVaga] Não consegui criar a notificação de relato:', error);
     return false;
   }
+}
+
+/**
+ * Recolhe todos os cartões de ajuda abertos. O cartão pedindo resposta de uma
+ * varredura que já acabou vira obstáculo na tela.
+ */
+function fecharTodasAsAjudas() {
+  for (const id of Array.from(ajudasAbertas.keys())) fecharJanelaAjuda(id);
+  helpTabId = null;
+}
+
+/**
+ * "Parar" total (pop-up): fecha cartões e notificações. A aba em si recebe
+ * `MSG.STOP` à parte — é ela quem interrompe a varredura.
+ */
+function pararTudo() {
+  parando = true;
+  clearTimeout(parandoTimer);
+
+  clearHelpNotification();
+  clearNotification(DONE_NOTIFICATION_ID);
+  clearNotification(REPORT_NOTIFICATION_ID);
+  clearNotification(STATUS_NOTIFICATION_ID);
+  fecharTodasAsAjudas();
+
+  // Rede de segurança: se o content script mostrou a notificação no exato
+  // instante da parada, fecha de novo quando o evento chegar.
+  parandoTimer = setTimeout(() => {
+    parando = false;
+    clearHelpNotification();
+  }, 2500);
 }
 
 /**

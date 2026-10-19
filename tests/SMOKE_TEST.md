@@ -339,6 +339,15 @@ personalizada** (resposta não salva) e deixe a automação chegar ao formulári
 - [ ] O cartão mostra a vaga (título — empresa) e **um controle por pergunta**;
       numa pergunta de lista, as opções são **as mesmas do LinkedIn**. Todos os
       campos aparecem com **asterisco** de obrigatório.
+- [ ] O cartão abre na **posição calculada** (não centralizado), mesmo quando o
+      gerenciador de janelas ignora a posição do `create`. Arrastar para outro
+      canto, fechar e reabrir → abre no mesmo lugar.
+- [ ] A **altura acompanha o conteúdo**: com 1 campo, a janela fica baixa; com
+      vários, cresce só até o teto de **470 px** (o tamanho antigo) e o corpo
+      passa a **rolar**. Não há altura mínima fixa.
+- [ ] **Parar** com o cartão aberto (e/ou com a notificação de ajuda na tela):
+      o cartão fecha, a notificação some e a varredura para — mesmo que você
+      esteja em outra aba do Chrome.
 - [ ] O cartão usa o **mesmo visual do pop-up** (cabeçalho com degradê, cards,
       campos e botões) e **segue o tema**: com o pop-up no escuro (lâmpada
       apagada), ele abre escuro; trocar a lâmpada com o cartão aberto muda o

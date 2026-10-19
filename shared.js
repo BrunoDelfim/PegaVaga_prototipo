@@ -24,15 +24,16 @@ globalThis.PegaVagaShared = (() => {
     pos: 'pegavaga_ajuda_pos',
   };
 
-  /* A janelinha do pedido de ajuda: largura fixa e altura de criação. Ela abre
-   * como JANELA POPUP do Chrome (só barra de título + borda do sistema: sem aba,
-   * sem barra de endereço, sem menu) — é o mais "capado" que o navegador oferece. */
-  const JANELINHA = { largura: 372, altura: 470 };
+  /* A janelinha do pedido de ajuda: largura fixa. `altura` é o tamanho de
+   * criação e também o TETO: se o conteúdo couber, o ajuda.js encolhe; se não,
+   * mantém 470 e o corpo ganha barra de rolagem. Não há altura mínima fixa. */
+  const JANELINHA = { largura: 372, altura: 470, alturaMax: 470 };
 
   /* Tipos de mensagem trocadas entre pop-up, content script e agendador. */
   const MSG = {
     START: 'PEGAVAGA_START',
     STOP: 'PEGAVAGA_STOP',
+    STOP_ALL: 'PEGAVAGA_STOP_ALL', // pop-up → worker: para tudo e fecha cartões/notificações
     PING: 'PEGAVAGA_PING',
     CLEAR: 'PEGAVAGA_CLEAR',
     PROGRESS: 'PEGAVAGA_PROGRESS',

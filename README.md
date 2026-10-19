@@ -305,8 +305,8 @@ PegaVaga:
 
 1. **Mantém o formulário aberto** e pausa a vaga (não descarta, não pula);
 2. Abre o **cartão de resposta numa janela própria**, no canto inferior direito do
-   desktop: uma janela **popup** do Chrome, **só com a barra de título e a borda**
-   (sem aba, sem barra de endereço, sem menu);
+   desktop: uma janela **popup** do Chrome, sem aba (a barra de endereço, quando
+   o navegador/SO a mostra, não é controlável pela extensão);
 3. O cartão mostra a **vaga** e **um controle por pergunta travada** — numa
    pergunta de lista, um **select com as opções do LinkedIn**; numa pergunta de
    escolha, **botões de rádio**; um **checkbox** obrigatório vem como caixa para
@@ -325,10 +325,17 @@ PegaVaga:
 5. Não quer a vaga? **“Pular esta vaga”** cancela a candidatura atual (sem gastar
    cota) e a varredura segue para a próxima;
 6. O cartão pode ser **arrastado** pelo cabeçalho e **lembra onde foi deixado**.
-   Fechar no **✕** não trava nada: a vaga volta ao caminho de sempre. O cartão
-   usa o **mesmo visual do pop-up** (cores, cards, campos e botões) e **segue o
-   tema claro/escuro** da lâmpada; se nunca houve escolha, segue o tema do
-   sistema.
+   A posição calculada é reaplicada depois que a janela abre (não fica
+   centralizada, e o cartão também pede foco), e a **altura acompanha o
+   conteúdo**: encolhe quando há pouco e para no **teto de 470 px** (o tamanho
+   antigo); no teto, o corpo ganha barra de rolagem. Fechar no **✕** não trava
+   nada: a vaga volta ao caminho de sempre. O cartão usa o **mesmo visual do
+   pop-up** (cores, cards, campos e botões) e **segue o tema claro/escuro** da
+   lâmpada; se nunca houve escolha, segue o tema do sistema.
+
+> **Parar** encerra tudo: interrompe a aba que está varrendo (mesmo que você
+> esteja em outra aba), fecha o cartão de ajuda, limpa as notificações da
+> extensão que ainda estiverem na tela e fecha o pop-up principal.
 
 > Se a janela não puder abrir (sistema que bloqueia janelas, `windows`
 > indisponível), o PegaVaga usa o caminho antigo: **notificação na área de

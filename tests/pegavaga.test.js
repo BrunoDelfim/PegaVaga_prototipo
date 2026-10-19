@@ -1154,6 +1154,7 @@ eq('parseAjudaDados tolera json invalido', S.parseAjudaDados('?dados=nada'), {})
 eq('parseAjudaDados tolera texto solto', S.parseAjudaDados('?dados=' + encodeURIComponent('"texto"')), {});
 
 eq('medidas da janelinha', [S.JANELINHA.largura, S.JANELINHA.altura], [372, 470]);
+eq('teto da janelinha e o tamanho de criacao', S.JANELINHA.alturaMax, S.JANELINHA.altura);
 // `chrome.windows` (usado na janelinha de ajuda) NÃO pede permissão: criar, mover
 // e fechar janelas é livre; a permissão `windows` só serviria para ler a URL/título
 // das abas — e permissão a mais pesa na revisão da loja.
@@ -1248,7 +1249,43 @@ ok(
   /--brand:/.test(ajudaHtml) &&
     /--surface:/.test(ajudaHtml) &&
     /--head-from:/.test(ajudaHtml) &&
-    /html\[data-theme="dark"\]/.test(ajudaHtml)
+    /html\[data-theme="dark"\]/.test(ajudaHtml) &&
+    /html \{ height: 100%;/.test(ajudaHtml)
+);
+// B1: o `windows.create` pode ignorar left/top; o cartão reaplica depois do render.
+ok(
+  'cartao reaplica a posicao depois do render',
+  /dados\.posicao/.test(ajudaJs) &&
+    /chrome\.windows\.update\(janela\.id/.test(ajudaJs) &&
+    /window\.moveTo/.test(ajudaJs) &&
+    /focused: true/.test(ajudaJs)
+);
+ok(
+  'posicao salva centralizada e ignorada',
+  /const centrado/.test(contentJs) && /posição do cartão/.test(contentJs)
+);
+ok(
+  'so grava a posicao depois de arrastar de verdade',
+  /inicioX/.test(ajudaJs) && /window\.screenX - inicioX/.test(ajudaJs)
+);
+// Altura dinâmica com teto: encolhe/cresce com o conteúdo e rola no limite.
+ok(
+  'cartao ajusta a altura ao conteudo com teto',
+  /async function ajustarJanela/.test(ajudaJs) &&
+    /JANELINHA\.alturaMax/.test(ajudaJs) &&
+    /getBoundingClientRect/.test(ajudaJs) &&
+    /window\.resizeTo/.test(ajudaJs) &&
+    /height: altura/.test(ajudaJs)
+);
+// "Parar" precisa recolher o que vive fora da aba (cartão e notificações).
+ok(
+  'parar tudo fecha cartoes e notificacoes',
+  /MSG\.STOP_ALL/.test(popupJs) &&
+    /function pararTudo/.test(backgroundJs) &&
+    /fecharTodasAsAjudas/.test(backgroundJs) &&
+    /let parando = false/.test(backgroundJs) &&
+    /if \(parando\) return false/.test(backgroundJs) &&
+    /async function onStopClick[\s\S]{0,3000}window\.close\(\)/.test(popupJs)
 );
 ok('content aplica a resposta no campo certo', /async function aplicarRespostaNosCampos/.test(contentJs) && /SHARED\.escolherRotulo/.test(contentJs));
 ok('content guarda as respostas para a proxima vaga', /async function salvarRespostas/.test(contentJs));

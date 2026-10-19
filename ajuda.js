@@ -20,6 +20,7 @@
 
   const avisoId = String(dados.avisoId || '');
   const campos = Array.isArray(dados.campos) ? dados.campos : [];
+  let arrastou = false; // o usuário já moveu a janela? então não reposiciona mais
 
   /** Manda a decisão para o worker (que fecha esta janela ao processar). */
   function responder(acao, resposta) {
@@ -336,10 +337,15 @@
     let arrastando = false;
     let deslocX = 0;
     let deslocY = 0;
+    let inicioX = 0;
+    let inicioY = 0;
 
     cabeca.addEventListener('mousedown', (evento) => {
       if (evento.target && evento.target.id === 'fechar') return;
+      arrastou = true;
       arrastando = true;
+      inicioX = window.screenX;
+      inicioY = window.screenY;
       deslocX = evento.screenX - window.screenX;
       deslocY = evento.screenY - window.screenY;
       evento.preventDefault();
@@ -357,7 +363,15 @@
     document.addEventListener('mouseup', () => {
       if (!arrastando) return;
       arrastando = false;
-      guardarPosicao(window.screenX, window.screenY);
+
+      // Só grava se a janela realmente saiu do lugar: um clique no cabeçalho
+      // (para focar) não pode salvar a posição centralizada que o WM escolheu.
+      if (
+        Math.abs(window.screenX - inicioX) >= 4 ||
+        Math.abs(window.screenY - inicioY) >= 4
+      ) {
+        guardarPosicao(window.screenX, window.screenY);
+      }
     });
   }
 
@@ -376,6 +390,157 @@
       const timer = setTimeout(() => fim(padrao), ms);
       Promise.resolve(promessa).then(fim, () => fim(padrao));
     });
+  }
+
+  /** Posição de reserva: canto inferior direito do monitor que o cartão enxerga. */
+  function posicaoDeReserva() {
+    const tela = window.screen || {};
+    const esquerda = Number.isFinite(tela.availLeft) ? tela.availLeft : 0;
+    const topo = Number.isFinite(tela.availTop) ? tela.availTop : 0;
+    const direita = esquerda + (tela.availWidth || 1280);
+    const base = topo + (tela.availHeight || 800);
+
+    return {
+      left: Math.round(direita - SHARED.JANELINHA.largura - 16),
+      top: Math.round(base - SHARED.JANELINHA.altura - 16),
+    };
+  }
+
+  /**
+   * A janela nasce com `SHARED.JANELINHA.altura` (para o worker posicioná-la),
+   * mas o tamanho definitivo é o do conteúdo:
+   *  - encolhe até caber (sem altura mínima fixa);
+   *  - para no **teto** `alturaMax` (o tamanho de antes, 470) e deixa o `.corpo`
+   *    rolar; nunca fica maior que isso;
+   *  - reaplica a posição calculada no content script (B1), porque o
+   *    `windows.create` ignora `left/top` em Wayland/alguns WMs;
+   *  - pede foco de novo (a janela pode nascer atrás de tudo);
+   *  - sobe o suficiente se o crescimento passaria do rodapé do monitor.
+   *
+   * Roda uma vez no primeiro render e mais duas com atraso (o WM pode
+   * reposicionar a janela depois de mapeá-la). Se o usuário já arrastou, as
+   * chamadas seguintes não mexem mais na posição.
+   */
+  async function ajustarJanela(opcoes) {
+    if (!chrome.windows || typeof chrome.windows.update !== 'function') return;
+
+    let janela = null;
+    try {
+      janela = await chrome.windows.getCurrent();
+    } catch (error) {
+      console.info('[PegaVaga] cartão não leu a janela para ajustar:', error);
+      return;
+    }
+
+    if (!janela || janela.id == null) return;
+
+    // Mede o conteúdo com o cartão em altura automática: com a janela no
+    // tamanho antigo, `scrollHeight` devolveria o tamanho da janela, não o do
+    // conteúdo.
+    const cartao = document.getElementById('cartao');
+    const corpo = document.querySelector('.corpo');
+    const alturaAntes = cartao ? cartao.style.height : '';
+    const flexAntes = corpo ? corpo.style.flex : '';
+    let natural = 0;
+
+    try {
+      if (cartao) cartao.style.height = 'auto';
+      if (corpo) corpo.style.flex = '0 0 auto';
+      natural = Math.ceil((cartao && cartao.getBoundingClientRect().height) || 0);
+    } catch (error) {
+      console.info('[PegaVaga] cartão não mediu o conteúdo:', error);
+    } finally {
+      if (cartao) cartao.style.height = alturaAntes;
+      if (corpo) corpo.style.flex = flexAntes;
+    }
+
+    if (!natural) natural = SHARED.JANELINHA.altura;
+
+    // `windows.update({height})` conta a moldura da janela; a medição do DOM é
+    // só o conteúdo. Sem somar a moldura, o cartão abriria com uma barra de
+    // rolagem sobrando mesmo quando tudo caberia.
+    const alturaJanela = Number(janela.height) || Number(window.outerHeight) || 0;
+    const alturaConteudo =
+      Number(window.innerHeight) || document.documentElement.clientHeight || 0;
+    const moldura = Math.max(0, Math.round(alturaJanela - alturaConteudo));
+
+    const tela = window.screen || {};
+    const topoTela = Number.isFinite(tela.availTop) ? tela.availTop : 0;
+    const alturaTela = Number.isFinite(tela.availHeight) ? tela.availHeight : 800;
+    // Teto = o tamanho antigo da janela (470). Só encolhe se o conteúdo couber.
+    const teto = SHARED.JANELINHA.alturaMax || SHARED.JANELINHA.altura;
+    const maximo = Math.max(180, Math.min(teto, alturaTela - 24));
+    const altura = Math.min(natural + moldura, maximo);
+
+    // A posição do content script manda; se ela não veio, cai no canto do
+    // monitor que o cartão enxerga (melhor que abrir centralizado).
+    const alvo = (dados && dados.posicao) || posicaoDeReserva();
+    const temPosicao = Boolean(
+      alvo && Number.isFinite(alvo.left) && Number.isFinite(alvo.top)
+    );
+    const usarPosicao = temPosicao && !arrastou;
+
+    let left = usarPosicao ? Math.round(alvo.left) : janela.left;
+    let top = usarPosicao ? Math.round(alvo.top) : janela.top;
+
+    if (Number.isFinite(top) && top + altura > topoTela + alturaTela - 8) {
+      top = Math.max(topoTela, topoTela + alturaTela - altura - 8);
+    }
+
+    const atualizacao = { height: altura, focused: true };
+    if (usarPosicao) atualizacao.state = 'normal';
+    if (Number.isFinite(left)) atualizacao.left = Math.round(left);
+    if (Number.isFinite(top)) atualizacao.top = Math.round(top);
+
+    try {
+      await chrome.windows.update(janela.id, atualizacao);
+
+      // Reforço no próprio documento: em alguns WMs o `windows.update` é
+      // ignorado, mas `moveTo`/`resizeTo` (o mesmo caminho que o arrasto usa)
+      // vale. Se o WM recusar, seguimos com o que o `update` conseguiu.
+      try {
+        if (Number.isFinite(left) && Number.isFinite(top)) {
+          window.moveTo(Math.round(left), Math.round(top));
+        }
+        window.resizeTo(SHARED.JANELINHA.largura, altura);
+      } catch (error) {
+        /* alguns WMs não deixam a página mover a própria janela */
+      }
+
+      // Reforço para o caso de a janela ter nascido atrás do navegador.
+      try {
+        window.focus();
+      } catch (error) {
+        /* alguns WMs não deixam a página focar a própria janela */
+      }
+
+      if (!(opcoes && opcoes.silencioso)) {
+        console.info(
+          '[PegaVaga] cartão reposicionado em',
+          atualizacao.left != null ? atualizacao.left : '?',
+          atualizacao.top != null ? atualizacao.top : '?',
+          'com altura',
+          altura
+        );
+
+        // Confere o que o WM realmente aplicou (se ele centralizou, o log mostra).
+        try {
+          const depois = await chrome.windows.getCurrent();
+          console.info(
+            '[PegaVaga] cartão agora em',
+            depois && depois.left,
+            depois && depois.top,
+            'altura',
+            depois && depois.height
+          );
+        } catch (error) {
+          /* sem leitura agora: o update já foi pedido */
+        }
+      }
+    } catch (error) {
+      // Posição/tamanho são cortesia: o cartão já funciona no tamanho em que abriu.
+      console.info('[PegaVaga] cartão não reposicionou:', error);
+    }
   }
 
   async function iniciar() {
@@ -482,6 +647,18 @@
     }
 
     permitirArrastar();
+
+    // Depois do primeiro render: posição do content script (B1) + altura do
+    // conteúdo (com teto para rolar). O gerenciador de janelas pode reposicionar
+    // a janela ao mapeá-la; repetimos depois de um respiro. Se o usuário já
+    // arrastou, as repetições não mexem na posição.
+    await ajustarJanela();
+    setTimeout(() => {
+      ajustarJanela({ silencioso: true }).catch(() => {});
+    }, 500);
+    setTimeout(() => {
+      ajustarJanela({ silencioso: true }).catch(() => {});
+    }, 1500);
   }
 
   iniciar().catch((error) => {

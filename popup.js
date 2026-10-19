@@ -725,22 +725,61 @@ async function kickOffTab(tabId, run, say) {
 }
 
 async function onStopClick() {
+  // Lê a fila ANTES de apagar: é ela que diz qual aba está varrendo, mesmo que o
+  // usuário esteja em outra aba no momento do clique.
+  let run = null;
+
+  try {
+    const data = await chrome.storage.local.get(STORAGE_RUN_KEY);
+    run = data[STORAGE_RUN_KEY] || null;
+  } catch (error) {
+    run = null;
+  }
+
   // Remover a fila primeiro garante que o content.js não avance para o próximo
   // termo, mesmo que a aba que está varrendo não seja a aba ativa.
-  await chrome.storage.local.remove(STORAGE_RUN_KEY);
+  try {
+    await chrome.storage.local.remove(STORAGE_RUN_KEY);
+  } catch (error) {
+    /* storage indisponível: o STOP na aba ainda interrompe a varredura */
+  }
 
-  const tab = await getActiveTab();
-  if (tab && tab.id) {
+  const alvos = new Set();
+  if (run && run.tabId != null) alvos.add(run.tabId);
+
+  let tab = null;
+  try {
+    tab = await getActiveTab();
+  } catch (error) {
+    tab = null;
+  }
+  if (tab && tab.id) alvos.add(tab.id);
+
+  for (const tabId of alvos) {
     try {
-      await sendToTab(tab.id, { type: MSG.STOP });
+      await sendToTab(tabId, { type: MSG.STOP });
     } catch (error) {
       /* a página pode ter sido fechada; ignoramos */
     }
   }
 
+  // Fecha o que vive fora da aba: cartão de ajuda e notificações que ainda
+  // estejam na tela. Sem isso o cartão ficava pedindo resposta de uma varredura
+  // que já tinha parado.
+  try {
+    await chrome.runtime.sendMessage({ type: MSG.STOP_ALL });
+  } catch (error) {
+    /* worker dormindo: o STOP na aba já interrompeu a varredura */
+  }
+
   renderRun(null);
   setScanning(false);
   setStatus('Varredura interrompida.', 'warn');
+
+  // "Parar" fecha também este pop-up. O estado já foi gravado no storage e a
+  // luz do ícone continua refletindo a varredura parada; quem quiser ver o
+  // status abre o pop-up de novo.
+  setTimeout(() => window.close(), 250);
 }
 
 /**

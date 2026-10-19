@@ -2681,16 +2681,36 @@
         guardado = null;
       }
 
-      const salvo =
+      const guardadoOk =
         guardado &&
         Number.isFinite(guardado.left) &&
         Number.isFinite(guardado.top) &&
         guardado.left >= esquerda - 8 &&
         guardado.top >= topo - 8 &&
         guardado.left <= direita - 40 &&
-        guardado.top <= base - 40
-          ? { left: Math.round(guardado.left), top: Math.round(guardado.top) }
-          : null;
+        guardado.top <= base - 40;
+
+      // Uma posição centralizada salva por engano (o arrasto antigo gravava até
+      // sem mover) fazia o cartão abrir sempre no meio. Nesse caso, preferimos o
+      // canto inferior direito; se o usuário quiser o centro, ele arrasta de novo.
+      const centroX = esquerda + (tela.availWidth || 1280) / 2;
+      const centroY = topo + (tela.availHeight || 800) / 2;
+      const centrado =
+        guardadoOk &&
+        Math.abs(guardado.left + largura / 2 - centroX) <= 48 &&
+        Math.abs(guardado.top + altura / 2 - centroY) <= 48;
+
+      const salvo = guardadoOk && !centrado
+        ? { left: Math.round(guardado.left), top: Math.round(guardado.top) }
+        : null;
+
+      console.info(
+        '[PegaVaga] posição do cartão:',
+        salvo ? 'lembrada' : 'padrão (canto inferior direito)',
+        salvo || '',
+        'salva:',
+        guardado || 'nenhuma'
+      );
 
       return (
         salvo || {
@@ -2742,6 +2762,7 @@
       // A posição é resolvida ANTES de montar a mensagem (é assíncrona: lê a
       // posição lembrada no storage).
       const posicao = await posicaoDaJanelinha();
+      console.info('[PegaVaga] posição calculada do cartão de ajuda:', posicao);
 
       const aviso = await comPrazo(
         new Promise((resolve) => {
