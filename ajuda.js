@@ -375,6 +375,11 @@
     });
   }
 
+  /** Espera curta (o WM pode só aplicar a posição depois de mapear a janela). */
+  function esperar(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   /** Resolve a promessa ou desiste no prazo (storage lento não trava o cartão). */
   function comPrazo(promessa, ms, padrao) {
     return new Promise((resolve) => {
@@ -492,54 +497,93 @@
     if (Number.isFinite(left)) atualizacao.left = Math.round(left);
     if (Number.isFinite(top)) atualizacao.top = Math.round(top);
 
-    try {
-      await chrome.windows.update(janela.id, atualizacao);
+    // Alguns WMs aplicam o `update` tarde, ou só depois de a janela sair de
+    // maximizada. Repetimos e conferimos a posição REAL até ela casar; se o
+    // gerenciador ignorar de vez, isso fica registrado (não é falha silenciosa).
+    let aplicou = !usarPosicao;
+    let ultimoErro = null;
 
-      // Reforço no próprio documento: em alguns WMs o `windows.update` é
-      // ignorado, mas `moveTo`/`resizeTo` (o mesmo caminho que o arrasto usa)
-      // vale. Se o WM recusar, seguimos com o que o `update` conseguiu.
+    for (let tentativa = 0; tentativa < (usarPosicao ? 5 : 1); tentativa += 1) {
       try {
-        if (Number.isFinite(left) && Number.isFinite(top)) {
-          window.moveTo(Math.round(left), Math.round(top));
+        // `state: 'normal'` separado: no mesmo update, alguns WMs descartam
+        // left/top enquanto a janela ainda está saindo de maximizada.
+        if (usarPosicao && tentativa === 0) {
+          await chrome.windows.update(janela.id, { state: 'normal' });
         }
-        window.resizeTo(SHARED.JANELINHA.largura, altura);
-      } catch (error) {
-        /* alguns WMs não deixam a página mover a própria janela */
-      }
 
-      // Reforço para o caso de a janela ter nascido atrás do navegador.
-      try {
-        window.focus();
-      } catch (error) {
-        /* alguns WMs não deixam a página focar a própria janela */
-      }
+        await chrome.windows.update(janela.id, atualizacao);
 
-      if (!(opcoes && opcoes.silencioso)) {
-        console.info(
-          '[PegaVaga] cartão reposicionado em',
-          atualizacao.left != null ? atualizacao.left : '?',
-          atualizacao.top != null ? atualizacao.top : '?',
-          'com altura',
-          altura
-        );
-
-        // Confere o que o WM realmente aplicou (se ele centralizou, o log mostra).
+        // Reforço no próprio documento: em alguns WMs o `windows.update` é
+        // ignorado, mas `moveTo`/`resizeTo` (o mesmo caminho que o arrasto usa)
+        // vale. Se o WM recusar, seguimos com o que o `update` conseguiu.
         try {
-          const depois = await chrome.windows.getCurrent();
-          console.info(
-            '[PegaVaga] cartão agora em',
-            depois && depois.left,
-            depois && depois.top,
-            'altura',
-            depois && depois.height
-          );
+          if (Number.isFinite(left) && Number.isFinite(top)) {
+            window.moveTo(Math.round(left), Math.round(top));
+          }
+          window.resizeTo(SHARED.JANELINHA.largura, altura);
         } catch (error) {
-          /* sem leitura agora: o update já foi pedido */
+          /* alguns WMs não deixam a página mover a própria janela */
         }
+
+        if (!usarPosicao) {
+          aplicou = true;
+        } else {
+          const agora = await chrome.windows.getCurrent();
+          const realLeft = Number(agora && agora.left);
+          const realTop = Number(agora && agora.top);
+
+          aplicou =
+            !Number.isFinite(realLeft) ||
+            !Number.isFinite(realTop) ||
+            (Math.abs(realLeft - Math.round(left)) <= 24 &&
+              Math.abs(realTop - Math.round(top)) <= 24);
+        }
+
+        if (aplicou) break;
+      } catch (error) {
+        ultimoErro = error;
+        break;
       }
+
+      await esperar(250 + tentativa * 250);
+    }
+
+    // Reforço para o caso de a janela ter nascido atrás do navegador.
+    try {
+      window.focus();
     } catch (error) {
-      // Posição/tamanho são cortesia: o cartão já funciona no tamanho em que abriu.
-      console.info('[PegaVaga] cartão não reposicionou:', error);
+      /* alguns WMs não deixam a página focar a própria janela */
+    }
+
+    if (!(opcoes && opcoes.silencioso)) {
+      console.info(
+        '[PegaVaga] cartão reposicionado em',
+        atualizacao.left != null ? atualizacao.left : '?',
+        atualizacao.top != null ? atualizacao.top : '?',
+        'com altura',
+        altura
+      );
+
+      // Confere o que o WM realmente aplicou (se ele centralizou, o log mostra).
+      try {
+        const depois = await chrome.windows.getCurrent();
+        console.info(
+          '[PegaVaga] cartão agora em',
+          depois && depois.left,
+          depois && depois.top,
+          'altura',
+          depois && depois.height
+        );
+      } catch (error) {
+        /* sem leitura agora: o update já foi pedido */
+      }
+    }
+
+    if (!aplicou && !(opcoes && opcoes.silencioso)) {
+      console.warn(
+        '[PegaVaga] o gerenciador de janelas ignorou a posição pedida; o cartão pode abrir centralizado.',
+        ultimoErro || ''
+      );
     }
   }
 

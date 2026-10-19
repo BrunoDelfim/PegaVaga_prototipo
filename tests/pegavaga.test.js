@@ -435,6 +435,18 @@ const paradaRun = S.describeRunEnd({ reason: 'bloqueio', guardReason: 'Aviso de 
 eq('titulo da parada por protecao', paradaRun.title, 'PegaVaga parou para proteger a sua conta');
 ok('parada e urgente e traz o motivo', paradaRun.urgent === true && paradaRun.message.includes('Aviso de limite de uso'));
 ok('parada sem motivo tambem funciona', S.describeRunEnd({ reason: 'bloqueio' }).message.includes('limite de uso'));
+const paradaComHora = S.describeRunEnd({
+  reason: 'bloqueio',
+  guardReason: 'Aviso de limite de uso na página do LinkedIn',
+  resumeAt: new Date(2026, 0, 1, 1, 19, 0).getTime(),
+});
+ok('parada informa a hora de retomada', /retoma às 01:19/.test(paradaComHora.message));
+ok(
+  'parada por protecao avisa mesmo com a aba em foco',
+  /const bloqueio = reason === 'bloqueio'/.test(contentJs) &&
+    /if \(!bloqueio\)/.test(contentJs) &&
+    /resumeAt:/.test(contentJs)
+);
 ok('texto tolera dados vazios', S.describeRunEnd({}).message === '0 vagas capturadas · 0 candidaturas enviadas.' && S.describeRunEnd(null).title.length > 0);
 
 ok('content avisa o fim da fila antes de limpar', /notifyRunEnded\('fila'\);[\s\S]{0,90}clearRun\(\)/.test(contentJs));
@@ -1259,6 +1271,22 @@ ok(
     /chrome\.windows\.update\(janela\.id/.test(ajudaJs) &&
     /window\.moveTo/.test(ajudaJs) &&
     /focused: true/.test(ajudaJs)
+);
+ok(
+  'cartao confere se o WM aplicou a posicao',
+  /state: 'normal'/.test(ajudaJs) &&
+    /chrome\.windows\.getCurrent\(\)/.test(ajudaJs) &&
+    /Math\.abs\(realLeft/.test(ajudaJs) &&
+    /gerenciador de janelas ignorou/.test(ajudaJs)
+);
+ok(
+  'background manda left/top no windows.create',
+  /janela\.left = posicao\.left/.test(bgJs) && /janela\.top = posicao\.top/.test(bgJs)
+);
+ok(
+  'posicao do cartao nunca volta nula',
+  /Nunca devolver `null`/.test(contentJs) &&
+    /Math\.max\(0, Math\.round\(\(tela\.availWidth/.test(contentJs)
 );
 ok(
   'posicao salva centralizada e ignorada',

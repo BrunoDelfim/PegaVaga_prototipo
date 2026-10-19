@@ -794,12 +794,19 @@
    * Só manda quando a opção está ligada (quem conhece a configuração é este
    * lado, então o background não precisa reler nada) e só quando a página **não**
    * está em foco: se você está olhando a tela, a notificação seria redundante.
+   *
+   * Exceção: a parada por limite de uso ("bloqueio") avisa SEMPRE. É uma pausa
+   * que pode durar uma hora, e quem está com o LinkedIn em foco precisa saber
+   * que a automação parou e a que horas ela volta.
    */
   function notifyRunEnded(reason, extra) {
     const cfg = (state.settings && state.settings.apply) || DEFAULT_APPLY;
+    const bloqueio = reason === 'bloqueio';
 
-    if (cfg.notifyOnFinish === false) return;
-    if (typeof document.hasFocus === 'function' && document.hasFocus()) return;
+    if (!bloqueio) {
+      if (cfg.notifyOnFinish === false) return;
+      if (typeof document.hasFocus === 'function' && document.hasFocus()) return;
+    }
 
     const run = state.run || {};
 
@@ -813,6 +820,7 @@
           dropped: state.dropped,
           dryRun: cfg.dryRun === true,
           guardReason: (state.guard && state.guard.reason) || '',
+          resumeAt: (state.guard && state.guard.blockedUntil) || null,
         },
         extra || {}
       )
@@ -1153,6 +1161,10 @@
    * a fila fica pausada (não é apagada): ao fim do descanso ela volta sozinha.
    */
   async function tripGuard(reason) {
+    // A varredura pode detectar o mesmo limite em dois lugares (lista e
+    // formulário). Sem isto, o usuário recebia duas notificações iguais.
+    const jaAvisado = Boolean(state.guard && state.guard.blockedUntil > Date.now());
+
     state.abort = true;
     state.guardStopped = true;
     state.guard = {
@@ -1163,7 +1175,7 @@
 
     await chrome.storage.local.set({ [STORAGE_GUARD_KEY]: state.guard }).catch((error) => noteError('gravar o bloqueio', error));
     // Parada que exige atenção: quem está fora do navegador precisa saber.
-    notifyRunEnded('bloqueio');
+    if (!jaAvisado) notifyRunEnded('bloqueio');
     broadcastProgress();
   }
 
@@ -2764,11 +2776,11 @@
    * a vaga ficaria esperando um pedido que ninguém vê.
    */
   async function posicaoDaJanelinha() {
-    try {
-      const tela = window.screen;
-      const largura = SHARED.JANELINHA.largura;
-      const altura = SHARED.JANELINHA.altura;
+    const largura = SHARED.JANELINHA.largura;
+    const altura = SHARED.JANELINHA.altura;
+    const tela = window.screen || {};
 
+    try {
       // `availLeft/availTop` dizem onde este monitor começa. Sem eles o cartão
       // nascia sempre no canto do monitor PRIMÁRIO.
       const esquerda = Number.isFinite(tela.availLeft) ? tela.availLeft : 0;
@@ -2781,6 +2793,7 @@
         const data = await chrome.storage.local.get(SHARED.STORAGE.pos);
         guardado = data && data[SHARED.STORAGE.pos];
       } catch (error) {
+        noteError('ler a posição lembrada do cartão', error);
         guardado = null;
       }
 
@@ -2822,8 +2835,15 @@
         }
       );
     } catch (error) {
-      return null;
+      noteError('calcular a posição do cartão', error);
     }
+
+    // Nunca devolver `null`: sem posição o `windows.create` abre centralizado.
+    // Este é o mesmo canto inferior direito, calculado com o que houver.
+    return {
+      left: Math.max(0, Math.round((tela.availWidth || 1280) - largura - 16)),
+      top: Math.max(0, Math.round((tela.availHeight || 800) - altura - 16)),
+    };
   }
 
   /** Resolve a promessa — ou desiste no prazo, com `padrao` (worker pode dormir). */

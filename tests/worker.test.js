@@ -216,6 +216,11 @@ const espera = (ms) => new Promise((r) => setTimeout(r, ms));
     criadas[0] && criadas[0].url
   );
   confere('largura da janelinha', criadas[0] && criadas[0].width === 372, criadas[0] && criadas[0].width);
+  confere(
+    'posicao vai no windows.create',
+    Boolean(criadas[0] && criadas[0].left === 100 && criadas[0].top === 200),
+    criadas[0]
+  );
 
   const contexto = JSON.parse(decodeURIComponent(String(criadas[0].url).split('dados=')[1]));
   confere('contexto traz o avisoId', contexto.avisoId === 'pegavaga-ajuda:9:p1', contexto.avisoId);

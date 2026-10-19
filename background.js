@@ -659,10 +659,32 @@ async function mostrarAjuda(dados, sender) {
     focused: true,
   };
 
+  // `left`/`top` vão no PRÓPRIO objeto do `create` (além do update posterior):
+  // é a forma que o Chrome documenta e a que alguns WMs só respeitam na criação
+  // da janela. `state: 'normal'` evita herdar um estado maximizado.
+  if (posicao) {
+    janela.left = posicao.left;
+    janela.top = posicao.top;
+    janela.state = 'normal';
+  }
+
+  console.info('[PegaVaga] cartão de ajuda: criando janela', JSON.stringify(janela));
+
   let criada = null;
   let recusa = '';
 
-  for (const tentativa of posicao ? [Object.assign({}, janela, posicao), janela] : [janela]) {
+  // Segunda tentativa sem `left/top`: se o WM/Chrome recusar a posição (valor
+  // inválido, monitor removido), ainda assim o cartão abre — e o ajuda.js
+  // reaplica a posição depois do render.
+  const semPosicao = {
+    url: url,
+    type: 'popup',
+    width: SHARED.JANELINHA.largura,
+    height: SHARED.JANELINHA.altura,
+    focused: true,
+  };
+
+  for (const tentativa of posicao ? [janela, semPosicao] : [semPosicao]) {
     try {
       criada = await chrome.windows.create(tentativa);
       break;

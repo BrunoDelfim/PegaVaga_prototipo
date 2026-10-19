@@ -267,8 +267,10 @@ fim — e não siga adiante antes de entender a falha.
 - [ ] Com a opção **desligada**, nenhuma notificação de fim aparece.
 - [ ] Em **modo simulação**, o texto diz “formulários preenchidos sem enviar”.
 - [ ] Se o LinkedIn pedir verificação/limite (guard), aparece **“PegaVaga parou
-      para proteger a sua conta”** e ela **fica na tela** até você vê-la (as
-      outras somem sozinhas).
+      para proteger a sua conta”** com o motivo e a **hora de retomada**
+      (“retoma às HH:MM”), e ela **fica na tela** até você vê-la (as outras somem
+      sozinhas). Esse aviso aparece **mesmo com a página em foco** e não é
+      duplicado quando o limite é detectado duas vezes na mesma vaga.
 
 ### S. Badge de candidaturas do dia
 - [ ] Depois de uma candidatura (num dia ainda zerado), o **badge do ícone** mostra
@@ -349,6 +351,10 @@ personalizada** (resposta não salva) e deixe a automação chegar ao formulári
 - [ ] O cartão abre na **posição calculada** (não centralizado), mesmo quando o
       gerenciador de janelas ignora a posição do `create`. Arrastar para outro
       canto, fechar e reabrir → abre no mesmo lugar.
+- [ ] No console do cartão, `cartão agora em L T` deve bater com a posição
+      pedida. Se o WM ignorar, aparece o aviso
+      `gerenciador de janelas ignorou a posição pedida` — aí é limitação do
+      sistema, não do cartão.
 - [ ] A **altura acompanha o conteúdo**: com 1 campo, a janela fica baixa; com
       vários, cresce só até o teto de **470 px** (o tamanho antigo) e o corpo
       passa a **rolar**. Não há altura mínima fixa.

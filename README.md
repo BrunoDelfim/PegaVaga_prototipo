@@ -123,9 +123,11 @@ verde e faça o merge (merge commit ou rebase: assim o commit da tag fica no
      capturadas · candidaturas enviadas · antigas descartadas**), e clicar nela
      **traz a aba do LinkedIn para frente**. Se o LinkedIn pedir verificação ou
      avisar de limite de uso, ela avisa que a varredura **parou para proteger a
-     sua conta** e fica na tela até você ver. Com a página em foco nada aparece (a
-     notificação seria redundante), e no **modo simulação** o texto diz
-     “formulários preenchidos sem enviar”.
+     sua conta**, mostra a **hora em que vai retomar** e fica na tela até você
+     ver — esse aviso aparece **mesmo com a página em foco**, porque a pausa é
+     longa. No fim normal, com a página em foco nada aparece (a notificação seria
+     redundante), e no **modo simulação** o texto diz “formulários preenchidos
+     sem enviar”.
    - **Pedir a minha ajuda (notificação)** — **ligado por padrão**: quando uma vaga **trava
      num campo que só você preenche** (pergunta personalizada, sem valor salvo no
      LinkedIn). Em vez de descartar a vaga, o PegaVaga manda uma **notificação na
@@ -278,7 +280,8 @@ verde e faça o merge (merge commit ou rebase: assim o commit da tag fica no
   usando a página (mouse, teclado, rolagem).
 - **Proteção da conta**: se aparecer aviso de limite de uso, verificação de
   segurança ou redirecionamento para `checkpoint`, a automação **para na hora**
-  (a fila fica pausada, não é descartada) e só volta depois de ~1 h de descanso.
+  (a fila fica pausada, não é descartada), **manda uma notificação com o motivo e
+  a hora de retomada** e só volta depois de ~1 h de descanso.
 - Uma vaga **nunca** é candidatada duas vezes: o resultado fica gravado na vaga
   (`Candidatado em`, `Status da candidatura` e `Motivo da não candidatura`, que
   vão para o CSV).
