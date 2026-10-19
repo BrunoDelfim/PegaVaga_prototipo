@@ -325,7 +325,10 @@ PegaVaga:
 5. Não quer a vaga? **“Pular esta vaga”** cancela a candidatura atual (sem gastar
    cota) e a varredura segue para a próxima;
 6. O cartão pode ser **arrastado** pelo cabeçalho e **lembra onde foi deixado**.
-   Fechar no **✕** não trava nada: a vaga volta ao caminho de sempre.
+   Fechar no **✕** não trava nada: a vaga volta ao caminho de sempre. O cartão
+   usa o **mesmo visual do pop-up** (cores, cards, campos e botões) e **segue o
+   tema claro/escuro** da lâmpada; se nunca houve escolha, segue o tema do
+   sistema.
 
 > Se a janela não puder abrir (sistema que bloqueia janelas, `windows`
 > indisponível), o PegaVaga usa o caminho antigo: **notificação na área de

@@ -6,140 +6,351 @@
   <!--
     O cartão do pedido de ajuda, como página da extensão. O background o abre numa
     JANELA POPUP do Chrome (só barra de título + borda do sistema: sem aba, sem
-    barra de endereço, sem menu) — e é o ajuda.js que a posiciona, arrasta e manda
-    a sua decisão de volta. O estilo é próprio: nada do LinkedIn entra aqui.
+    barra de endereço, sem menu) — e é o ajuda.js que o posiciona, arrasta, aplic</title>a
+    o tema e manda a sua decisão de volta.
+
+    O visual usa os MESMOS tokens do popup.html (cores, raio, sombra, tipografia e
+    o bloco `html[data-theme="dark"]`). Assim o cartão não vira uma ilha: ele
+    acompanha o tema claro/escuro escolhido na lâmpada do pop-up principal ou,
+    quando não há escolha salva, o tema do sistema.
   -->
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      background: #fff;
+    /* ============================ Design system ============================ */
+    :root {
       color-scheme: light;
+
+      --brand: #0a66c2;
+      --brand-2: #04559f;
+      --brand-soft: #e8f1fb;
+      --ok: #17794a;
+      --ok-soft: #e6f6ee;
+      --warn: #b45309;
+      --warn-soft: #fff4d6;
+      --danger: #c02626;
+      --danger-soft: #fdecec;
+      --text: #0f172a;
+      --muted: #64748b;
+      --line: #e5e9f0;
+      --surface: #f5f7fb;
+      --tint: #e7f0fb;
+      --card: #ffffff;
+
+      --fs-xs: 11px;
+      --fs-sm: 12px;
+      --fs-base: 13px;
+      --fs-lg: 16px;
+
+      --r-sm: 8px;
+      --r-md: 12px;
+      --r-lg: 16px;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+      --ring: 0 0 0 3px rgba(10, 102, 194, 0.18);
+
+      --head-from: #0a66c2;
+      --head-to: #04386e;
+      --head-shadow: 0 2px 10px rgba(4, 60, 120, 0.28);
     }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html { background: var(--surface); }
+    html, body { border: none; }
+
     body {
-      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-      color: #1f2933;
+      margin: 0;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial,
+        sans-serif;
+      font-size: var(--fs-base);
+      line-height: 1.5;
+      color: var(--text);
+      background: var(--surface);
       overflow: hidden;
+      -webkit-font-smoothing: antialiased;
       -webkit-user-select: none;
       user-select: none;
     }
+
+    ::-webkit-scrollbar { width: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: #d2d9e3;
+      border: 3px solid var(--surface);
+      border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb:hover { background: #b8c2cf; }
+
+    /* ============================== Janela =============================== */
     #cartao {
       display: flex;
       flex-direction: column;
-      box-sizing: border-box;
       height: 100%;
     }
+
     .cabeca {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      padding: 10px 12px;
+      flex: 0 0 auto;
+      padding: 10px 14px;
       cursor: move; /* a janela inteira arrasta por aqui */
-      background: linear-gradient(135deg, #0a66c2 0%, #004182 100%);
+      background: linear-gradient(135deg, var(--head-from), var(--head-to));
       color: #fff;
+      box-shadow: var(--head-shadow);
     }
-    .cabeca strong { font-size: 14px; }
+
+    .cabeca strong {
+      font-size: var(--fs-lg);
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
     .fechar {
-      background: transparent;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
       border: 0;
+      border-radius: var(--r-sm);
+      background: transparent;
       color: #fff;
-      font-size: 18px;
+      font-size: 20px;
       line-height: 1;
       cursor: pointer;
-      padding: 0 2px;
     }
+    .fechar:hover { background: rgba(255, 255, 255, 0.16); }
+    .fechar:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35); }
+
     .corpo {
       flex: 1 1 auto;
       min-height: 0;
-      padding: 12px 12px 0;
+      padding: 10px 12px 12px;
       overflow-x: hidden;
       overflow-y: auto;
+      /* O topo nasce azulado, como o `main` do pop-up. */
+      background: linear-gradient(180deg, var(--tint) 0, var(--surface) 180px);
     }
+
+    /* =============================== Conteúdo ============================ */
     .vaga {
-      margin: 0 0 8px;
-      font-size: 12px;
-      color: #334155;
-      background: #eaf2fb;
-      border-radius: 8px;
-      padding: 6px 8px;
+      margin: 0 0 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      background: var(--brand-soft);
+      color: var(--brand-2);
+      font-size: var(--fs-sm);
+      font-weight: 600;
       overflow-wrap: anywhere;
       -webkit-user-select: text;
       user-select: text;
     }
-    .msg { margin: 0 0 10px; font-size: 12.5px; overflow-wrap: anywhere; }
+
+    .msg {
+      margin: 0 0 10px;
+      font-size: var(--fs-sm);
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
     .aviso {
       margin: 0 0 10px;
-      padding: 7px 9px;
-      border-radius: 8px;
-      background: #fdecea;
-      color: #8a1c1c;
-      font-size: 12px;
-      font-weight: 600;
+      padding: 8px 10px;
+      border: 1px solid transparent;
+      border-radius: var(--r-md);
+      background: var(--danger-soft);
+      color: var(--danger);
+      font-size: var(--fs-sm);
+      font-weight: 650;
       overflow-wrap: anywhere;
     }
-    .campo { margin: 0 0 10px; min-width: 0; }
+
+    /* Cada pergunta é um card, como os cards do pop-up principal. */
+    .campo {
+      margin: 0 0 10px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      background: var(--card);
+      box-shadow: var(--shadow-sm);
+      min-width: 0;
+    }
+
     .campo label {
       display: block;
-      font-size: 12px;
-      font-weight: 600;
-      margin-bottom: 4px;
+      margin: 0 0 6px;
+      font-size: var(--fs-sm);
+      font-weight: 650;
+      color: var(--text);
       overflow-wrap: anywhere;
     }
-    .campo input, .campo select {
-      box-sizing: border-box;
+
+    .campo input,
+    .campo select {
       width: 100%;
       max-width: 100%;
       min-width: 0;
-      padding: 7px 9px;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      font-size: 13px;
-      font-family: inherit;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--r-sm);
       background: #fff;
-      color: #1f2933;
+      font-family: inherit;
+      font-size: var(--fs-base);
+      color: var(--text);
     }
-    .campo .opcoes { display: flex; flex-direction: column; gap: 4px; }
+    .campo input:focus,
+    .campo select:focus {
+      outline: none;
+      border-color: var(--brand);
+      box-shadow: var(--ring);
+    }
+
+    .campo .opcoes {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
     .campo label.opcao {
       display: flex;
       align-items: center;
       gap: 8px;
       margin: 0;
-      font-size: 12.5px;
+      font-size: var(--fs-base);
       font-weight: 400;
+      color: var(--text);
       cursor: pointer;
     }
-    .campo label.opcao input { width: auto; margin: 0; }
-    .campo.invalido input,
-    .campo.invalido select { border-color: #c53030; }
-    .campo.invalido .opcoes {
-      outline: 1px solid #c53030;
-      outline-offset: 2px;
-      border-radius: 8px;
+    .campo label.opcao input {
+      width: auto;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      accent-color: var(--brand);
     }
+
     .campo .erro {
       display: block;
-      margin-top: 4px;
-      color: #c53030;
-      font-size: 11.5px;
-    }
-    .campo .erro[hidden] { display: none; }
-    .obrigatorio { color: #c53030; margin-left: 2px; }
-    .acoes { display: flex; gap: 8px; padding: 8px 12px 10px; }
-    .acoes button {
-      flex: 1;
-      padding: 9px;
-      border: 0;
-      border-radius: 8px;
-      font-size: 13px;
+      margin-top: 5px;
+      color: var(--danger);
+      font-size: var(--fs-xs);
       font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
     }
-    .aplicar { background: #0a66c2; color: #fff; }
-    .manual { background: #fff; color: #1f2933; border: 1px solid #cbd5e1 !important; }
-    .pular { background: #fff; color: #c53030; border: 1px solid #cbd5e1 !important; }
+
+    .campo.invalido { border-color: var(--danger); }
+    .campo.invalido input,
+    .campo.invalido select { border-color: var(--danger); }
+    .campo.invalido .opcoes {
+      outline: 1px solid var(--danger);
+      outline-offset: 2px;
+      border-radius: var(--r-sm);
+    }
+
+    .obrigatorio { color: var(--danger); margin-left: 2px; }
+
+    /* ============================== Ações ================================ */
+    .acoes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      flex: 0 0 auto;
+      padding: 10px 12px;
+      border-top: 1px solid var(--line);
+      background: var(--card);
+    }
+
+    .acoes button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 9px 8px;
+      border: 1px solid transparent;
+      border-radius: var(--r-md);
+      font-family: inherit;
+      font-size: var(--fs-sm);
+      font-weight: 650;
+      line-height: 1.2;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.06s ease;
+    }
+    .acoes button:active:not(:disabled) { transform: translateY(1px); }
+    .acoes button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .acoes button:focus-visible { outline: none; box-shadow: var(--ring); }
+
+    .acoes .aplicar { grid-column: 1 / -1; }
+
+    .aplicar {
+      background: var(--brand);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(10, 102, 194, 0.3);
+    }
+    .aplicar:hover:not(:disabled) { background: var(--brand-2); }
+
+    .manual { background: #e9eef5; color: #334155; }
+    .manual:hover:not(:disabled) { background: #dbe3ec; }
+
+    .pular {
+      background: var(--warn-soft);
+      color: var(--warn);
+      border-color: #f0d9a4;
+    }
+    .pular:hover:not(:disabled) { background: #fde9b8; }
+
+    /* ============================ Modo escuro ============================ */
+    html[data-theme="dark"] {
+      color-scheme: dark;
+
+      --brand: #3b8fe0;
+      --brand-2: #8ec5f7;
+      --brand-soft: #16283c;
+      --ok: #4ade80;
+      --ok-soft: #12251b;
+      --warn: #fbbf24;
+      --warn-soft: #2b2410;
+      --danger: #f87171;
+      --danger-soft: #2b1516;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --line: #1e293b;
+      --surface: #0b1220;
+      --tint: #0e1a2c;
+      --card: #111a2b;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+
+      --head-from: #15476f;
+      --head-to: #0a1b2d;
+      --head-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+    }
+
+    html[data-theme="dark"] .campo input,
+    html[data-theme="dark"] .campo select {
+      background: #0f172a;
+      border-color: var(--line);
+    }
+    html[data-theme="dark"] .campo label.opcao input {
+      background: transparent;
+      border: 0;
+    }
+    html[data-theme="dark"] .campo input::placeholder { color: #64748b; }
+
+    html[data-theme="dark"] .manual { background: #1e2b3d; color: #cbd5e1; }
+    html[data-theme="dark"] .manual:hover:not(:disabled) { background: #27354a; }
+
+    html[data-theme="dark"] .acoes { background: rgba(17, 26, 43, 0.94); }
+
+    html[data-theme="dark"] ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-color: var(--surface);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; animation: none !important; }
+    }
   </style>
 </head>
 <body>

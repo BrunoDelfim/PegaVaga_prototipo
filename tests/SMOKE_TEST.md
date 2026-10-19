@@ -339,6 +339,12 @@ personalizada** (resposta não salva) e deixe a automação chegar ao formulári
 - [ ] O cartão mostra a vaga (título — empresa) e **um controle por pergunta**;
       numa pergunta de lista, as opções são **as mesmas do LinkedIn**. Todos os
       campos aparecem com **asterisco** de obrigatório.
+- [ ] O cartão usa o **mesmo visual do pop-up** (cabeçalho com degradê, cards,
+      campos e botões) e **segue o tema**: com o pop-up no escuro (lâmpada
+      apagada), ele abre escuro; trocar a lâmpada com o cartão aberto muda o
+      cartão na hora. Sem escolha salva, segue o tema do sistema.
+- [ ] No cartão, o **botão Aplicar** fica em destaque na primeira linha e
+      “Vou preencher à mão”/“Pular esta vaga” dividem a segunda linha.
 - [ ] **Aplicar com campo vazio**: não envia nem fecha; o campo fica com borda
       vermelha e **“Campo obrigatório.”**, e o aviso **“Preencha os campos
       obrigatórios antes de continuar.”** aparece no topo. Preencher tudo (e

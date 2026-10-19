@@ -51,6 +51,41 @@
     document.getElementById('pular').textContent = t('Pular esta vaga');
   }
 
+  /* ---- Tema: o mesmo do pop-up principal -------------------------------- */
+
+  /** O sistema está em modo escuro? (só vale quando não há escolha salva) */
+  function sistemaEscuro() {
+    try {
+      return Boolean(
+        window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+      );
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Aplica o tema no `<html>`: o ajuda.html tem os MESMOS tokens e o bloco
+   * `html[data-theme="dark"]` do pop-up principal. `null`/desconhecido segue o
+   * sistema, como a lâmpada faz quando nunca foi escolhida.
+   */
+  function aplicarTema(valor) {
+    const escuro = valor === 'dark' || (valor !== 'light' && sistemaEscuro());
+    document.documentElement.setAttribute('data-theme', escuro ? 'dark' : 'light');
+  }
+
+  /** A lâmpada do pop-up principal pode mudar com o cartão aberto. */
+  function observarTema() {
+    try {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local' || !changes[SHARED.STORAGE.theme]) return;
+        aplicarTema(changes[SHARED.STORAGE.theme].newValue);
+      });
+    } catch (error) {
+      console.info('[PegaVaga] cartão sem observador de tema:', error);
+    }
+  }
+
   /** Desenha um controle por campo travado; devolve `[{ rotulo, el, tipo }]`. */
   function desenharCampos() {
     const caixa = document.getElementById('campos');
@@ -344,10 +379,17 @@
   }
 
   async function iniciar() {
-    // Idioma: a mesma configuração do pop-up (o cartão é texto de interface).
-    // Idioma: a mesma configuração do pop-up — mas com prazo. Um storage lento
-    // não pode deixar o cartão sem desenhar (e sem os botões ligados).
-    const data = await comPrazo(chrome.storage.local.get(SHARED.STORAGE.settings), 2000, null);
+    // Idioma e tema vêm da mesma configuração do pop-up. O tema é lido junto e
+    // com prazo: storage lento não pode deixar o cartão no tema errado nem sem
+    // desenhar.
+    const data = await comPrazo(
+      chrome.storage.local.get([SHARED.STORAGE.settings, SHARED.STORAGE.theme]),
+      2000,
+      null
+    );
+
+    aplicarTema(data && data[SHARED.STORAGE.theme]);
+    observarTema();
 
     try {
       SHARED.setLocale(SHARED.parseSettings(data && data[SHARED.STORAGE.settings]).locale);

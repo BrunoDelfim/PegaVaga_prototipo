@@ -1236,6 +1236,20 @@ eq(
   'Fill in the required fields before continuing.'
 );
 eq('marcador de obrigatorio em ingles', S.t('Obrigatório', null, 'en'), 'Required');
+// O cartão deixou de ter CSS próprio: usa os tokens e o tema do pop-up.
+ok(
+  'cartao segue o tema do popup principal',
+  /SHARED\.STORAGE\.theme/.test(ajudaJs) &&
+    /setAttribute\('data-theme'/.test(ajudaJs) &&
+    /prefers-color-scheme: dark/.test(ajudaJs)
+);
+ok(
+  'cartao usa os tokens e o tema escuro do popup',
+  /--brand:/.test(ajudaHtml) &&
+    /--surface:/.test(ajudaHtml) &&
+    /--head-from:/.test(ajudaHtml) &&
+    /html\[data-theme="dark"\]/.test(ajudaHtml)
+);
 ok('content aplica a resposta no campo certo', /async function aplicarRespostaNosCampos/.test(contentJs) && /SHARED\.escolherRotulo/.test(contentJs));
 ok('content guarda as respostas para a proxima vaga', /async function salvarRespostas/.test(contentJs));
 ok(
@@ -1271,7 +1285,7 @@ ok(
 );
 ok('posicao lembrada so vale no monitor atual', /SHARED\.STORAGE\.pos/.test(contentJs) && /guardado\.left >= esquerda - 8/.test(contentJs));
 // 4) storage lento não deixa o cartão sem botões;
-ok('janelinha le o idioma com prazo', /comPrazo\(chrome\.storage\.local\.get/.test(ajudaJs));
+ok('janelinha le o idioma com prazo', /comPrazo\(\s*chrome\.storage\.local\.get/.test(ajudaJs));
 // 5) o log do pedido diz qual VERSÃO está rodando (build velho era invisível);
 ok('log do pedido traz a versao', /'\[PegaVaga\] v' \+ versao\(\)/.test(contentJs) && /getManifest\(\)\.version/.test(contentJs));
 // 6) erro ao montar o cartão aparece na tela (não some calado);
