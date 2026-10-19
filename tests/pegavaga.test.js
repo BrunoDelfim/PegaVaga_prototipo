@@ -73,6 +73,19 @@ eq('todos os IDs do popup.js existem no HTML', ids.filter((id) => !popupHtml.inc
 console.log('   ' + ids.length + ' IDs verificados');
 ok('popup carrega shared.js antes de popup.js', popupHtml.indexOf('shared.js') < popupHtml.indexOf('popup.js'));
 
+// Os dois gráficos ficam sempre visíveis: sem dados, mostram a linha de base.
+ok(
+  'graficos aparecem mesmo sem dados',
+  !/id="spark-card" hidden/.test(popupHtml) &&
+    /els\.sparkCard\.hidden = false/.test(popupJs) &&
+    /Nenhuma candidatura nas últimas 24 h\./.test(popupJs) &&
+    /els\.termsBody\.hidden = false/.test(popupJs) &&
+    /els\.termsEmpty\.hidden = !vazio/.test(popupJs) &&
+    /els\.termsHint\.hidden = vazio/.test(popupJs) &&
+    /class="base/.test(popupJs) &&
+    /return base\(i\) \+ bar\(count/.test(popupJs)
+);
+
 section('3. Codigos de status');
 const codes = [...new Set([...read('content.js').matchAll(/status:\s*'([a-z_]+)'/g)].map((m) => m[1]))];
 const known = new Set(Object.keys(S.APPLY_OUTCOMES).concat([S.APPLY_PENDING]));
@@ -435,6 +448,18 @@ const paradaRun = S.describeRunEnd({ reason: 'bloqueio', guardReason: 'Aviso de 
 eq('titulo da parada por protecao', paradaRun.title, 'PegaVaga parou para proteger a sua conta');
 ok('parada e urgente e traz o motivo', paradaRun.urgent === true && paradaRun.message.includes('Aviso de limite de uso'));
 ok('parada sem motivo tambem funciona', S.describeRunEnd({ reason: 'bloqueio' }).message.includes('limite de uso'));
+const paradaComHora = S.describeRunEnd({
+  reason: 'bloqueio',
+  guardReason: 'Aviso de limite de uso na página do LinkedIn',
+  resumeAt: new Date(2026, 0, 1, 1, 19, 0).getTime(),
+});
+ok('parada informa a hora de retomada', /retoma às 01:19/.test(paradaComHora.message));
+ok(
+  'parada por protecao avisa mesmo com a aba em foco',
+  /const bloqueio = reason === 'bloqueio'/.test(contentJs) &&
+    /if \(!bloqueio\)/.test(contentJs) &&
+    /resumeAt:/.test(contentJs)
+);
 ok('texto tolera dados vazios', S.describeRunEnd({}).message === '0 vagas capturadas · 0 candidaturas enviadas.' && S.describeRunEnd(null).title.length > 0);
 
 ok('content avisa o fim da fila antes de limpar', /notifyRunEnded\('fila'\);[\s\S]{0,90}clearRun\(\)/.test(contentJs));
@@ -551,9 +576,22 @@ ok('env de exemplo documentado e o real fora do git', read('env.example.js').inc
 ok('empacotador inclui o env.js', packSh.includes("zipfile") && packSh.includes('env.js'));
 
 section('18d. Pop-up fecha ao perder o foco');
-ok('popup fecha no blur', /window\.addEventListener\('blur'[\s\S]{0,140}window\.close\(\)/.test(popupJs));
+ok(
+  'popup fecha no blur so depois de conferir o foco',
+  /window\.addEventListener\('blur'[\s\S]{0,1600}document\.hasFocus\(\)[\s\S]{0,80}window\.close\(\)/.test(popupJs)
+);
+ok(
+  'blur nao fecha antes do primeiro foco',
+  /focoRecebido/.test(popupJs) && /if \(!focoRecebido\) return;/.test(popupJs) && /setTimeout\(/.test(popupJs)
+);
 ok('segurar o foco so no seletor de arquivo', /segurarFoco = true;[\s\S]{0,90}inputRestore\.click\(\)/.test(popupJs));
 ok('foco de volta libera o fechamento', /window\.addEventListener\('focus'[\s\S]{0,90}segurarFoco = false/.test(popupJs));
+// Iniciar/Parar não podem fechar o pop-up à força: ele só sai no blur.
+ok(
+  'parar mantem o popup aberto ate perder o foco',
+  !/setTimeout\(\(\) => window\.close\(\), 250\)/.test(popupJs) &&
+    /Não fechamos este pop-up à força/.test(popupJs)
+);
 
 section('19. Idioma da interface (pt/en)');
 const marcadoresDe = (s) => [...String(s).matchAll(/\{([a-z0-9_]+)\}/gi)].map((m) => m[1]).sort().join(',');
@@ -1121,6 +1159,13 @@ eq('escolherRotulo devolve -1 sem alvo', S.escolherRotulo(['Sim'], ''), -1);
 eq('escolherRotulo devolve -1 sem lista', S.escolherRotulo([], 'sim'), -1);
 eq('escolherRotulo devolve -1 quando nada casa', S.escolherRotulo(['Talvez'], 'sim'), -1);
 
+// B2: casar a pergunta do relatório com o rótulo lido do formulário sem exigir
+// texto idêntico (o LinkedIn muda pontuação, acento e cola o "Obrigatório").
+eq('rotuloCombina casa texto normalizado', S.rotuloCombina('Anos de experiência', 'anos de experiencia'), true);
+eq('rotuloCombina aceita um dentro do outro', S.rotuloCombina('Você aceita trabalhar presencial?', 'trabalhar presencial'), true);
+eq('rotuloCombina recusa perguntas diferentes', S.rotuloCombina('Cidade', 'Telefone'), false);
+eq('rotuloCombina recusa vazio', S.rotuloCombina('', 'sim'), false);
+
 // O `URLSearchParams` já decodifica: um `decodeURIComponent` a mais quebrava
 // respostas com "%" ("Até 100%") — este teste é a trava contra a volta do bug.
 const contextoJanelinha = S.parseAjudaDados(
@@ -1140,6 +1185,7 @@ eq('parseAjudaDados tolera json invalido', S.parseAjudaDados('?dados=nada'), {})
 eq('parseAjudaDados tolera texto solto', S.parseAjudaDados('?dados=' + encodeURIComponent('"texto"')), {});
 
 eq('medidas da janelinha', [S.JANELINHA.largura, S.JANELINHA.altura], [372, 470]);
+eq('teto da janelinha e o tamanho de criacao', S.JANELINHA.alturaMax, S.JANELINHA.altura);
 // `chrome.windows` (usado na janelinha de ajuda) NÃO pede permissão: criar, mover
 // e fechar janelas é livre; a permissão `windows` só serviria para ler a URL/título
 // das abas — e permissão a mais pesa na revisão da loja.
@@ -1157,11 +1203,206 @@ ok('fecha a janela quando a aba some', /lerAjudaId[\s\S]{0,160}windows\.remove/.
 ok('content pede a ajuda na janelinha', /async function pedirAjuda/.test(contentJs) && /AJUDA_PEDIDO/.test(contentJs));
 ok('content espera a decisao com prazo e Parar', /function esperarDecisao[\s\S]{0,900}state\.abort/.test(contentJs));
 ok('content descreve os campos com as opcoes originais', /function descreverCamposAjuda/.test(contentJs) && /function opcoesDoCampo/.test(contentJs));
+// B2: select, rádio e checkbox — nativos e custom (role=radiogroup/combobox).
+ok(
+  'content lista os campos pendentes (radio/checkbox/custom)',
+  /function camposPendentes/.test(contentJs) &&
+    /role="radiogroup"/.test(contentJs) &&
+    /role="option"/.test(contentJs)
+);
+ok(
+  'content descreve radio e checkbox para o cartao',
+  /function descreverCampoParaAjuda/.test(contentJs) &&
+    /tipo: 'radio'/.test(contentJs) &&
+    /tipo: 'checkbox'/.test(contentJs) &&
+    /function opcoesDoSelect/.test(contentJs)
+);
+ok(
+  'content aplica resposta em radio/checkbox/combobox',
+  /function aplicarEmRadio/.test(contentJs) &&
+    /function aplicarEmCheckbox/.test(contentJs) &&
+    /async function aplicarEmCombo/.test(contentJs)
+);
+ok(
+  'content abre o combobox para ler as opcoes',
+  /async function opcoesDoCampo/.test(contentJs) && /opcoesDoCombo\(modal, el\)/.test(contentJs)
+);
+ok(
+  'filtro de rotulo nao descarta o campo pendente',
+  /casados\.length \? casados : descritos/.test(contentJs)
+);
+ok(
+  'content le os campos antes de abrir o cartao',
+  /await descreverCamposAjuda\(modal, labels\)/.test(contentJs)
+);
+ok(
+  'cartao desenha radio e checkbox',
+  /el\.type = 'radio'/.test(ajudaJs) && /el\.type = 'checkbox'/.test(ajudaJs)
+);
+ok(
+  'cartao le a resposta de radio e checkbox',
+  /controle\.tipo === 'radio'/.test(ajudaJs) && /controle\.tipo === 'checkbox'/.test(ajudaJs)
+);
+// Todos os campos do cartão são obrigatórios: "Aplicar e continuar" valida antes.
+ok(
+  'cartao valida os campos antes de aplicar',
+  /function validarCampos/.test(ajudaJs) && /if \(!validarCampos\(controles\)\) return/.test(ajudaJs)
+);
+ok(
+  'campo invalido fica marcado e com mensagem',
+  /function marcarInvalido/.test(ajudaJs) &&
+    /classList\.toggle\('invalido'/.test(ajudaJs) &&
+    /aria-invalid/.test(ajudaJs) &&
+    /Campo obrigatório\./.test(ajudaJs)
+);
+ok(
+  'cartao avisa que falta preencher',
+  /Preencha os campos obrigatórios antes de continuar\./.test(ajudaJs) &&
+    /id="aviso"/.test(ajudaHtml) &&
+    /role="alert"/.test(ajudaHtml)
+);
+eq('aviso de obrigatorio em ingles', S.t('Campo obrigatório.', null, 'en'), 'Required field.');
+eq(
+  'resumo de obrigatorios em ingles',
+  S.t('Preencha os campos obrigatórios antes de continuar.', null, 'en'),
+  'Fill in the required fields before continuing.'
+);
+eq('marcador de obrigatorio em ingles', S.t('Obrigatório', null, 'en'), 'Required');
+// O cartão deixou de ter CSS próprio: usa os tokens e o tema do pop-up.
+ok(
+  'cartao segue o tema do popup principal',
+  /SHARED\.STORAGE\.theme/.test(ajudaJs) &&
+    /setAttribute\('data-theme'/.test(ajudaJs) &&
+    /prefers-color-scheme: dark/.test(ajudaJs)
+);
+ok(
+  'cartao usa os tokens e o tema escuro do popup',
+  /--brand:/.test(ajudaHtml) &&
+    /--surface:/.test(ajudaHtml) &&
+    /--head-from:/.test(ajudaHtml) &&
+    /html\[data-theme="dark"\]/.test(ajudaHtml) &&
+    /html \{ height: 100%;/.test(ajudaHtml)
+);
+// B1: o `windows.create` pode ignorar left/top; o cartão reaplica depois do render.
+ok(
+  'cartao reaplica a posicao depois do render',
+  /dados\.posicao/.test(ajudaJs) &&
+    /chrome\.windows\.update\(janela\.id/.test(ajudaJs) &&
+    /window\.moveTo/.test(ajudaJs) &&
+    /focused: true/.test(ajudaJs)
+);
+ok(
+  'cartao confere se o WM aplicou a posicao',
+  /state: 'normal'/.test(ajudaJs) &&
+    /chrome\.windows\.getCurrent\(\)/.test(ajudaJs) &&
+    /Math\.abs\(realLeft/.test(ajudaJs) &&
+    /gerenciador de janelas ignorou/.test(ajudaJs)
+);
+ok(
+  'background manda left/top no windows.create',
+  /janela\.left = posicao\.left/.test(bgJs) && /janela\.top = posicao\.top/.test(bgJs)
+);
+ok(
+  'posicao do cartao nunca volta nula',
+  /Nunca devolver `null`/.test(contentJs) &&
+    /Math\.max\(0, Math\.round\(\(tela\.availWidth/.test(contentJs)
+);
+ok(
+  'posicao salva centralizada e ignorada',
+  /const centrado/.test(contentJs) && /posição do cartão/.test(contentJs)
+);
+ok(
+  'so grava a posicao depois de arrastar de verdade',
+  /inicioX/.test(ajudaJs) && /window\.screenX - inicioX/.test(ajudaJs)
+);
+ok(
+  'typeahead usa a notificacao (nao abre o cartao)',
+  /function ehTypeahead/.test(contentJs) &&
+    /tipo: 'typeahead'/.test(contentJs) &&
+    /const temTypeahead/.test(contentJs) &&
+    /usando a notificação em vez do cartão/.test(contentJs) &&
+    /motivo: 'typeahead'/.test(contentJs) &&
+    /dados\.motivo === 'typeahead'/.test(ajudaJs) &&
+    /aplicar\.hidden = true/.test(ajudaJs)
+);
+ok(
+  'ajuda retoma quando o usuario para de mexer',
+  /helpIdleMs: \d+/.test(contentJs) &&
+    /const inicio = Date\.now\(\)/.test(contentJs) &&
+    /state\.lastUserActivity >= inicio/.test(contentJs) &&
+    /usuário parou de mexer/.test(contentJs) &&
+    /retomando o formulário depois da ajuda/.test(contentJs)
+);
+// A varredura só pode ignorar quem já foi candidatado; o resto volta a abrir.
+const needsWorkBody = contentJs.slice(
+  contentJs.indexOf('function needsWork'),
+  contentJs.indexOf('const STOP_REASONS')
+);
+ok(
+  'varredura so ignora vaga ja candidatada',
+  needsWorkBody.length > 0 &&
+    /job\.appliedAt/.test(needsWorkBody) &&
+    /ja_candidatada/.test(needsWorkBody) &&
+    !/applyAttempts/.test(needsWorkBody) &&
+    !/applyStatus === 'externa'/.test(needsWorkBody)
+);
+ok(
+  'erro numa vaga nao para a varredura',
+  /try \{\s*await processCard\(card, id, settings\);\s*\} catch \(error\)[\s\S]{0,500}recordApplyResult\(id, \{[\s\S]{0,160}status: 'incompleta'/.test(
+    contentJs
+  )
+);
+// O unico pulo permitido e "ja candidatada"; a classificacao do botao nao pode
+// descartar a vaga antes de tentar abrir.
+const skipBody = contentJs.slice(
+  contentJs.indexOf('async function skipIfAlreadyApplied'),
+  contentJs.indexOf('async function processCard')
+);
+ok(
+  'so pula vaga ja candidatada (sem porteira de tipo)',
+  skipBody.length > 0 &&
+    /looksAlreadyApplied\(\)/.test(skipBody) &&
+    !/resolveApplyKind/.test(skipBody) &&
+    !/APPLY_KINDS/.test(skipBody) &&
+    /skipIfAlreadyApplied\(id\)/.test(contentJs)
+);
+// Na duvida (desconhecida) o fluxo abre a vaga em vez de desistir sem clique.
+const flowStart = contentJs.indexOf('async function runApplyFlow');
+const flowBody = contentJs.slice(flowStart, contentJs.indexOf('await humanPause(CONFIG.applyPreClickMs)'));
+ok(
+  'botao desconhecido tenta abrir o formulario',
+  flowBody.length > 0 &&
+    /kind === SHARED\.APPLY_KINDS\.external/.test(flowBody) &&
+    !/kind !== SHARED\.APPLY_KINDS\.easy/.test(flowBody)
+);
+// Altura dinâmica com teto: encolhe/cresce com o conteúdo e rola no limite.
+ok(
+  'cartao ajusta a altura ao conteudo com teto',
+  /async function ajustarJanela/.test(ajudaJs) &&
+    /JANELINHA\.alturaMax/.test(ajudaJs) &&
+    /getBoundingClientRect/.test(ajudaJs) &&
+    /window\.resizeTo/.test(ajudaJs) &&
+    /height: altura/.test(ajudaJs)
+);
+// "Parar" precisa recolher o que vive fora da aba (cartão e notificações),
+// mas NÃO pode fechar o pop-up à força: ele só sai no blur.
+ok(
+  'parar tudo fecha cartoes e notificacoes',
+  /MSG\.STOP_ALL/.test(popupJs) &&
+    /function pararTudo/.test(backgroundJs) &&
+    /fecharTodasAsAjudas/.test(backgroundJs) &&
+    /let parando = false/.test(backgroundJs) &&
+    /if \(parando\) return false/.test(backgroundJs) &&
+    /async function onStopClick[\s\S]{0,3000}MSG\.STOP_ALL/.test(popupJs) &&
+    !/setTimeout\(\(\) => window\.close\(\)/.test(popupJs)
+);
 ok('content aplica a resposta no campo certo', /async function aplicarRespostaNosCampos/.test(contentJs) && /SHARED\.escolherRotulo/.test(contentJs));
 ok('content guarda as respostas para a proxima vaga', /async function salvarRespostas/.test(contentJs));
 ok(
   'ajuda tenta a janelinha antes da notificacao',
-  contentJs.indexOf('await pedirAjuda(') < contentJs.indexOf('notifyHelp(labels, job.title', contentJs.indexOf('async function askForHelp'))
+  contentJs.indexOf("motivo: opts && opts.step ? 'clique' : 'campo'") >= 0 &&
+    contentJs.indexOf("motivo: opts && opts.step ? 'clique' : 'campo'") <
+      contentJs.indexOf('// O service worker mostra a notificação e, no clique, traz esta aba à frente.')
 );
 ok('decisao "pular" devolve skip', /decisao\.acao === 'pular'[\s\S]{0,20}return 'skip'/.test(contentJs));
 ok(
@@ -1192,7 +1433,7 @@ ok(
 );
 ok('posicao lembrada so vale no monitor atual', /SHARED\.STORAGE\.pos/.test(contentJs) && /guardado\.left >= esquerda - 8/.test(contentJs));
 // 4) storage lento não deixa o cartão sem botões;
-ok('janelinha le o idioma com prazo', /comPrazo\(chrome\.storage\.local\.get/.test(ajudaJs));
+ok('janelinha le o idioma com prazo', /comPrazo\(\s*chrome\.storage\.local\.get/.test(ajudaJs));
 // 5) o log do pedido diz qual VERSÃO está rodando (build velho era invisível);
 ok('log do pedido traz a versao', /'\[PegaVaga\] v' \+ versao\(\)/.test(contentJs) && /getManifest\(\)\.version/.test(contentJs));
 // 6) erro ao montar o cartão aparece na tela (não some calado);

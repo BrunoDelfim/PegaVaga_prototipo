@@ -43,6 +43,9 @@ fim — e não siga adiante antes de entender a falha.
       terminar).
 - [ ] **Parar com outra aba ativa** também funciona: mude de aba, clique em
       **Parar** e volte para a do LinkedIn — ela para sem continuar varrendo.
+- [ ] **Iniciar/Parar não fecham o pop-up à força**: depois do clique, o painel
+      continua aberto mostrando o estado; ele só fecha ao clicar fora (perder o
+      foco) — inclusive quando o Chrome abre uma aba ativa.
 - [ ] Se estiver em **English**, confira que **nada** do painel ficou em português
       (seção T).
 
@@ -69,6 +72,9 @@ fim — e não siga adiante antes de entender a falha.
       pular, exportar, limpar) e some sozinho — verde/ok, âmbar/aviso, vermelho/erro.
 - [ ] **Estado vazio**: com 0 vagas aparece “Ainda não capturei nenhuma vaga…”;
       some assim que entra a primeira.
+- [ ] **Primeiro clique** nos botões (Iniciar/Parar/Pular/Exportar/Limpar):
+      funciona de primeira; o pop-up **não fecha** antes de a ação rodar. Ele só
+      fecha depois, quando a ação abre/foca outra janela ou quando você clica fora.
 - [ ] **Fecha ao perder o foco**: com o pop-up aberto, clique fora dele (na página,
       na barra do Chrome, em outro programa) → ele **fecha**.
       *Obs.: com o **Inspecionar** (DevTools) aberto no pop-up, o Chrome costuma
@@ -91,7 +97,12 @@ fim — e não siga adiante antes de entender a falha.
       destacadas); vaga sem termo identificado entra como `sem termo`.
 - [ ] **24 h**: o card “Candidaturas nas últimas 24 h” traz uma barra por hora, com
       as de **ontem mais claras** que as de hoje; embaixo, o total e o **pico de uma
-      hora**. Sem candidatura nas últimas 24 h, o card **não aparece**.
+      hora**. Sem candidatura nas últimas 24 h, o card **continua visível**, com a
+      linha de base e o texto “Nenhuma candidatura nas últimas 24 h.”.
+- [ ] **Vagas por termo sem dados**: o card também **continua visível**; o
+      mini-gráfico mostra a linha de base (24 barrinhas de 2 px), com
+      “Sem vagas por termo ainda” e o aviso de vazio abaixo. O mesmo vale para um
+      termo sem atividade nas últimas 24 h.
 - [ ] Com o popup **aberto**, os gráficos acompanham a varredura (sem fechar/abrir).
 ### C. Avisos do app
 - [ ] **Risco/beta** (fim do card **Como funciona**): caixa âmbar com “Use por sua
@@ -152,8 +163,15 @@ fim — e não siga adiante antes de entender a falha.
 - [ ] Com **“Responder sozinho perguntas obrigatórias”** ligado, as perguntas
       Sim/Não, listas e números são respondidas (Sim/1) e a candidatura é
       **enviada**. Desligado (padrão), pergunta personalizada cai no pedido de ajuda.
-- [ ] Vaga **externa** (site da empresa): **não clica**, registra
-      `Externa (site da empresa)` com o motivo.
+- [ ] Vaga **externa** (site da empresa): **não clica** (o link levaria a aba
+      embora), registra `Externa (site da empresa)` com o motivo e continua.
+- [ ] Vaga cujo botão **não foi reconhecido** (`desconhecida`): na dúvida o
+      botão **é clicado** e o formulário tenta abrir; se não abrir, fica
+      `Formulário não abriu` no relatório — a vaga **não é pulada** antes disso.
+- [ ] Vaga que ficou `travada`/`incompleta` (erro no formulário): na **próxima
+      passada** ela é **aberta de novo**; só `enviada`/`já candidatada` não voltam.
+- [ ] Um erro numa vaga **não interrompe** a varredura: a vaga fica registrada e
+      as seguintes continuam.
 - [ ] Popups pós-candidatura (avaliação/pesquisa/salvar vaga) são **fechados**.
 
 ### H. Já candidatada antes
@@ -257,8 +275,10 @@ fim — e não siga adiante antes de entender a falha.
 - [ ] Com a opção **desligada**, nenhuma notificação de fim aparece.
 - [ ] Em **modo simulação**, o texto diz “formulários preenchidos sem enviar”.
 - [ ] Se o LinkedIn pedir verificação/limite (guard), aparece **“PegaVaga parou
-      para proteger a sua conta”** e ela **fica na tela** até você vê-la (as
-      outras somem sozinhas).
+      para proteger a sua conta”** com o motivo e a **hora de retomada**
+      (“retoma às HH:MM”), e ela **fica na tela** até você vê-la (as outras somem
+      sozinhas). Esse aviso aparece **mesmo com a página em foco** e não é
+      duplicado quando o limite é detectado duas vezes na mesma vaga.
 
 ### S. Badge de candidaturas do dia
 - [ ] Depois de uma candidatura (num dia ainda zerado), o **badge do ícone** mostra
@@ -334,7 +354,55 @@ personalizada** (resposta não salva) e deixe a automação chegar ao formulári
       desktop: **só barra de título e borda** — sem aba, sem barra de endereço,
       sem menu.
 - [ ] O cartão mostra a vaga (título — empresa) e **um controle por pergunta**;
-      numa pergunta de lista, as opções são **as mesmas do LinkedIn**.
+      numa pergunta de lista, as opções são **as mesmas do LinkedIn**. Todos os
+      campos aparecem com **asterisco** de obrigatório.
+- [ ] O cartão abre na **posição calculada** (não centralizado), mesmo quando o
+      gerenciador de janelas ignora a posição do `create`. Arrastar para outro
+      canto, fechar e reabrir → abre no mesmo lugar.
+- [ ] No console do cartão, `cartão agora em L T` deve bater com a posição
+      pedida. Se o WM ignorar, aparece o aviso
+      `gerenciador de janelas ignorou a posição pedida` — aí é limitação do
+      sistema, não do cartão.
+- [ ] A **altura acompanha o conteúdo**: com 1 campo, a janela fica baixa; com
+      vários, cresce só até o teto de **470 px** (o tamanho antigo) e o corpo
+      passa a **rolar**. Não há altura mínima fixa.
+- [ ] **Parar** com o cartão aberto (e/ou com a notificação de ajuda na tela):
+      o cartão fecha, a notificação some e a varredura para — mesmo que você
+      esteja em outra aba do Chrome.
+- [ ] O cartão usa o **mesmo visual do pop-up** (cabeçalho com degradê, cards,
+      campos e botões) e **segue o tema**: com o pop-up no escuro (lâmpada
+      apagada), ele abre escuro; trocar a lâmpada com o cartão aberto muda o
+      cartão na hora. Sem escolha salva, segue o tema do sistema.
+- [ ] No cartão, o **botão Aplicar** fica em destaque na primeira linha e
+      “Vou preencher à mão”/“Pular esta vaga” dividem a segunda linha.
+- [ ] Campo de **sugestão/localização** (`input` editável com
+      `role="combobox"`/`aria-autocomplete`, ex.: “Location (city)”): o cartão
+      **não abre**; aparece a **notificação** com “Preencher manualmente” e
+      “Pular vaga”. Escolher a sugestão na página reabilita o botão e a varredura
+      retoma. Se a notificação não aparecer (permissão/Focus Assist), deve abrir o
+      cartão em modo **só manual/pular** (sem campo), nunca pular em silêncio.
+- [ ] **Retomada depois da ajuda**: preencha a sugestão e pare de mexer. Em ~6 s
+      o console mostra `retomando o formulário depois da ajuda…` e
+      `clicando em Avançar…`; funciona também com **“Ceder a vez” desligado**.
+- [ ] **Aplicar com campo vazio**: não envia nem fecha; o campo fica com borda
+      vermelha e **“Campo obrigatório.”**, e o aviso **“Preencha os campos
+      obrigatórios antes de continuar.”** aparece no topo. Preencher tudo (e
+      marcar o checkbox) libera o envio.
+- [ ] Pergunta de **lista nativa** (`<select>`): aparece um **select** com as
+      opções originais (não um campo de texto).
+- [ ] Pergunta de **lista custom** (`role="combobox"`/`aria-haspopup="listbox"`):
+      o cartão também traz as opções (a extensão abre o dropdown para ler e fecha
+      em seguida).
+- [ ] Pergunta de **rádio** nativa ou custom (`role="radiogroup"`/`role="radio"`):
+      aparecem **botões de rádio** com as opções, e a escolha marca a opção certa
+      no LinkedIn.
+- [ ] **Checkbox obrigatório** desmarcado: o cartão mostra a caixa; marcar e
+      aplicar faz o formulário avançar.
+- [ ] Se as opções não puderem ser lidas, o cartão mostra um campo de texto com
+      **“Digite a opção como aparece no LinkedIn”**; digitar o texto exato da
+      opção ainda aplica no campo certo.
+- [ ] No console da página, a aplicação registra
+      `[PegaVaga] cartão: resposta aplicada em <pergunta>`.
 - [ ] **Aplicar e continuar**: a resposta entra no campo, o formulário avança e a
       varredura segue sozinha (a notificação de ajuda **não** aparece).
 - [ ] A resposta fica **salva**: numa vaga seguinte com a mesma pergunta, a

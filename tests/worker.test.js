@@ -25,6 +25,7 @@ const criadas = [];
 const enviados = [];
 const acoes = [];
 const removidas = [];
+const notificacoesLimpas = [];
 let badge = '';
 let passaram = 0;
 const falhas = [];
@@ -89,7 +90,7 @@ const chromeFalso = {
       criadas.push(opcoes);
       return Promise.resolve({ id: 55 });
     },
-    get: (id) => Promise.resolve({ id, left: 100, top: 200, width: 372, height: 470 }),
+    get: (id) => Promise.resolve({ id, left: 100, top: 200, width: 372, height: 470, type: 'popup' }),
     update: (id, opcoes) => {
       acoes.push(['windows.update', id, opcoes]);
       return Promise.resolve({ id });
@@ -119,6 +120,7 @@ const chromeFalso = {
       return Promise.resolve(id);
     },
     clear: (id, cb) => {
+      notificacoesLimpas.push(id);
       if (cb) cb(true);
       return Promise.resolve(true);
     },
@@ -214,6 +216,11 @@ const espera = (ms) => new Promise((r) => setTimeout(r, ms));
     criadas[0] && criadas[0].url
   );
   confere('largura da janelinha', criadas[0] && criadas[0].width === 372, criadas[0] && criadas[0].width);
+  confere(
+    'posicao vai no windows.create',
+    Boolean(criadas[0] && criadas[0].left === 100 && criadas[0].top === 200),
+    criadas[0]
+  );
 
   const contexto = JSON.parse(decodeURIComponent(String(criadas[0].url).split('dados=')[1]));
   confere('contexto traz o avisoId', contexto.avisoId === 'pegavaga-ajuda:9:p1', contexto.avisoId);
@@ -221,6 +228,12 @@ const espera = (ms) => new Promise((r) => setTimeout(r, ms));
     'contexto traz o campo',
     contexto.campos && contexto.campos[0] && contexto.campos[0].rotulo === 'Cidade',
     contexto.campos
+  );
+  // B1: a posição viaja na URL para o cartão reaplicar com windows.update.
+  confere(
+    'contexto traz a posicao',
+    Boolean(contexto.posicao && contexto.posicao.left === 100 && contexto.posicao.top === 200),
+    contexto.posicao
   );
 
   // 2) Decisão: volta para a aba 9 e a janela é fechada.
@@ -256,6 +269,23 @@ const espera = (ms) => new Promise((r) => setTimeout(r, ms));
   ouvinteAba(12);
   await espera(50);
   confere('recolheu a janela da aba 12', removidas.length >= 2, removidas);
+
+  // 3b) "Parar" total: fecha o cartão de ajuda e limpa a notificação.
+  const pedido3 = await mandar(
+    { type: 'PEGAVAGA_AJUDA_PEDIDO', pedidoId: 'p3' },
+    { tab: { id: 14 } }
+  );
+  confere('terceiro pedido ok', pedido3 && pedido3.ok === true, pedido3);
+
+  const antesStop = removidas.length;
+  const parada = await mandar({ type: 'PEGAVAGA_STOP_ALL' });
+  confere('parar tudo responde ok', parada && parada.ok === true, parada);
+  confere('parar tudo fecha o cartao', removidas.length > antesStop, removidas);
+  confere(
+    'parar tudo limpa a notificacao de ajuda',
+    notificacoesLimpas.includes('pegavaga-help'),
+    notificacoesLimpas
+  );
 
   // 4) Badge: candidatura nova conta no ícone (o worker não pode ter morrido
   //    antes disso por causa do `undefined.catch` dos alarmes).

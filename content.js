@@ -131,12 +131,14 @@
     applyFlowTimeoutMs: 120000, // tempo máximo dentro do formulário de uma vaga
     applyKindWaitMs: 3000, // tempo máximo esperando o botão revelar o tipo (ícone/rótulo)
     applyKindPollMs: 200, // intervalo de releitura do botão de candidatura
+    applyButtonWaitMs: 4000, // tempo máximo esperando o botão de candidatura renderizar
     resumeTimerCapMs: 1800000, // teto do timer local de retomada (30 min)
 
     /* Ajuda: quando a vaga trava num campo que só o usuário preenche */
     helpWaitMs: 120000, // quanto esperamos a sua ajuda antes de desistir da vaga (2 min)
     helpPollMs: 1000, // rechecagem durante a espera por ajuda
     helpSettleMs: 3000, // silêncio no formulário que marca "você terminou de mexer"
+    helpIdleMs: 6000, // depois que você mexe e para, devolvemos o comando
 
     /* Ritmo humano / furtividade */
     humanRatio: 0.3, // variação padrão aplicada aos intervalos
@@ -792,12 +794,19 @@
    * Só manda quando a opção está ligada (quem conhece a configuração é este
    * lado, então o background não precisa reler nada) e só quando a página **não**
    * está em foco: se você está olhando a tela, a notificação seria redundante.
+   *
+   * Exceção: a parada por limite de uso ("bloqueio") avisa SEMPRE. É uma pausa
+   * que pode durar uma hora, e quem está com o LinkedIn em foco precisa saber
+   * que a automação parou e a que horas ela volta.
    */
   function notifyRunEnded(reason, extra) {
     const cfg = (state.settings && state.settings.apply) || DEFAULT_APPLY;
+    const bloqueio = reason === 'bloqueio';
 
-    if (cfg.notifyOnFinish === false) return;
-    if (typeof document.hasFocus === 'function' && document.hasFocus()) return;
+    if (!bloqueio) {
+      if (cfg.notifyOnFinish === false) return;
+      if (typeof document.hasFocus === 'function' && document.hasFocus()) return;
+    }
 
     const run = state.run || {};
 
@@ -811,6 +820,7 @@
           dropped: state.dropped,
           dryRun: cfg.dryRun === true,
           guardReason: (state.guard && state.guard.reason) || '',
+          resumeAt: (state.guard && state.guard.blockedUntil) || null,
         },
         extra || {}
       )
@@ -1151,6 +1161,10 @@
    * a fila fica pausada (não é apagada): ao fim do descanso ela volta sozinha.
    */
   async function tripGuard(reason) {
+    // A varredura pode detectar o mesmo limite em dois lugares (lista e
+    // formulário). Sem isto, o usuário recebia duas notificações iguais.
+    const jaAvisado = Boolean(state.guard && state.guard.blockedUntil > Date.now());
+
     state.abort = true;
     state.guardStopped = true;
     state.guard = {
@@ -1161,7 +1175,7 @@
 
     await chrome.storage.local.set({ [STORAGE_GUARD_KEY]: state.guard }).catch((error) => noteError('gravar o bloqueio', error));
     // Parada que exige atenção: quem está fora do navegador precisa saber.
-    notifyRunEnded('bloqueio');
+    if (!jaAvisado) notifyRunEnded('bloqueio');
     broadcastProgress();
   }
 
@@ -1703,40 +1717,358 @@
     return Boolean(confirmed);
   }
 
-  /** Rótulo visível de um campo do formulário (para o relatório de motivos). */
-  function fieldLabel(field) {
-    let direct = '';
+  /* ---- Rótulos, grupos de escolha e dropdowns ---------------------------- */
+  // O LinkedIn monta o Easy Apply de três jeitos para a MESMA pergunta: <select>,
+  // <input type=radio> com <label> e div/botão com role="combobox"/"radiogroup".
+  // O cartão precisa dos três: antes só o <select> e o <input> apareciam, e o
+  // rádio/custom chegava como campo de texto (sem opção nenhuma para escolher).
+
+  const PLACEHOLDER_OPCAO_RE = /^(selecione|selecionar|escolha|escolher|select|choose|--|—|-)\b/i;
+  const PLACEHOLDER_TEXTO_RE =
+    /^((selecione|selecionar|escolha|escolher|select|choose)( uma op[çc][ãa]o| op[çc][ãa]o| um valor| an option| option| a value|\.\.\.|…)?|—+|--+|-+|\.{2,}|…)$/i;
+  const OPCOES_DE_GRUPO = 'input[type="radio"], [role="radio"]';
+
+  function atributo(el, nome) {
+    try {
+      return String((el && el.getAttribute && el.getAttribute(nome)) || '');
+    } catch (error) {
+      noteError('ler atributo do campo', error);
+      return '';
+    }
+  }
+
+  function ehRadio(el) {
+    return Boolean(
+      el &&
+        (String(el.type || '').toLowerCase() === 'radio' ||
+          atributo(el, 'role').toLowerCase() === 'radio')
+    );
+  }
+
+  function ehRadiogroup(el) {
+    return Boolean(el) && atributo(el, 'role').toLowerCase() === 'radiogroup';
+  }
+
+  /** Opções de ESCOLHA dentro de um nó (rádio nativo ou role="radio"). */
+  function opcoesDentro(raiz) {
+    if (!raiz) return [];
 
     try {
-      direct = clean(
-        (field.getAttribute && field.getAttribute('aria-label')) ||
-          (field.getAttribute && field.getAttribute('placeholder'))
+      return Array.from(raiz.querySelectorAll(OPCOES_DE_GRUPO)).filter((el) => !el.disabled);
+    } catch (error) {
+      noteError('listar as opções do grupo', error);
+      return [];
+    }
+  }
+
+  /**
+   * Raiz do grupo: sobe até o ancestral que reúne as opções da MESMA pergunta.
+   * Um wrapper por bolinha (o artdeco faz isso) daria "grupo" de uma opção só, e
+   * a pergunta apareceria repetida no cartão.
+   */
+  function raizDoGrupo(el) {
+    if (!el) return null;
+    if (ehRadiogroup(el)) return el;
+
+    try {
+      const explicito = el.closest && el.closest('[role="radiogroup"]');
+      if (explicito && explicito !== el) return explicito;
+
+      let no = el.parentElement;
+      let subiu = 0;
+      while (no && no !== document.body && no !== document.documentElement && subiu < 8) {
+        if (opcoesDentro(no).length >= 2) return no;
+        no = no.parentElement;
+        subiu += 1;
+      }
+
+      if (el.name) {
+        const porNome = radioGroup(document, el);
+        if (porNome.length >= 2) return porNome[0].parentElement || el.parentElement;
+      }
+    } catch (error) {
+      noteError('achar o grupo do campo', error);
+    }
+
+    return el.parentElement || el;
+  }
+
+  /** Todas as opções do grupo (nunca uma só). */
+  function opcoesDoGrupo(el) {
+    if (!el) return [];
+
+    try {
+      if (el.name) {
+        const porNome = radioGroup(document, el);
+        if (porNome.length >= 2) return porNome;
+      }
+
+      const grupo = opcoesDentro(raizDoGrupo(el));
+      return grupo.length ? grupo : [el];
+    } catch (error) {
+      noteError('agrupar as opções do campo', error);
+      return [el];
+    }
+  }
+
+  /** Texto ao lado da bolinha ("Sim"/"Não") — NUNCA a pergunta do grupo. */
+  function rotuloDaOpcao(input) {
+    if (!input) return '';
+
+    const tag = String(input.tagName || '').toLowerCase();
+    const ehInput = tag === 'input';
+
+    try {
+      // O próprio LinkedIn marca a opção neste data-attribute em várias telas.
+      const dataOpcao = clean(
+        atributo(input, 'data-test-text-selectable-option__input') ||
+          atributo(input, 'data-test-selectable-option__input')
+      );
+      if (dataOpcao && dataOpcao.length <= 80) return dataOpcao;
+
+      if (ehInput && input.labels && input.labels.length) {
+        const label = input.labels[0];
+
+        // Um <label> que embrulha o grupo inteiro tem a pergunta + TODAS as
+        // opções: não serve como rótulo desta bolinha.
+        if (opcoesDentro(label).length >= 2) {
+          const irmao = input.nextElementSibling;
+          const textoIrmao = clean((irmao && irmao.textContent) || '');
+          if (textoIrmao && textoIrmao.length <= 80) return textoIrmao;
+        } else {
+          const texto = clean(label.textContent || '');
+          if (texto) return texto.slice(0, 80);
+        }
+      }
+
+      const aria = clean(atributo(input, 'aria-label'));
+      if (aria) return aria.slice(0, 80);
+
+      // Div/botão com role="radio": o texto da opção é o próprio conteúdo.
+      if (!ehInput) {
+        const proprio = clean(input.textContent || '');
+        if (proprio && proprio.length <= 80) return proprio;
+      }
+
+      const bloco = input.parentElement;
+      if (bloco) {
+        const perto = bloco.querySelector('label, span');
+        if (perto && perto !== input) {
+          const texto = clean(perto.textContent || '');
+          if (texto && texto.length <= 80) return texto;
+        }
+      }
+    } catch (error) {
+      noteError('ler o rótulo da opção', error);
+      /* sem rótulo: cai no value */
+    }
+
+    return String(input.value || '').slice(0, 80);
+  }
+
+  /** A opção está marcada? (nativo, aria, data-state ou classe do widget) */
+  function opcaoMarcada(el) {
+    if (!el) return false;
+    if (el.checked === true) return true;
+    if (atributo(el, 'aria-checked') === 'true') return true;
+
+    const estado = atributo(el, 'data-state').toLowerCase();
+    if (estado === 'checked' || estado === 'on' || estado === 'selected') return true;
+
+    try {
+      return Boolean(
+        el.classList &&
+          (el.classList.contains('checked') ||
+            el.classList.contains('selected') ||
+            el.classList.contains('artdeco-radio-button--checked'))
       );
     } catch (error) {
-      noteError('ler o rótulo do campo', error);
-      direct = '';
+      noteError('ler o estado da opção', error);
+      return false;
     }
+  }
 
-    if (direct) return direct.slice(0, 60);
+  /** A PERGUNTA de um grupo de escolha (legend, aria-label ou sobra do bloco). */
+  function rotuloDaPerguntaDoGrupo(el) {
+    if (!el) return '';
 
     try {
-      if (field.labels && field.labels.length) return clean(field.labels[0].textContent).slice(0, 60);
+      const raiz = raizDoGrupo(el);
+      const blocos = [
+        raiz,
+        el.closest && el.closest('.fb-dash-form-element, .jobs-easy-apply-form-element, fieldset'),
+      ].filter(Boolean);
+
+      for (const no of blocos) {
+        const ids = atributo(no, 'aria-labelledby').split(/\s+/).filter(Boolean);
+        for (const id of ids) {
+          const alvo = (no.ownerDocument || document).getElementById(id);
+          const texto = clean((alvo && alvo.textContent) || '');
+          if (texto) return texto.slice(0, 160);
+        }
+
+        const aria = clean(atributo(no, 'aria-label'));
+        if (aria) return aria.slice(0, 160);
+
+        // Do mais específico para o mais genérico: o <legend> pode carregar o
+        // "Obrigatório" escondido junto da pergunta.
+        const rotulos = [
+          '.fb-dash-form-element__label',
+          '.jobs-easy-apply-form-element__label',
+          '.artdeco-text-input--label',
+          'legend',
+        ];
+        for (const seletor of rotulos) {
+          const rotulo = no.querySelector && no.querySelector(seletor);
+          const texto = clean((rotulo && rotulo.textContent) || '');
+          if (texto) return texto.slice(0, 160);
+        }
+      }
+
+      // Sem rótulo marcado: texto do bloco menos os textos das opções.
+      const bloco =
+        raiz ||
+        (el.closest && el.closest('.fb-dash-form-element, .jobs-easy-apply-form-element, fieldset'));
+      if (bloco) {
+        let sobra = String(bloco.textContent || '');
+        for (const opcao of opcoesDoGrupo(el)) {
+          const texto = rotuloDaOpcao(opcao);
+          if (texto) sobra = sobra.split(texto).join(' ');
+        }
+
+        sobra = clean(sobra).replace(/\b(Obrigat[óo]rio|Required)\b/gi, ' ');
+        const pergunta =
+          sobra
+            .split('\n')
+            .map((linha) => clean(linha))
+            .filter(Boolean)[0] || '';
+        if (pergunta) return pergunta.slice(0, 160);
+      }
+    } catch (error) {
+      noteError('ler a pergunta do grupo', error);
+    }
+
+    return '';
+  }
+
+  /** Rótulo próprio de um campo (aria, <label>, bloco ou placeholder). */
+  function rotuloProprio(el) {
+    if (!el) return '';
+
+    const ids = atributo(el, 'aria-labelledby').split(/\s+/).filter(Boolean);
+    for (const id of ids) {
+      const alvo = (el.ownerDocument || document).getElementById(id);
+      const texto = clean((alvo && alvo.textContent) || '');
+      if (texto) return texto;
+    }
+
+    const aria = clean(atributo(el, 'aria-label'));
+    if (aria) return aria;
+
+    try {
+      if (el.labels && el.labels.length) {
+        const label = el.labels[0];
+        let texto = clean(label.textContent || '');
+
+        // Um <label> que EMBRULHA o controle carrega junto o texto dele (as
+        // opções de um <select>, por exemplo): tira essa parte para não devolver
+        // "Pergunta Opção A Opção B" como se fosse a pergunta.
+        if (label.contains && label.contains(el)) {
+          const doControle = clean(el.textContent || '');
+          if (doControle) texto = clean(texto.split(doControle).join(' '));
+        }
+
+        if (texto) return texto;
+      }
     } catch (error) {
       noteError('ler o rótulo do campo', error);
-      /* sem labels: tentamos o container abaixo */
+      /* sem labels: tentamos o bloco */
     }
 
     try {
+      const bloco =
+        el.closest &&
+        el.closest(
+          '.fb-dash-form-element, .jobs-easy-apply-form-element, .artdeco-text-input--container, fieldset'
+        );
+
+      if (bloco) {
+        const rotulos = [
+          '.fb-dash-form-element__label',
+          '.jobs-easy-apply-form-element__label',
+          '.artdeco-text-input--label',
+          'legend',
+        ];
+        for (const seletor of rotulos) {
+          const rotulo = bloco.querySelector(seletor);
+          const texto = clean((rotulo && rotulo.textContent) || '');
+          if (texto) return texto;
+        }
+
+        if (el.id) {
+          const labels = bloco.querySelectorAll('label');
+          for (const label of labels) {
+            if (label.htmlFor && label.htmlFor === el.id) {
+              const texto = clean(label.textContent || '');
+              if (texto) return texto;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      noteError('ler o rótulo do campo', error);
+    }
+
+    const placeholder = clean(atributo(el, 'placeholder'));
+    if (placeholder && !PLACEHOLDER_TEXTO_RE.test(placeholder)) return placeholder;
+
+    try {
+      let irmao = el.previousElementSibling;
+      let voltas = 0;
+      while (irmao && voltas < 2) {
+        const texto = clean(irmao.textContent || '');
+        if (texto && texto.length <= 120 && !PLACEHOLDER_TEXTO_RE.test(texto)) return texto;
+        irmao = irmao.previousElementSibling;
+        voltas += 1;
+      }
+    } catch (error) {
+      noteError('ler o texto antes do campo', error);
+      /* sem irmão: desistimos */
+    }
+
+    return '';
+  }
+
+  /**
+   * Rótulo visível de um campo do formulário — a PERGUNTA. Para rádio/checkbox,
+   * a pergunta vem do GRUPO (o <label> de cada bolinha é a opção).
+   */
+  function fieldLabel(field) {
+    if (!field) return '';
+
+    try {
+      const ehGrupo =
+        ehRadio(field) ||
+        ehRadiogroup(field) ||
+        String(field.type || '').toLowerCase() === 'checkbox' ||
+        atributo(field, 'role').toLowerCase() === 'checkbox';
+
+      if (ehGrupo) {
+        const doGrupo = rotuloDaPerguntaDoGrupo(field);
+        if (doGrupo) return doGrupo.slice(0, 60);
+      }
+
+      const proprio = rotuloProprio(field);
+      if (proprio) return proprio.slice(0, 60);
+
       const container =
         field.closest &&
         field.closest(
           '.fb-dash-form-element, .jobs-easy-apply-form-element, .artdeco-text-input--container, label, fieldset'
         );
-
       if (container) return clean(container.textContent).slice(0, 60);
     } catch (error) {
       noteError('ler o rótulo do campo', error);
-      /* sem closest: desistimos do rótulo */
     }
 
     return '';
@@ -1744,39 +2076,22 @@
 
   /**
    * Rótulos dos campos/perguntas que ficaram pendentes no formulário. É isso que
-   * o relatório mostra quando uma candidatura para em campo obrigatório.
+   * o relatório mostra quando uma candidatura para em campo obrigatório — e é a
+   * lista que o cartão de ajuda usa para casar os campos.
    */
   function describeBlocker(modal) {
     const labels = [];
     const seen = new Set();
 
-    let fields = [];
-
+    let pendentes = [];
     try {
-      fields = Array.from(
-        modal.querySelectorAll('input, select, textarea, fieldset legend, [role="combobox"]')
-      );
+      pendentes = camposPendentes(modal);
     } catch (error) {
       noteError('descrever o que travou', error);
       return labels;
     }
 
-    for (const field of fields) {
-      const tag = String(field.tagName || '').toLowerCase();
-
-      if (tag === 'legend') {
-        const text = clean(field.textContent).slice(0, 60);
-        if (text && !seen.has(text)) {
-          seen.add(text);
-          labels.push(text);
-        }
-        continue;
-      }
-
-      const type = String(field.type || '').toLowerCase();
-      if (type === 'hidden' || type === 'checkbox' || type === 'radio') continue;
-      if (field.value && String(field.value).trim()) continue;
-
+    for (const field of pendentes) {
       const label = fieldLabel(field);
       if (label && !seen.has(label)) {
         seen.add(label);
@@ -1791,82 +2106,466 @@
 
   /* ---- Ajuda: quando a vaga trava num campo que só o usuário preenche ------ */
 
+  /** O <select> está sem resposta? (placeholder com value "0" também conta) */
+  function selectVazio(select) {
+    try {
+      const opcao = select && select.options ? select.options[select.selectedIndex] : null;
+      if (!opcao) return true;
+
+      const value = String(opcao.value == null ? '' : opcao.value).trim();
+      if (value === '' || opcao.disabled) return true;
+
+      const texto = clean(opcao.textContent || '');
+      return !texto || PLACEHOLDER_TEXTO_RE.test(texto) || PLACEHOLDER_OPCAO_RE.test(texto);
+    } catch (error) {
+      noteError('ler o select do formulário', error);
+      return true;
+    }
+  }
+
+  /** Opções de verdade de um <select> (sem placeholder/vazias). */
+  function opcoesDoSelect(select) {
+    try {
+      return Array.from(select.options || [])
+        .filter((opcao) => !opcao.disabled && String(opcao.value) !== '')
+        .map((opcao) => clean(opcao.textContent || ''))
+        .filter((texto) => texto && !PLACEHOLDER_TEXTO_RE.test(texto))
+        .slice(0, 12);
+    } catch (error) {
+      noteError('ler as opções do select', error);
+      return [];
+    }
+  }
+
+  /** É um dropdown custom (combobox/listbox) em vez de <select>? */
+  function ehCombo(el) {
+    if (!el) return false;
+
+    const tag = String(el.tagName || '').toLowerCase();
+    if (tag === 'select' || tag === 'textarea') return false;
+
+    const role = atributo(el, 'role').toLowerCase();
+    const haspopup = atributo(el, 'aria-haspopup').toLowerCase();
+
+    if (role === 'combobox' || haspopup === 'listbox') return true;
+
+    // O artdeco também usa <input readonly> sem ARIA para o dropdown.
+    return Boolean(
+      tag === 'input' &&
+        el.readOnly &&
+        el.closest &&
+        el.closest('.fb-dash-form-element, .jobs-easy-apply-form-element, fieldset')
+    );
+  }
+
   /**
-   * Descreve os campos travados para a janelinha: `{ rotulo, tipo, opcoes }`.
-   * `opcoes` são as opções **originais** do LinkedIn (select/rádio) — é o que a
-   * janelinha mostra e o que a resposta precisa casar na hora de escrever.
+   * É um campo de SUGESTÃO (typeahead)? O "Location (city)" do Easy Apply é um
+   * <input> editável que só valida depois de o usuário digitar e ESCOLHER uma
+   * sugestão da lista. O cartão não replica essa lista (seria pesado e frágil):
+   * nesses casos a ajuda vai pela notificação (preencher à mão ou pular).
    */
-  function descreverCamposAjuda(modal, missing) {
-    const alvo = (Array.isArray(missing) ? missing : []).filter(Boolean).slice(0, 3);
-    const campos = [];
+  function ehTypeahead(el) {
+    if (!el) return false;
+
+    const tag = String(el.tagName || '').toLowerCase();
+    const tipo = String(el.type || '').toLowerCase();
+
+    if (tag !== 'input') return false;
+    if (tipo === 'hidden' || tipo === 'file' || tipo === 'checkbox' || tipo === 'radio') return false;
+    if (el.readOnly) return false; // readonly é dropdown de lista, não sugestão
+
+    // <input list="..."> (datalist nativo) também exige escolher a sugestão.
+    if (el.list) return true;
+
+    const role = atributo(el, 'role').toLowerCase();
+    const auto = atributo(el, 'aria-autocomplete').toLowerCase();
+    const haspopup = atributo(el, 'aria-haspopup').toLowerCase();
+    const combo =
+      role === 'combobox' ||
+      haspopup === 'listbox' ||
+      auto === 'list' ||
+      auto === 'both' ||
+      auto === 'inline';
+
+    // O LinkedIn nem sempre marca o location com ARIA: o placeholder/rótulo é o
+    // sinal que sobra. `normalize` remove acento, então "Localização" vira
+    // "localizacao".
+    const rotulo = fieldLabel(el) || '';
+    const dica = normalize(
+      rotulo +
+        ' ' +
+        atributo(el, 'placeholder') +
+        ' ' +
+        atributo(el, 'aria-label')
+    );
+    const local = /(localiza|localidade|location|city|cidade|pais|country|estado|state|regiao)/.test(
+      dica
+    );
+
+    return combo || local;
+  }
+
+  /** O combobox já mostra uma escolha (e não o placeholder)? */
+  function comboTemValor(el) {
+    if (!el) return false;
+
+    try {
+      const rotulo = fieldLabel(el);
+      const textos = [
+        atributo(el, 'aria-valuetext'),
+        atributo(el, 'data-value'),
+        clean(el.textContent || ''),
+        String(el.value || ''),
+      ]
+        .map((texto) => clean(texto))
+        .filter(Boolean);
+
+      for (const texto of textos) {
+        if (PLACEHOLDER_TEXTO_RE.test(texto)) continue;
+        if (PLACEHOLDER_OPCAO_RE.test(texto)) continue;
+        if (normalize(texto).indexOf('selecione') === 0) continue;
+        if (rotulo && normalize(texto) === normalize(rotulo)) continue; // ecoa a pergunta
+        // Se o texto do gatilho CONTÉM a pergunta, ele é o bloco inteiro (não o
+        // valor escolhido): contar como resposta esconderia o campo do cartão.
+        if (rotulo && normalize(texto).includes(normalize(rotulo))) continue;
+        if (texto.length <= 80) return true;
+      }
+    } catch (error) {
+      noteError('ler o valor do combobox', error);
+    }
+
+    return false;
+  }
+
+  /** Opções de um combobox, onde a lista estiver (aberta, escondida ou no bloco). */
+  function opcoesDoCombo(modal, campo) {
+    const saida = [];
+    const vistos = new Set();
+
+    const anotar = (el) => {
+      const texto = clean(el.textContent || '');
+      if (!texto || texto.length > 120 || PLACEHOLDER_TEXTO_RE.test(texto)) return;
+      if (vistos.has(texto)) return;
+      vistos.add(texto);
+      saida.push({ texto: texto, el: el });
+    };
+
+    try {
+      const raiz = modal && document.contains(modal) ? modal : document;
+      const bloco =
+        (campo.closest &&
+          campo.closest(
+            '.fb-dash-form-element, .jobs-easy-apply-form-element, .artdeco-text-input--container'
+          )) ||
+        campo.parentElement;
+
+      const lerBloco = (base) => {
+        if (!base) return;
+        base
+          .querySelectorAll('[role="listbox"] [role="option"]:not([aria-disabled="true"])')
+          .forEach(anotar);
+        if (saida.length) return;
+        base
+          .querySelectorAll('[role="option"], li[data-value], div[data-value], li[data-test-list-item]')
+          .forEach(anotar);
+      };
+
+      lerBloco(bloco);
+      if (saida.length) return saida;
+
+      if (bloco && bloco.parentElement) {
+        lerBloco(bloco.parentElement);
+        if (saida.length) return saida;
+      }
+
+      // Último recurso: a listbox aberta do modal (só uma pergunta está aberta).
+      raiz
+        .querySelectorAll('[role="listbox"] [role="option"]:not([aria-disabled="true"])')
+        .forEach(anotar);
+      if (!saida.length) raiz.querySelectorAll('[role="option"]').forEach(anotar);
+    } catch (error) {
+      noteError('ler as opções do combobox', error);
+    }
+
+    return saida;
+  }
+
+  /** O campo (ou o bloco dele) pede resposta obrigatória? */
+  function ehObrigatorio(el) {
+    if (!el) return false;
+
+    try {
+      if (el.required === true) return true;
+      if (atributo(el, 'aria-required') === 'true') return true;
+
+      const bloco =
+        el.closest && el.closest('.fb-dash-form-element, .jobs-easy-apply-form-element, fieldset');
+      if (bloco && atributo(bloco, 'aria-required') === 'true') return true;
+
+      const texto = clean((bloco && bloco.textContent) || '');
+      return /\bobrigat[óo]rio\b|\brequired\b/i.test(texto);
+    } catch (error) {
+      noteError('ler a obrigatoriedade do campo', error);
+      return false;
+    }
+  }
+
+  /** A resposta do cartão pode ir para este campo? (pendente = trava a etapa) */
+  function campoPendente(el) {
+    if (!el) return false;
+
+    const tag = String(el.tagName || '').toLowerCase();
+    const tipo = String(el.type || '').toLowerCase();
+    const role = atributo(el, 'role').toLowerCase();
+
+    if (tipo === 'hidden' || tipo === 'file') return false;
+
+    // Grupo de escolha é conferido pelo GRUPO (a opção representante pode estar
+    // desabilitada e ainda assim o grupo estar pendente).
+    if (ehRadio(el)) {
+      const grupo = opcoesDoGrupo(el);
+      return !grupo.some((opcao) => opcaoMarcada(opcao));
+    }
+
+    if (role === 'radiogroup') {
+      const grupo = opcoesDentro(el);
+      return grupo.length > 0 && !grupo.some((opcao) => opcaoMarcada(opcao));
+    }
+
+    if (el.disabled) return false;
+
+    if (tag === 'select') return selectVazio(el);
+
+    if (tipo === 'checkbox' || role === 'checkbox') {
+      return !opcaoMarcada(el) && ehObrigatorio(el);
+    }
+
+    if (ehTypeahead(el)) {
+      // Sugestão com valor inválido (o LinkedIn marca aria-invalid) continua
+      // pendente; com valor escolhido, não trava a etapa.
+      return atributo(el, 'aria-invalid') === 'true' || !comboTemValor(el);
+    }
+
+    if (ehCombo(el)) return !comboTemValor(el);
+
+    if (tag === 'input' || tag === 'textarea') {
+      if (el.readOnly) return false;
+      return !String(el.value || '').trim();
+    }
+
+    return false;
+  }
+
+  /** Campos sem resposta no formulário, sem repetir grupo de rádio nem opção. */
+  function camposPendentes(modal) {
+    const saida = [];
     const vistos = new Set();
 
     let elementos = [];
     try {
       elementos = Array.from(
-        modal.querySelectorAll('input, select, textarea, [role="combobox"]')
+        modal.querySelectorAll(
+          'input, select, textarea, [role="combobox"], [role="radiogroup"], [role="radio"], [role="checkbox"], [aria-haspopup="listbox"]'
+        )
       );
     } catch (error) {
-      noteError('descrever os campos do cartão', error);
-      return campos;
+      noteError('listar os campos do formulário', error);
+      return saida;
     }
 
     for (const el of elementos) {
       const tipo = String(el.type || '').toLowerCase();
-      if (tipo === 'hidden' || tipo === 'checkbox' || tipo === 'file') continue;
-      if (String(el.value || '').trim()) continue;
+      if (tipo === 'hidden' || tipo === 'file') continue;
 
-      const rotulo = fieldLabel(el) || '';
-      if (!rotulo || vistos.has(rotulo)) continue;
+      // Rádio: uma entrada por GRUPO (a primeira opção representa o grupo).
+      const chave = ehRadiogroup(el) ? el : ehRadio(el) ? raizDoGrupo(el) || el : el;
+      if (vistos.has(chave)) continue;
+      vistos.add(chave);
 
-      // Só o que o usuário apontou como travado (quando sabemos quais são).
-      if (alvo.length && !alvo.some((item) => normalize(rotulo).includes(normalize(item)))) continue;
-
-      vistos.add(rotulo);
-
-      const opcoes = opcoesDoCampo(el, modal);
-      campos.push({
-        rotulo: clean(rotulo).slice(0, 90),
-        tipo: tipo === 'number' ? 'numero' : opcoes.length ? 'lista' : 'texto',
-        opcoes: opcoes,
-      });
-
-      if (campos.length >= 3) break;
+      if (campoPendente(el)) saida.push(el);
     }
 
-    // Não casou com o campo: pelo menos deixa o usuário escrever sobre o rótulo.
-    if (!campos.length) {
-      alvo.forEach((item) => campos.push({ rotulo: String(item), tipo: 'texto', opcoes: [] }));
-    }
-
-    return campos;
+    return saida;
   }
 
-  /** Opções de um select ou dos rádios do mesmo grupo (até 12, sem vazios). */
-  function opcoesDoCampo(el, modal) {
+  /**
+   * Descreve um campo para o cartão: `{ rotulo, tipo, opcoes }`.
+   * `tipo`: 'texto' | 'numero' | 'lista' | 'radio' | 'checkbox'.
+   */
+  async function descreverCampoParaAjuda(el, modal) {
     const tag = String(el.tagName || '').toLowerCase();
     const tipo = String(el.type || '').toLowerCase();
+    const role = atributo(el, 'role').toLowerCase();
+    const rotulo = fieldLabel(el) || '';
 
-    try {
-      if (tag === 'select') {
-        return Array.from(el.options || [])
-          .filter((opcao) => !opcao.disabled && String(opcao.value) !== '')
-          .map((opcao) => clean(opcao.textContent))
-          .filter(Boolean)
-          .slice(0, 12);
-      }
+    if (tag === 'select') {
+      return { rotulo: rotulo, tipo: 'lista', opcoes: opcoesDoSelect(el) };
+    }
 
-      if (tipo === 'radio') {
-        return radioGroup(modal, el)
-          .map((radio) => fieldLabel(radio) || String(radio.value || ''))
-          .filter(Boolean)
-          .slice(0, 12);
+    if (ehRadio(el) || role === 'radiogroup') {
+      const grupo = role === 'radiogroup' ? opcoesDentro(el) : opcoesDoGrupo(el);
+      const opcoes = grupo
+        .map((opcao) => clean(rotuloDaOpcao(opcao)))
+        .filter(Boolean)
+        .slice(0, 12);
+
+      return { rotulo: rotulo, tipo: 'radio', opcoes: opcoes };
+    }
+
+    if (tipo === 'checkbox' || role === 'checkbox') {
+      return { rotulo: rotulo, tipo: 'checkbox', opcoes: [] };
+    }
+
+    // Sugestão (location etc.): o cartão não replica a lista do LinkedIn.
+    if (ehTypeahead(el)) {
+      return { rotulo: rotulo, tipo: 'typeahead', opcoes: [] };
+    }
+
+    if (ehCombo(el)) {
+      const opcoes = await opcoesDoCampo(el, modal);
+      return { rotulo: rotulo, tipo: 'lista', opcoes: opcoes };
+    }
+
+    return { rotulo: rotulo, tipo: tipo === 'number' ? 'numero' : 'texto', opcoes: [] };
+  }
+
+  /**
+   * Opções do campo para o cartão. Combobox custom só monta a lista quando abre:
+   * abrimos, lemos, fechamos — sem isso o cartão mostraria um campo sem escolha.
+   */
+  async function opcoesDoCampo(el, modal) {
+    if (!el) return [];
+
+    const tag = String(el.tagName || '').toLowerCase();
+
+    if (tag === 'select') return opcoesDoSelect(el);
+
+    if (ehRadio(el)) {
+      return opcoesDoGrupo(el)
+        .map((opcao) => clean(rotuloDaOpcao(opcao)))
+        .filter(Boolean)
+        .slice(0, 12);
+    }
+
+    if (atributo(el, 'role').toLowerCase() === 'radiogroup') {
+      return opcoesDentro(el)
+        .map((opcao) => clean(rotuloDaOpcao(opcao)))
+        .filter(Boolean)
+        .slice(0, 12);
+    }
+
+    if (ehCombo(el)) {
+      const jaNoDom = opcoesDoCombo(modal, el).map((opcao) => opcao.texto);
+      if (jaNoDom.length) return jaNoDom.slice(0, 12);
+
+      try {
+        humanClick(el);
+
+        const lidas = await waitUntil(
+          () => {
+            const lista = opcoesDoCombo(modal, el).map((opcao) => opcao.texto);
+            return lista.length ? lista : null;
+          },
+          Math.min(CONFIG.popupWaitMs, 2500),
+          CONFIG.popupPollMs
+        );
+
+        // Fecha de novo: o cartão é o foco; o dropdown não pode ficar aberto
+        // atrás da janelinha (e o LinkedIn pode re-renderizar o campo).
+        if (document.contains(el) && opcoesDoCombo(modal, el).length) {
+          try {
+            humanClick(el);
+          } catch (error) {
+            noteError('fechar o combobox depois de ler', error);
+          }
+
+          if (opcoesDoCombo(modal, el).length) {
+            try {
+              (document.activeElement || el).dispatchEvent(
+                new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+              );
+            } catch (error) {
+              noteError('fechar o combobox com Escape', error);
+            }
+          }
+        }
+
+        return (lidas || []).slice(0, 12);
+      } catch (error) {
+        noteError('abrir o combobox para ler as opções', error);
       }
-    } catch (error) {
-      noteError('ler as opções do campo travado', error);
     }
 
     return [];
+  }
+
+  /**
+   * Descreve os campos pendentes para a janelinha: `{ rotulo, tipo, opcoes }`.
+   * `opcoes` são as opções **originais** do LinkedIn (select/rádio/combobox) — é
+   * o que a janelinha mostra e o que a resposta precisa casar na hora de escrever.
+   *
+   * O filtro por `missing` é uma PREFERÊNCIA, não uma porteira: se nenhum rótulo
+   * casar, os campos pendentes de verdade vão mesmo assim. Era esse filtro rígido
+   * que fazia o select/rádio sumir do cartão (e cair num campo de texto que não
+   * conseguia ser escrito de volta).
+   */
+  async function descreverCamposAjuda(modal, missing) {
+    const alvo = (Array.isArray(missing) ? missing : []).filter(Boolean).slice(0, 3);
+    const pendentes = camposPendentes(modal);
+    const descritos = [];
+    const vistos = new Set();
+
+    for (const el of pendentes) {
+      let descricao = null;
+
+      try {
+        descricao = await descreverCampoParaAjuda(el, modal);
+      } catch (error) {
+        noteError('descrever o campo do cartão', error);
+        continue;
+      }
+
+      const rotulo = clean((descricao && descricao.rotulo) || '').slice(0, 90);
+      if (!rotulo || vistos.has(rotulo)) continue;
+
+      vistos.add(rotulo);
+      descritos.push({
+        rotulo: rotulo,
+        tipo: descricao.tipo,
+        opcoes: Array.isArray(descricao.opcoes) ? descricao.opcoes : [],
+      });
+    }
+
+    // Quem o relatório apontou vem primeiro; o resto entra depois (até 3).
+    const casados = [];
+    const restantes = [];
+    for (const descricao of descritos) {
+      const casa =
+        !alvo.length || alvo.some((item) => SHARED.rotuloCombina(descricao.rotulo, item));
+      (casa ? casados : restantes).push(descricao);
+    }
+
+    const escolhidos = [];
+    const jaEscolhidos = new Set();
+    for (const descricao of (casados.length ? casados : descritos).concat(restantes)) {
+      if (jaEscolhidos.has(descricao.rotulo)) continue;
+      jaEscolhidos.add(descricao.rotulo);
+      escolhidos.push(descricao);
+      if (escolhidos.length >= 3) break;
+    }
+
+    // Nenhum campo reconhecido: pelo menos deixa o usuário escrever sobre o rótulo.
+    if (!escolhidos.length) {
+      alvo.forEach((item) => {
+        const rotulo = clean(String(item || '')).slice(0, 90);
+        if (rotulo && !jaEscolhidos.has(rotulo)) {
+          jaEscolhidos.add(rotulo);
+          escolhidos.push({ rotulo: rotulo, tipo: 'texto', opcoes: [] });
+        }
+      });
+    }
+
+    return escolhidos.slice(0, 3);
   }
 
   /**
@@ -1906,38 +2605,73 @@
     // 1º caminho: a **janelinha do desktop**, com os campos travados e as opções
     // originais do LinkedIn. Você responde ali e a automação preenche e segue.
     // Se ela não abrir, o caminho de sempre (notificação) continua valendo.
-    const decisao = await pedirAjuda({
-      motivo: opts && opts.step ? 'clique' : 'campo',
-      titulo: job.title || '',
-      empresa: job.company || '',
-      campos: descreverCamposAjuda(modal, labels),
-      labels: labels,
-    });
+    //
+    // Lemos os campos ANTES de abrir: o combobox custom só revela as opções quando
+    // é aberto, e essa leitura precisa acontecer com o formulário em foco.
+    const campos = await descreverCamposAjuda(modal, labels);
+    const temTypeahead = campos.some((campo) => campo.tipo === 'typeahead');
 
-    if (decisao && decisao.acao === 'aplicar') {
-      const aplicados = await aplicarRespostaNosCampos(modal, decisao.resposta);
+    if (temTypeahead) {
+      // O cartão não replica a lista de sugestões do LinkedIn (location etc.):
+      // a notificação oferece "Preencher manualmente" ou "Pular vaga".
+      console.info(
+        '[PegaVaga] campo de sugestão (typeahead) no formulário — usando a notificação em vez do cartão.'
+      );
 
-      if (aplicados > 0) {
-        await salvarRespostas(decisao.resposta);
-        console.info('[PegaVaga] Respostas do cartão aplicadas:', aplicados);
+      const notificacaoOk = await notifyHelp(labels, job.title || '');
+      console.info(
+        '[PegaVaga] notificação de ajuda:',
+        notificacaoOk ? 'mostrada' : 'indisponível'
+      );
 
-        state.helpRequested = false;
-        state.helpSkip = false;
-        await setRunHelp(null);
-        notifyHelpDone();
+      if (!notificacaoOk) {
+        // Sem notificação, o banner do pop-up seria a única pista. Abrimos o
+        // cartão em modo "só manual/pular" (sem campo de resposta) para não
+        // pular a vaga sem o usuário entender o que aconteceu.
+        const decisao = await pedirAjuda({
+          motivo: 'typeahead',
+          titulo: job.title || '',
+          empresa: job.company || '',
+          campos: [],
+          labels: labels,
+        });
 
-        return 'resolved';
+        if (decisao && decisao.acao === 'pular') return 'skip';
+      }
+    } else {
+      const decisao = await pedirAjuda({
+        motivo: opts && opts.step ? 'clique' : 'campo',
+        titulo: job.title || '',
+        empresa: job.company || '',
+        campos: campos,
+        labels: labels,
+      });
+
+      if (decisao && decisao.acao === 'aplicar') {
+        const aplicados = await aplicarRespostaNosCampos(modal, decisao.resposta);
+
+        if (aplicados > 0) {
+          await salvarRespostas(decisao.resposta);
+          console.info('[PegaVaga] Respostas do cartão aplicadas:', aplicados);
+
+          state.helpRequested = false;
+          state.helpSkip = false;
+          await setRunHelp(null);
+          notifyHelpDone();
+
+          return 'resolved';
+        }
+
+        // Não achamos onde escrever (ou o formulário já saiu da tela): não finge
+        // que deu certo — segue para a notificação, e você assume à mão.
+        console.warn('[PegaVaga] nenhuma resposta do cartão pôde ser escrita no formulário.');
       }
 
-      // Não achamos onde escrever (ou o formulário já saiu da tela): não finge
-      // que deu certo — segue para a notificação, e você assume à mão.
-      console.warn('[PegaVaga] nenhuma resposta do cartão pôde ser escrita no formulário.');
+      if (decisao && decisao.acao === 'pular') return 'skip';
+
+      // O service worker mostra a notificação e, no clique, traz esta aba à frente.
+      await notifyHelp(labels, job.title || '');
     }
-
-    if (decisao && decisao.acao === 'pular') return 'skip';
-
-    // O service worker mostra a notificação e, no clique, traz esta aba à frente.
-    notifyHelp(labels, job.title || '');
 
     const outcome = await waitForHelp(modal, opts);
 
@@ -1958,6 +2692,7 @@
    */
   async function waitForHelp(modal, opts) {
     const waitStep = Boolean(opts && opts.step); // entrou porque o clique não avançou
+    const inicio = Date.now();
     let baseline = modal && document.contains(modal) ? scopeSignature(modal) : '';
     let changedAt = 0;
 
@@ -1966,6 +2701,18 @@
         if (state.abort || state.helpSkip) return 'skip';
         if (!modal || !document.contains(modal)) return 'resolved';
         if (looksSubmitted(modal) || !isApplyForm(modal)) return 'resolved';
+
+        // Você mexeu na página e depois parou. Devolvemos o comando mesmo que a
+        // assinatura do DOM não tenha mudado (escolher a sugestão do typeahead
+        // muda o VALOR do input, não necessariamente a estrutura). Sem isso, a
+        // automação podia ficar parada esperando o prazo inteiro.
+        const mexeu = state.lastUserActivity >= inicio;
+        const parou = mexeu && Date.now() - state.lastUserActivity >= CONFIG.helpIdleMs;
+
+        if (parou && (waitStep || getModalAction(modal))) {
+          console.info('[PegaVaga] ajuda: usuário parou de mexer — retomando a automação.');
+          return 'resolved';
+        }
 
         if (waitStep) {
           // O botão já estava habilitado: retomamos quando você parar de mexer
@@ -2029,11 +2776,11 @@
    * a vaga ficaria esperando um pedido que ninguém vê.
    */
   async function posicaoDaJanelinha() {
-    try {
-      const tela = window.screen;
-      const largura = SHARED.JANELINHA.largura;
-      const altura = SHARED.JANELINHA.altura;
+    const largura = SHARED.JANELINHA.largura;
+    const altura = SHARED.JANELINHA.altura;
+    const tela = window.screen || {};
 
+    try {
       // `availLeft/availTop` dizem onde este monitor começa. Sem eles o cartão
       // nascia sempre no canto do monitor PRIMÁRIO.
       const esquerda = Number.isFinite(tela.availLeft) ? tela.availLeft : 0;
@@ -2046,19 +2793,40 @@
         const data = await chrome.storage.local.get(SHARED.STORAGE.pos);
         guardado = data && data[SHARED.STORAGE.pos];
       } catch (error) {
+        noteError('ler a posição lembrada do cartão', error);
         guardado = null;
       }
 
-      const salvo =
+      const guardadoOk =
         guardado &&
         Number.isFinite(guardado.left) &&
         Number.isFinite(guardado.top) &&
         guardado.left >= esquerda - 8 &&
         guardado.top >= topo - 8 &&
         guardado.left <= direita - 40 &&
-        guardado.top <= base - 40
-          ? { left: Math.round(guardado.left), top: Math.round(guardado.top) }
-          : null;
+        guardado.top <= base - 40;
+
+      // Uma posição centralizada salva por engano (o arrasto antigo gravava até
+      // sem mover) fazia o cartão abrir sempre no meio. Nesse caso, preferimos o
+      // canto inferior direito; se o usuário quiser o centro, ele arrasta de novo.
+      const centroX = esquerda + (tela.availWidth || 1280) / 2;
+      const centroY = topo + (tela.availHeight || 800) / 2;
+      const centrado =
+        guardadoOk &&
+        Math.abs(guardado.left + largura / 2 - centroX) <= 48 &&
+        Math.abs(guardado.top + altura / 2 - centroY) <= 48;
+
+      const salvo = guardadoOk && !centrado
+        ? { left: Math.round(guardado.left), top: Math.round(guardado.top) }
+        : null;
+
+      console.info(
+        '[PegaVaga] posição do cartão:',
+        salvo ? 'lembrada' : 'padrão (canto inferior direito)',
+        salvo || '',
+        'salva:',
+        guardado || 'nenhuma'
+      );
 
       return (
         salvo || {
@@ -2067,8 +2835,15 @@
         }
       );
     } catch (error) {
-      return null;
+      noteError('calcular a posição do cartão', error);
     }
+
+    // Nunca devolver `null`: sem posição o `windows.create` abre centralizado.
+    // Este é o mesmo canto inferior direito, calculado com o que houver.
+    return {
+      left: Math.max(0, Math.round((tela.availWidth || 1280) - largura - 16)),
+      top: Math.max(0, Math.round((tela.availHeight || 800) - altura - 16)),
+    };
   }
 
   /** Resolve a promessa — ou desiste no prazo, com `padrao` (worker pode dormir). */
@@ -2110,6 +2885,7 @@
       // A posição é resolvida ANTES de montar a mensagem (é assíncrona: lê a
       // posição lembrada no storage).
       const posicao = await posicaoDaJanelinha();
+      console.info('[PegaVaga] posição calculada do cartão de ajuda:', posicao);
 
       const aviso = await comPrazo(
         new Promise((resolve) => {
@@ -2210,10 +2986,24 @@
   }
 
   function notifyHelp(missing, jobTitle) {
-    sendRuntime({
-      type: MSG.HELP,
-      missing: (Array.isArray(missing) ? missing : []).slice(0, 3),
-      jobTitle: jobTitle || '',
+    // Devolve se a notificação foi mesmo criada: o typeahead usa isso para cair
+    // num cartão "só manual/pular" quando o sistema não deixa notificar.
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage(
+          {
+            type: MSG.HELP,
+            missing: (Array.isArray(missing) ? missing : []).slice(0, 3),
+            jobTitle: jobTitle || '',
+          },
+          (resposta) => {
+            void chrome.runtime.lastError;
+            resolve(Boolean(resposta && resposta.shown));
+          }
+        );
+      } catch (error) {
+        resolve(false);
+      }
     });
   }
 
@@ -2291,7 +3081,7 @@
     if (!fields.length) return '';
     if (fields.some((field) => field.checked)) return '';
 
-    const labels = fields.map((field) => fieldLabel(field) || String(field.value || ''));
+    const labels = fields.map((field) => rotuloDaOpcao(field) || String(field.value || ''));
     const choice = SHARED.pickChoice(labels, Object.assign({}, prefs, { question }));
     const index = labels.indexOf(choice);
     const field = fields[index >= 0 ? index : 0];
@@ -2314,10 +3104,13 @@
 
   /** Responde uma lista (select) obrigatória (devolve o rótulo escolhido). */
   function answerSelect(select, prefs, question) {
-    if (!select || select.disabled || String(select.value || '')) return '';
+    if (!select || select.disabled || !selectVazio(select)) return '';
 
     const options = Array.from(select.options || []).filter(
-      (option) => !option.disabled && String(option.value) !== ''
+      (option) =>
+        !option.disabled &&
+        String(option.value) !== '' &&
+        !PLACEHOLDER_TEXTO_RE.test(clean(option.textContent))
     );
 
     if (!options.length) return '';
@@ -2357,28 +3150,216 @@
     return clean(question || value).slice(0, 60);
   }
 
-  /** Primeiro campo do formulário cujo rótulo corresponde à pergunta. */
-  function acharCampoPorRotulo(modal, chave) {
+  /** Campos candidatos a receber a resposta (grupos de rádio uma vez só). */
+  function camposParaResposta(modal) {
     let elementos = [];
 
     try {
       elementos = Array.from(
-        modal.querySelectorAll('input, select, textarea, [role="combobox"]')
+        modal.querySelectorAll(
+          'input, select, textarea, [role="combobox"], [role="radiogroup"], [role="radio"], [role="checkbox"], [aria-haspopup="listbox"]'
+        )
       );
     } catch (error) {
-      noteError('achar o campo da resposta', error);
-      return null;
+      noteError('listar os campos da resposta', error);
+      return [];
     }
+
+    const saida = [];
+    const vistos = new Set();
 
     for (const el of elementos) {
       const tipo = String(el.type || '').toLowerCase();
-      if (tipo === 'hidden' || tipo === 'checkbox' || tipo === 'file') continue;
+      if (tipo === 'hidden' || tipo === 'file') continue;
 
-      const rotulo = normalize(fieldLabel(el) || '');
-      if (rotulo && (rotulo.includes(chave) || chave.includes(rotulo))) return el;
+      const chave = ehRadiogroup(el) ? el : ehRadio(el) ? raizDoGrupo(el) || el : el;
+      if (vistos.has(chave)) continue;
+      vistos.add(chave);
+      saida.push(el);
+    }
+
+    return saida;
+  }
+
+  /** Primeiro campo do formulário cujo rótulo corresponde à pergunta. */
+  function acharCampoPorRotulo(modal, chave) {
+    if (!modal || !chave) return null;
+
+    // Pendentes primeiro: a resposta do cartão é para o que travou a etapa.
+    const candidatos = camposPendentes(modal).concat(camposParaResposta(modal));
+    const vistos = new Set();
+
+    for (const el of candidatos) {
+      if (vistos.has(el)) continue;
+      vistos.add(el);
+
+      if (SHARED.rotuloCombina(fieldLabel(el) || '', chave)) return el;
     }
 
     return null;
+  }
+
+  /** Marca a opção do grupo que casa com a resposta do cartão. */
+  async function aplicarEmRadio(campo, alvo) {
+    if (!campo || !alvo) return false;
+
+    const grupo = ehRadiogroup(campo) ? opcoesDentro(campo) : opcoesDoGrupo(campo);
+    const opcoes = grupo.filter((opcao) => !opcao.disabled);
+    const rotulos = opcoes.map((opcao) => clean(rotuloDaOpcao(opcao) || opcao.value || ''));
+    const escolhida = opcoes[SHARED.escolherRotulo(rotulos, alvo)];
+
+    if (!escolhida) return false;
+
+    const nativo = String(escolhida.tagName || '').toLowerCase() === 'input';
+    // Alguns widgets custom embrulham um <input type=radio> escondido: ele é o
+    // alvo mais fiel do clique (e o que o React escuta).
+    const nativoDentro =
+      !nativo && escolhida.querySelector && escolhida.querySelector('input[type="radio"]');
+
+    humanClick(nativoDentro || (nativo && escolhida.labels && escolhida.labels[0]) || escolhida);
+
+    if (nativo) {
+      if (!escolhida.checked) {
+        escolhida.checked = true;
+        fireFieldEvents(escolhida);
+      }
+
+      return true;
+    }
+
+    if (nativoDentro) {
+      if (!nativoDentro.checked) {
+        nativoDentro.checked = true;
+        fireFieldEvents(nativoDentro);
+      }
+
+      return true;
+    }
+
+    // role="radio" custom: o clique é o que o React escuta. Conferimos o estado
+    // de verdade (aria/data-state/classe) em vez de marcar o atributo por conta
+    // própria — fingir a marcação faria a vaga "seguir" com o campo ainda vazio.
+    if (opcaoMarcada(escolhida)) return true;
+
+    await wait(CONFIG.applyModalPollMs);
+    if (opcaoMarcada(escolhida)) return true;
+
+    // Alguns widgets só reagem ao clique no texto/ícone de dentro.
+    const filho = escolhida.querySelector && escolhida.querySelector('span, label');
+    if (filho && filho !== escolhida) {
+      humanClick(filho);
+      await wait(CONFIG.applyModalPollMs);
+      if (opcaoMarcada(escolhida)) return true;
+    }
+
+    return false;
+  }
+
+  /** Marca/desmarca um checkbox (nativo ou role="checkbox"). */
+  async function aplicarEmCheckbox(campo, alvo) {
+    if (!campo) return false;
+
+    const texto = normalize(alvo);
+    const desmarcar = /^(nao|no|false|0|desmarcar|uncheck)$/.test(texto);
+    const desejado = !desmarcar;
+
+    const nativo = String(campo.tagName || '').toLowerCase() === 'input';
+
+    if (nativo) {
+      if (campo.checked === desejado) return true;
+
+      humanClick((campo.labels && campo.labels[0]) || campo);
+
+      if (campo.checked !== desejado) {
+        campo.checked = desejado;
+        fireFieldEvents(campo);
+      }
+
+      return true;
+    }
+
+    if (opcaoMarcada(campo) === desejado) return true;
+
+    const nativoDentro = campo.querySelector && campo.querySelector('input[type="checkbox"]');
+    humanClick(nativoDentro || campo);
+
+    if (nativoDentro) {
+      if (nativoDentro.checked !== desejado) {
+        nativoDentro.checked = desejado;
+        fireFieldEvents(nativoDentro);
+      }
+
+      return true;
+    }
+
+    await wait(CONFIG.applyModalPollMs);
+    return opcaoMarcada(campo) === desejado;
+  }
+
+  /** Abre o dropdown, clica na opção que casa e confere o valor. */
+  async function aplicarEmCombo(modal, campo, valor) {
+    if (!campo || !document.contains(campo)) return false;
+
+    try {
+      if (comboTemValor(campo)) return true;
+
+      humanClick(campo);
+
+      let opcoes = await waitUntil(
+        () => {
+          const lista = opcoesDoCombo(modal, campo);
+          return lista.length ? lista : null;
+        },
+        Math.min(CONFIG.popupWaitMs, 3000),
+        CONFIG.popupPollMs
+      );
+
+      if (!opcoes || !opcoes.length) {
+        // TYPEAHEAD (input editável): a lista só aparece depois de digitar.
+        const tag = String(campo.tagName || '').toLowerCase();
+
+        if (tag === 'input' && !campo.readOnly) {
+          setNativeValue(campo, valor);
+          fireFieldEvents(campo);
+
+          opcoes = await waitUntil(
+            () => {
+              const lista = opcoesDoCombo(modal, campo);
+              return lista.length ? lista : null;
+            },
+            Math.min(CONFIG.popupWaitMs, 2500),
+            CONFIG.popupPollMs
+          );
+
+          if (opcoes && opcoes.length) {
+            const indice = SHARED.escolherRotulo(
+              opcoes.map((opcao) => opcao.texto),
+              valor
+            );
+            if (indice >= 0) humanClick(opcoes[indice].el);
+          }
+
+          return comboTemValor(campo) || Boolean(opcoes && opcoes.length);
+        }
+
+        return false;
+      }
+
+      const indice = SHARED.escolherRotulo(
+        opcoes.map((opcao) => opcao.texto),
+        valor
+      );
+      if (indice < 0) return false;
+
+      humanClick(opcoes[indice].el);
+      await wait(CONFIG.applyModalPollMs);
+
+      // Conta como aplicado se o valor apareceu ou a lista fechou.
+      return comboTemValor(campo) || opcoesDoCombo(modal, campo).length === 0;
+    } catch (error) {
+      noteError('aplicar a resposta no combobox', error);
+      return false;
+    }
   }
 
   /**
@@ -2399,48 +3380,47 @@
       const alvo = String(resposta[rotulo] == null ? '' : resposta[rotulo]).trim();
       if (!alvo) continue;
 
-      const campo = acharCampoPorRotulo(modal, normalize(rotulo));
-      if (!campo) continue;
+      const campo = acharCampoPorRotulo(modal, rotulo);
+      if (!campo) {
+        console.info('[PegaVaga] cartão: não achei o campo', rotulo);
+        continue;
+      }
 
       const tag = String(campo.tagName || '').toLowerCase();
       const tipo = String(campo.type || '').toLowerCase();
-
-      if (tipo === 'radio') {
-        const grupo = radioGroup(modal, campo);
-        const rotulos = grupo.map((radio) => fieldLabel(radio) || String(radio.value || ''));
-        const escolhido = grupo[SHARED.escolherRotulo(rotulos, alvo)];
-
-        if (!escolhido) continue;
-
-        humanClick((escolhido.labels && escolhido.labels[0]) || escolhido);
-        if (!escolhido.checked) {
-          escolhido.checked = true;
-          fireFieldEvents(escolhido);
-        }
-
-        aplicados += 1;
-        continue;
-      }
+      const role = atributo(campo, 'role').toLowerCase();
+      let aplicado = false;
 
       if (tag === 'select') {
         const opcoes = Array.from(campo.options || []).filter(
           (opcao) => !opcao.disabled && String(opcao.value) !== ''
         );
-        const escolhida = opcoes[SHARED.escolherRotulo(opcoes.map((o) => clean(o.textContent)), alvo)];
+        const escolhida =
+          opcoes[SHARED.escolherRotulo(opcoes.map((opcao) => clean(opcao.textContent)), alvo)];
 
-        if (!escolhida) continue;
-
-        setNativeValue(campo, escolhida.value);
+        if (escolhida) {
+          setNativeValue(campo, escolhida.value);
+          fireFieldEvents(campo);
+          aplicado = true;
+        }
+      } else if (ehRadio(campo) || role === 'radiogroup') {
+        aplicado = await aplicarEmRadio(campo, alvo);
+      } else if (tipo === 'checkbox' || role === 'checkbox') {
+        aplicado = await aplicarEmCheckbox(campo, alvo);
+      } else if (ehCombo(campo)) {
+        aplicado = await aplicarEmCombo(modal, campo, alvo);
+      } else if (tipo !== 'hidden' && tipo !== 'file') {
+        setNativeValue(campo, alvo);
         fireFieldEvents(campo);
-        aplicados += 1;
-        continue;
+        aplicado = true;
       }
 
-      if (tipo === 'hidden' || tipo === 'file' || tipo === 'checkbox') continue;
-
-      setNativeValue(campo, alvo);
-      fireFieldEvents(campo);
-      aplicados += 1;
+      if (aplicado) {
+        aplicados += 1;
+        console.info('[PegaVaga] cartão: resposta aplicada em', rotulo);
+      } else {
+        console.info('[PegaVaga] cartão: não consegui aplicar em', rotulo);
+      }
     }
 
     return aplicados;
@@ -2629,10 +3609,9 @@
    * Preenche e envia a candidatura simplificada da vaga aberta no painel.
    * Devolve { status, missing?, filled?, steps?, error? }, com estes status:
    *   enviada   → candidatura confirmada pelo LinkedIn;
-   *   externa   → botão manda para um site de fora: pulada, sem clique;
-   *   desconhecida → o botão não se parece com a Candidatura Simplificada:
-   *               também pulada, sem clique (tentamos de novo mais tarde);
-   *   sem_botao → a vaga não tem botão de candidatura;
+   *   externa   → botão manda para um site de fora: não clicamos (levaria a aba
+   *               embora) e o motivo fica no relatório;
+   *   sem_botao → a vaga não tem botão de candidatura (nem depois de esperar);
    *   sem_modal → clicou e o formulário não abriu;
    *   travada   → parou numa pergunta obrigatória que não deu para responder
    *               (`missing` traz os rótulos pendentes, `filled` o respondido);
@@ -2671,19 +3650,33 @@
     // Popup sobrando da vaga anterior? Sai da frente antes de qualquer clique.
     await closeStaleForm(CONFIG.popupBudgetMs);
 
-    const button = findApplyButton();
+    let button = findApplyButton();
 
     // Já candidatada antes? O LinkedIn tira o botão e mostra "Você se candidatou".
     if (looksAlreadyApplied()) return { status: 'ja_candidatada' };
 
+    // O botão pode chegar um instante depois da descrição. Esperar evita marcar
+    // "sem botão" numa vaga que ainda ia renderizar (e que seria pulada à toa).
+    if (!button) {
+      button = await waitUntil(() => findApplyButton(), CONFIG.applyButtonWaitMs, CONFIG.applyKindPollMs);
+    }
+
     if (!button) return { status: 'sem_botao' };
 
-    // Vaga que sai do LinkedIn (site da empresa)? Não clicamos: só registramos o
-    // motivo, para nunca levar a sua aba para fora.
     const kind = await resolveApplyKind(button);
-    if (kind !== SHARED.APPLY_KINDS.easy) {
-      return { status: kind === SHARED.APPLY_KINDS.external ? 'externa' : 'desconhecida', detail: applyDetail(button, kind) };
+    console.info('[PegaVaga] tipo do botão de candidatura:', kind, '—', applyDetail(button, kind));
+
+    // Único caso em que não clicamos: o botão claramente leva para fora do
+    // LinkedIn (link/ícone/rótulo do site da empresa). O clique levaria a sua
+    // aba embora no meio da varredura; registramos o motivo e seguimos.
+    if (kind === SHARED.APPLY_KINDS.external) {
+      return { status: 'externa', detail: applyDetail(button, kind) };
     }
+
+    // Easy Apply OU tipo não reconhecido: tentamos abrir de verdade. Antes, a
+    // "desconhecida" era descartada sem clique, e vagas boas sumiam da
+    // varredura; com o filtro de Candidatura Simplificada ligado, na dúvida o
+    // certo é abrir — se o formulário não vier, vira `sem_modal` no relatório.
 
     await humanPause(CONFIG.applyPreClickMs); // respira antes de abrir o formulário
     humanClick(button);
@@ -2793,6 +3786,7 @@
 
           if (help === 'resolved') {
             deadline = Date.now() + CONFIG.applyFlowTimeoutMs; // volta com fôlego novo
+            console.info('[PegaVaga] retomando o formulário depois da ajuda…');
             await waitForSettle(modal, CONFIG.applySettleMs);
             continue;
           }
@@ -2814,6 +3808,7 @@
       }
 
       const before = scopeSignature(modal);
+      console.info('[PegaVaga] clicando em', action.kind === 'submit' ? 'Enviar' : 'Avançar', '…');
       humanClick(action.button);
       steps += 1;
 
@@ -2847,6 +3842,7 @@
             if (help === 'resolved') {
               stalled = 0;
               deadline = Date.now() + CONFIG.applyFlowTimeoutMs;
+              console.info('[PegaVaga] retomando o formulário depois da ajuda…');
               await waitForSettle(modal, CONFIG.applySettleMs);
               continue;
             }
@@ -3247,17 +4243,22 @@
     scheduleRunPersist();
   }
 
-  /** A vaga ainda precisa de trabalho? (falta descrição ou candidatura) */
+  /**
+   * A vaga ainda precisa de trabalho? Só não voltamos em quem JÁ foi candidatada
+   * (`appliedAt`) ou em quem o LinkedIn já marcava como candidatada antes
+   * (`ja_candidatada`). `travada`, `incompleta`, `externa` e `desconhecida`
+   * voltam a ser abertas na próxima passada: o erro fica registrado no relatório,
+   * mas a vaga não é pulada em silêncio.
+   */
   function needsWork(id, settings) {
     const job = state.jobs[id] || {};
 
     if (!job.description) return true;
     if (!settings.apply.enabled) return false;
     if (job.appliedAt) return false;
-    // Vaga que sai do LinkedIn ou já candidatada antes: não voltamos nela.
-    if (job.applyStatus === 'externa' || job.applyStatus === 'ja_candidatada') return false;
+    if (job.applyStatus === 'ja_candidatada') return false;
 
-    return (job.applyAttempts || 0) < CONFIG.applyMaxAttempts;
+    return true;
   }
 
   /**
@@ -3289,29 +4290,19 @@
   }
 
   /**
-   * A vaga aberta no painel é candidatável aqui no LinkedIn? Se não for (o botão
-   * manda para o site da empresa, ou não é a Candidatura Simplificada), registra
-   * o motivo na vaga e devolve `true`: a varredura pula para a próxima sem
-   * clicar em nada. Devolve `false` quando é para seguir com a candidatura.
+   * A única vaga que pode ser pulada é a que já foi candidatada antes: o
+   * LinkedIn esconde/desabilita o botão e mostra "Você se candidatou".
+   *
+   * Tudo o mais TEM de ser aberto. A classificação do botão (externa/desconhecida)
+   * não serve de porteira aqui: quando ela falhava, a vaga era descartada sem
+   * nem clicar. Ela é resolvida depois, dentro do fluxo, e vira erro no
+   * relatório — nunca um pulo silencioso.
    */
-  async function skipIfOffsite(id) {
-    // Vaga em que você já se candidatou antes: o LinkedIn esconde/desabilita o
-    // botão e mostra "Você se candidatou". Registramos isso — e não "sem botão".
-    if (looksAlreadyApplied()) {
-      console.info('[PegaVaga] Vaga já candidatada antes (aviso do LinkedIn detectado).');
-      await recordApplyResult(id, { status: 'ja_candidatada' });
-      return true;
-    }
+  async function skipIfAlreadyApplied(id) {
+    if (!looksAlreadyApplied()) return false;
 
-    const button = findApplyButton();
-    if (!button) return false; // sem botão: o fluxo normal decide o desfecho
-
-    const kind = await resolveApplyKind(button);
-    if (kind === SHARED.APPLY_KINDS.easy) return false;
-
-    const status = kind === SHARED.APPLY_KINDS.external ? 'externa' : 'desconhecida';
-    await recordApplyResult(id, { status, detail: applyDetail(button, kind) });
-
+    console.info('[PegaVaga] Vaga já candidatada antes (aviso do LinkedIn detectado).');
+    await recordApplyResult(id, { status: 'ja_candidatada' });
     return true;
   }
 
@@ -3332,7 +4323,6 @@
 
     const job = state.jobs[id] || {};
     if (job.appliedAt) return;
-    if ((job.applyAttempts || 0) >= CONFIG.applyMaxAttempts) return;
     if (!quotaNow().ok) return;
 
     // Você está usando a página agora? Então esperamos (sem roubar o seu clique).
@@ -3344,9 +4334,9 @@
 
     if (state.abort) return;
 
-    // Vaga que sai do LinkedIn (site da empresa): registramos o motivo e pulamos
-    // na hora — sem clique, sem pausa de leitura e sem gastar cota de candidatura.
-    if (await skipIfOffsite(id)) return;
+    // Só pulamos quem já foi candidatado antes. As demais são abertas e, se não
+    // der para concluir, o erro fica registrado e a varredura segue.
+    if (await skipIfAlreadyApplied(id)) return;
 
     if (state.abort) return;
 
@@ -3406,6 +4396,10 @@
 
     let stop = null; // 'quota' | 'term_done' | 'scan_cap' | 'usuario'
     let round = 0;
+    // Uma tentativa por vaga NESTA passada. Sem isso, um card que continua na
+    // lista depois do scroll seria aberto de novo na mesma varredura; a próxima
+    // passada (novo run) tenta de novo uma vaga travada/incompleta.
+    const processados = new Set();
 
     try {
       await loadApps();
@@ -3424,6 +4418,8 @@
 
           const id = getJobId(card);
           if (!id || !needsWork(id, settings)) continue;
+          if (processados.has(id)) continue;
+          processados.add(id);
 
           stop = stopReason(settings);
           if (stop) {
@@ -3431,7 +4427,17 @@
             break;
           }
 
-          await processCard(card, id, settings);
+          try {
+            await processCard(card, id, settings);
+          } catch (error) {
+            // Uma vaga problemática não pode derrubar a varredura inteira: o
+            // erro fica registrado na vaga (rota de erro) e seguimos.
+            noteError('processar a vaga ' + id, error);
+            await recordApplyResult(id, {
+              status: 'incompleta',
+              error: (error && (error.message || error.reason)) || 'erro inesperado',
+            });
+          }
 
           // Você assumiu a página: paramos de mexer nela e descansamos um pouco.
           if (state.userBusy) {

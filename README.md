@@ -47,14 +47,13 @@ script de empacotamento usa. A **`1.0.0` só sai com o checklist de
 pré-publicação 100%** (ver [`PRE_PUBLICACAO.md`](PRE_PUBLICACAO.md)); até lá
 seguimos abaixo de 1.
 
-O trabalho acontece no branch **`development`**; o **`main`** é o espelho que o
-GitHub mostra por padrão (quem abre o repositório cai nele). Depois de cada
-release, leve o `main` junto — é fast-forward, não reescreve histórico:
+O trabalho acontece no branch **`development`**. O **`main`** é o branch que o
+GitHub mostra por padrão e **recebe mudanças por pull request** — nunca por push
+direto. Abra o PR de `development` para `main`, espere o check **Testes** ficar
+verde e faça o merge (merge commit ou rebase: assim o commit da tag fica no
+`main`; com *squash* ele não fica).
 
-```bash
-git checkout main && git merge --ff-only development && git push origin main
-git checkout development
-```
+- abrir o PR: `https://github.com/BrunoDelfim/PegaVaga_prototipo/compare/main...development?expand=1`
 
 ## Instalação (modo desenvolvedor)
 
@@ -124,9 +123,11 @@ git checkout development
      capturadas · candidaturas enviadas · antigas descartadas**), e clicar nela
      **traz a aba do LinkedIn para frente**. Se o LinkedIn pedir verificação ou
      avisar de limite de uso, ela avisa que a varredura **parou para proteger a
-     sua conta** e fica na tela até você ver. Com a página em foco nada aparece (a
-     notificação seria redundante), e no **modo simulação** o texto diz
-     “formulários preenchidos sem enviar”.
+     sua conta**, mostra a **hora em que vai retomar** e fica na tela até você
+     ver — esse aviso aparece **mesmo com a página em foco**, porque a pausa é
+     longa. No fim normal, com a página em foco nada aparece (a notificação seria
+     redundante), e no **modo simulação** o texto diz “formulários preenchidos
+     sem enviar”.
    - **Pedir a minha ajuda (notificação)** — **ligado por padrão**: quando uma vaga **trava
      num campo que só você preenche** (pergunta personalizada, sem valor salvo no
      LinkedIn). Em vez de descartar a vaga, o PegaVaga manda uma **notificação na
@@ -186,13 +187,15 @@ git checkout development
      de progresso** da fila de termos;
    - as **barras de cota** (sessão, hora, 24 h, dia) — a que estourou fica
      vermelha; o texto continua disponível no tooltip;
-   - o **mini-gráfico de candidaturas por hora** nas últimas 24 h;
+   - o **mini-gráfico de candidaturas por hora** nas últimas 24 h — fica sempre
+     visível; sem candidaturas, mostra a linha de base e “Nenhuma candidatura
+     nas últimas 24 h.”;
    - o card **“Vagas por termo”**: uma barra por termo de busca, com
      **vagas capturadas · candidatadas** ao lado. **Clique num termo** para ver o
      mini-gráfico das últimas 24 h **daquele termo** (barra clara = vagas
      capturadas, escura = candidaturas) — é assim que dá para ver *quando* cada
-     termo rendeu. O card fica **sempre visível**: sem vagas capturadas, ele
-     mostra um aviso de vazio;
+     termo rendeu. O card fica **sempre visível**: sem vagas capturadas, o
+     mini-gráfico mantém a **linha de base** das 24 h e aparece o aviso de vazio;
    - a linha do agendador, ex.:
      `Janela: Seg, Ter, Qua, Qui, Sex, 08:00 → 18:00 · próxima: seg. 08:00.`
      (quando a fila está pausada, ela também diz **por quê**: cota, janela,
@@ -265,13 +268,22 @@ git checkout development
   `Travada em campo obrigatório` — o motivo no relatório diz **qual campo**
   ficou pendente e **o que já foi respondido**
   (ex.: “Campos não preenchidos: Telefone. Respondi sozinho: Sim.”).
+
+> A varredura **só ignora vaga já candidatada** (`enviada` ou `já candidatada`
+> antes). `travada`, `incompleta`, `externa`, `sem botão` e `sem modal` são
+> registradas no relatório e **voltam a ser abertas na próxima passada**. Um erro
+> numa vaga não interrompe a varredura: ele é registrado e o fluxo segue para a
+> próxima. A classificação do botão (`externa`/`desconhecida`) **não** é usada
+> para descartar a vaga antes de tentar: na dúvida, o botão é clicado e, se o
+> formulário não abrir, isso vira `sem modal` no relatório.
 - **Ritmo humano**: todo intervalo tem variação aleatória, o clique é precedido
   de rolagem + passagem de mouse pelo elemento, há pausas de “leitura” da vaga,
   pausas longas periódicas e a extensão **cede a vez** para você quando está
   usando a página (mouse, teclado, rolagem).
 - **Proteção da conta**: se aparecer aviso de limite de uso, verificação de
   segurança ou redirecionamento para `checkpoint`, a automação **para na hora**
-  (a fila fica pausada, não é descartada) e só volta depois de ~1 h de descanso.
+  (a fila fica pausada, não é descartada), **manda uma notificação com o motivo e
+  a hora de retomada** e só volta depois de ~1 h de descanso.
 - Uma vaga **nunca** é candidatada duas vezes: o resultado fica gravado na vaga
   (`Candidatado em`, `Status da candidatura` e `Motivo da não candidatura`, que
   vão para o CSV).
@@ -306,27 +318,54 @@ PegaVaga:
 
 1. **Mantém o formulário aberto** e pausa a vaga (não descarta, não pula);
 2. Abre o **cartão de resposta numa janela própria**, no canto inferior direito do
-   desktop: uma janela **popup** do Chrome, **só com a barra de título e a borda**
-   (sem aba, sem barra de endereço, sem menu);
+   desktop: uma janela **popup** do Chrome, sem aba (a barra de endereço, quando
+   o navegador/SO a mostra, não é controlável pela extensão);
 3. O cartão mostra a **vaga** e **um controle por pergunta travada** — numa
-   pergunta de lista, as opções são **as mesmas do LinkedIn**. Você responde e
-   clica em **“Aplicar e continuar”**: o PegaVaga **escreve a resposta no campo**
-   (casando com a opção original: `Sim` não cai em `Sim, com restrições`) e a
-   candidatura **segue sozinha** — e a resposta fica **salva** para as próximas
-   vagas com a mesma pergunta;
+   pergunta de lista, um **select com as opções do LinkedIn**; numa pergunta de
+   escolha, **botões de rádio**; um **checkbox** obrigatório vem como caixa para
+   marcar. Widgets custom (`role="combobox"`/`role="radiogroup"`) também são
+   lidos: a extensão abre o dropdown, copia as opções e fecha em seguida. Você
+   responde e clica em **“Aplicar e continuar”**: o PegaVaga **escreve a resposta
+   no campo** (casando com a opção original: `Sim` não cai em `Sim, com
+   restrições`) e a candidatura **segue sozinha** — e a resposta fica **salva**
+   para as próximas vagas com a mesma pergunta. Todos os campos aparecem com
+   **asterisco** de obrigatório, e o cartão **não envia com campo em branco**: ao
+   clicar em **“Aplicar e continuar”**, o que falta fica **marcado em vermelho**
+   com **“Campo obrigatório.”**, e um aviso no topo pede para preencher tudo;
 4. Se preferir digitar você mesmo, **“Vou preencher à mão”** traz a aba do
    LinkedIn para frente e a automação espera; quando o campo estiver preenchido,
    ela **retoma sozinha**;
 5. Não quer a vaga? **“Pular esta vaga”** cancela a candidatura atual (sem gastar
    cota) e a varredura segue para a próxima;
 6. O cartão pode ser **arrastado** pelo cabeçalho e **lembra onde foi deixado**.
-   Fechar no **✕** não trava nada: a vaga volta ao caminho de sempre.
+   A posição calculada é reaplicada depois que a janela abre (não fica
+   centralizada, e o cartão também pede foco), e a **altura acompanha o
+   conteúdo**: encolhe quando há pouco e para no **teto de 470 px** (o tamanho
+   antigo); no teto, o corpo ganha barra de rolagem. Fechar no **✕** não trava
+   nada: a vaga volta ao caminho de sempre. O cartão usa o **mesmo visual do
+   pop-up** (cores, cards, campos e botões) e **segue o tema claro/escuro** da
+   lâmpada; se nunca houve escolha, segue o tema do sistema.
+
+> **Parar** encerra tudo: interrompe a aba que está varrendo (mesmo que você
+> esteja em outra aba), fecha o cartão de ajuda e limpa as notificações da
+> extensão que ainda estiverem na tela. O **pop-up principal não é fechado à
+> força**: ele continua mostrando o estado e só sai quando perder o foco.
 
 > Se a janela não puder abrir (sistema que bloqueia janelas, `windows`
 > indisponível), o PegaVaga usa o caminho antigo: **notificação na área de
 > trabalho** — *“PegaVaga precisa de ajuda para continuar”* — com os botões
 > **“Preencher manualmente”** (foca a aba) e **“Pular vaga”**. A vaga nunca é
 > descartada em silêncio.
+>
+> **Campos de sugestão** (por exemplo, “Location (city)”): o LinkedIn só aceita
+> depois que você digita e **escolhe uma sugestão** da lista. O cartão não replica
+> essa lista, então nesses casos o PegaVaga vai direto para a **notificação**
+> (“Preencher manualmente”/“Pular vaga”), em vez de abrir o cartão. Se o sistema
+> não permitir a notificação, abre o cartão em modo **só manual/pular** (sem
+> campo), para a vaga não ser pulada em silêncio. Depois que você preenche e
+> **para de mexer por alguns segundos**, a automação retoma sozinha — inclusive
+> com **“Ceder a vez” desligado**, porque a retomada olha a sua inatividade, não
+> o ajuste.
 >
 > Duas redes de segurança: se o cartão ficar **45 s sem resposta** (ele pode ter
 > aberto atrás da janela do navegador), a **notificação também aparece** — e some
@@ -508,7 +547,8 @@ Como o pacote vem de `git archive`, entram só arquivos versionados e da lista
 explícita (`manifest.json`, os scripts `shared`, `background`, `content`, `popup`
 e `ajuda`, as páginas `popup.html` e `ajuda.html`, e `icons/`):
 `tests/`, `.github/`, os `.md` e o `.git` ficam de fora, e **não precisa de `zip`
-instalado** — o próprio git monta o zip. O `dist/` é ignorado pelo git.
+instalado** — o próprio git monta o zip. Os zips de `dist/` não são versionados
+(`*.zip` está no `.gitignore`).
 
 ## Antes de publicar
 

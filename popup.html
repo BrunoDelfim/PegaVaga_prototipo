@@ -401,6 +401,7 @@
       .term-spark { height: 40px; margin-top: 4px; }
       .term-spark rect.job { fill: var(--brand); opacity: 0.28; }
       .term-spark rect.app { fill: var(--brand); opacity: 1; }
+      .term-spark rect.base { fill: var(--brand); opacity: 0.22; } /* linha de base sem dados */
       .term-spark rect.prev { fill: #94a3b8; } /* ontem em cinza */
       .term-spark rect:hover { fill: var(--brand); }
       .term-spark rect.job:hover { opacity: 0.45; }
@@ -850,7 +851,7 @@
 
       <section class="card quota" id="quota-info"></section>
 
-      <section class="card" id="spark-card" hidden>
+      <section class="card" id="spark-card">
         <span class="card-title">Candidaturas nas últimas 24 h</span>
         <svg class="spark" id="spark" viewBox="0 0 320 44" preserveAspectRatio="none" aria-hidden="true"></svg>
         <p class="hint" id="spark-hint"></p>
@@ -869,7 +870,7 @@
             <svg class="spark term-spark" id="term-spark" viewBox="0 0 320 40"
               preserveAspectRatio="none" aria-hidden="true"></svg>
           </div>
-          <p class="hint">
+          <p class="hint" id="terms-hint">
             Números: <b>vagas capturadas</b> · candidatadas. Clique num termo para ver as
             últimas 24 h dele (barra clara = vagas, escura = candidaturas; em cinza, o
             que foi de ontem).

@@ -24,15 +24,16 @@ globalThis.PegaVagaShared = (() => {
     pos: 'pegavaga_ajuda_pos',
   };
 
-  /* A janelinha do pedido de ajuda: largura fixa e altura de criação. Ela abre
-   * como JANELA POPUP do Chrome (só barra de título + borda do sistema: sem aba,
-   * sem barra de endereço, sem menu) — é o mais "capado" que o navegador oferece. */
-  const JANELINHA = { largura: 372, altura: 470 };
+  /* A janelinha do pedido de ajuda: largura fixa. `altura` é o tamanho de
+   * criação e também o TETO: se o conteúdo couber, o ajuda.js encolhe; se não,
+   * mantém 470 e o corpo ganha barra de rolagem. Não há altura mínima fixa. */
+  const JANELINHA = { largura: 372, altura: 470, alturaMax: 470 };
 
   /* Tipos de mensagem trocadas entre pop-up, content script e agendador. */
   const MSG = {
     START: 'PEGAVAGA_START',
     STOP: 'PEGAVAGA_STOP',
+    STOP_ALL: 'PEGAVAGA_STOP_ALL', // pop-up → worker: para tudo e fecha cartões/notificações
     PING: 'PEGAVAGA_PING',
     CLEAR: 'PEGAVAGA_CLEAR',
     PROGRESS: 'PEGAVAGA_PROGRESS',
@@ -336,6 +337,14 @@ globalThis.PegaVagaShared = (() => {
       'I couldn\u2019t build the card here. Take over manually or skip this job.',
     'Escolha uma opção': 'Choose an option',
     'Sua resposta': 'Your answer',
+    'Marque para confirmar': 'Check to confirm',
+    'Digite a opção como aparece no LinkedIn': 'Type the option as it appears on LinkedIn',
+    'Obrigatório': 'Required',
+    'Campo obrigatório.': 'Required field.',
+    'Preencha os campos obrigatórios antes de continuar.':
+      'Fill in the required fields before continuing.',
+    'Este campo é de sugestão (como localização): preencha na página e escolha a sugestão do LinkedIn, ou pule a vaga.':
+      'This is a suggestion field (such as location): fill it in on the page and pick the LinkedIn suggestion, or skip the job.',
 
     /* Pop-up: cabeçalho, abas e cards do Início */
     'Rastreamento de vagas do LinkedIn': 'LinkedIn job tracking',
@@ -347,7 +356,9 @@ globalThis.PegaVagaShared = (() => {
     'Iniciar': 'Start',
     'para começar a varredura.': 'to start the scan.',
     'Candidaturas nas últimas 24 h': 'Applications in the last 24 h',
+    'Nenhuma candidatura nas últimas 24 h.': 'No applications in the last 24 h.',
     'Vagas por termo': 'Jobs per term',
+    'Sem vagas por termo ainda': 'No jobs per term yet',
     'Números:': 'Numbers:',
     'vagas capturadas': 'jobs captured',
     'Ainda não capturei vagas por termo. Rode uma varredura para ver aqui quanto cada termo rendeu.': 'No jobs per term yet. Run a scan to see how much each term brought in.',
@@ -627,9 +638,13 @@ globalThis.PegaVagaShared = (() => {
 
     /* Motivos do relatório (aparecem nas dicas do pop-up; no CSV saem em pt) */
     'O modo simulação estava ligado: o formulário foi todo preenchido, mas a candidatura NÃO foi enviada de propósito.': 'Simulation mode was on: the form was fully filled but the application was deliberately NOT sent.',
-    'A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então ela é pulada.': 'This job does not use Easy Apply: the button leads to the company site, so it is skipped.',
-    'Não identifiquei a Candidatura Simplificada nesta vaga; para não sair do LinkedIn, não cliquei.': 'I could not identify Easy Apply on this job; so as not to leave LinkedIn, I did not click.',
+    'A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então não é possível se candidatar pelo LinkedIn.': 'This job does not use Easy Apply: the button leads to the company site, so it cannot be applied to through LinkedIn.',
+    'Não reconheci o botão de candidatura desta vaga; ela não foi pulada e será aberta de novo na próxima passada.': 'I could not recognise this job\'s apply button; it was not skipped and will be opened again on the next pass.',
     'O LinkedIn mostra que você já se candidatou a esta vaga antes; a candidatura não foi enviada de novo.': 'LinkedIn shows you already applied to this job before; the application was not sent again.',
+    'O LinkedIn pediu verificação ou avisou de limite de uso ({motivo}).': 'LinkedIn asked for verification or warned about a usage limit ({motivo}).',
+    'O LinkedIn pediu verificação ou avisou de limite de uso.': 'LinkedIn asked for verification or warned about a usage limit.',
+    'A varredura foi pausada e retoma às {hora}.': 'The scan was paused and resumes at {hora}.',
+    'A varredura foi pausada e volta a funcionar depois do descanso.': 'The scan was paused and will resume after the break.',
     'O formulário parou numa pergunta obrigatória que a extensão não conseguiu responder (mesmo preenchendo as anteriores).': 'The form stopped on a required question the extension could not answer (even after filling the previous ones).',
     'O formulário não foi concluído dentro do tempo e do número de etapas permitidos.': 'The form was not completed within the allowed time and number of steps.',
     'O LinkedIn pediu verificação ou limite de uso: a automação parou para proteger a sua conta.': 'LinkedIn asked for verification or warned about usage limits: the automation stopped to protect your account.',
@@ -1271,13 +1286,13 @@ globalThis.PegaVagaShared = (() => {
       label: 'Externa (site da empresa)',
       failure: true,
       reason:
-        'A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então ela é pulada.',
+        'A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então não é possível se candidatar pelo LinkedIn.',
     },
     desconhecida: {
       label: 'Botão de candidatura não reconhecido',
       failure: true,
       reason:
-        'Não identifiquei a Candidatura Simplificada nesta vaga; para não sair do LinkedIn, não cliquei.',
+        'Não reconheci o botão de candidatura desta vaga; ela não foi pulada e será aberta de novo na próxima passada.',
     },
     sem_botao: {
       label: 'Sem botão de candidatura',
@@ -2146,28 +2161,50 @@ globalThis.PegaVagaShared = (() => {
     );
   }
 
+  /** Hora curta (HH:MM) para o aviso de retomada; vazio se o valor não for data. */
+  function horaCurta(valor) {
+    const ms = Number(valor);
+    if (!Number.isFinite(ms) || ms <= 0) return '';
+
+    try {
+      return new Date(ms).toLocaleTimeString(locale() === 'en' ? 'en-US' : 'pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+    } catch (error) {
+      return '';
+    }
+  }
+
   /**
    * Texto da notificação de fim de varredura (título + corpo). Puro e testável:
    * quem mostra é o service worker, com o resumo que o `content.js` mandou.
    * `reason === 'bloqueio'` é o caso que exige atenção (o LinkedIn pediu
    * verificação); `urgent` deixa a notificação presa na tela.
-   * @param {Object} data { reason, jobs, applied, dropped, dryRun, guardReason }
+   * @param {Object} data { reason, jobs, applied, dropped, dryRun, guardReason, resumeAt }
    * @returns {{ title: string, message: string, urgent: boolean }}
    */
   function describeRunEnd(data) {
     const d = data || {};
 
     if (d.reason === 'bloqueio') {
+      const motivo = d.guardReason
+        ? t('O LinkedIn pediu verificação ou avisou de limite de uso ({motivo}).', {
+            motivo: d.guardReason,
+          })
+        : t('O LinkedIn pediu verificação ou avisou de limite de uso.');
+
+      // A hora de retomada é o que o usuário precisa para decidir se espera ou
+      // assume a vaga à mão; sem ela, o aviso só dizia "depois do descanso".
+      const hora = horaCurta(d.resumeAt != null ? d.resumeAt : d.guardUntil);
+      const pausa = hora
+        ? t('A varredura foi pausada e retoma às {hora}.', { hora: hora })
+        : t('A varredura foi pausada e volta a funcionar depois do descanso.');
+
       return {
         title: t('PegaVaga parou para proteger a sua conta'),
-        message: d.guardReason
-          ? t(
-              'O LinkedIn pediu verificação ou avisou de limite de uso ({motivo}). A varredura parou sozinha e volta a funcionar depois do descanso.',
-              { motivo: d.guardReason }
-            )
-          : t(
-              'O LinkedIn pediu verificação ou avisou de limite de uso. A varredura parou sozinha e volta a funcionar depois do descanso.'
-            ),
+        message: motivo + ' ' + pausa,
         urgent: true,
       };
     }
@@ -2253,6 +2290,20 @@ globalThis.PegaVagaShared = (() => {
     if (exato >= 0) return exato;
 
     return lista.findIndex((item) => item && item.indexOf(desejado) >= 0);
+  }
+
+  /**
+   * Dois rótulos falam da MESMA pergunta? Casa o texto normalizado exato e,
+   * depois, um dentro do outro (dos dois lados): o LinkedIn muda a pontuação, o
+   * "Obrigatório" colado e o acento entre a tela do formulário e o relatório.
+   * Devolve `false` quando falta texto de um lado — rótulo vazio casaria com tudo.
+   */
+  function rotuloCombina(a, b) {
+    const na = plainText(a);
+    const nb = plainText(b);
+
+    if (!na || !nb) return false;
+    return na === nb || na.indexOf(nb) >= 0 || nb.indexOf(na) >= 0;
   }
 
   /**
@@ -2444,6 +2495,7 @@ globalThis.PegaVagaShared = (() => {
     lerAjudaId,
     parseAjudaDados,
     escolherRotulo,
+    rotuloCombina,
 
     /* Relatos de erro */
     REPORTS_MAX,
