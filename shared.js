@@ -343,6 +343,8 @@ globalThis.PegaVagaShared = (() => {
     'Campo obrigatório.': 'Required field.',
     'Preencha os campos obrigatórios antes de continuar.':
       'Fill in the required fields before continuing.',
+    'Este campo é de sugestão (como localização): preencha na página e escolha a sugestão do LinkedIn, ou pule a vaga.':
+      'This is a suggestion field (such as location): fill it in on the page and pick the LinkedIn suggestion, or skip the job.',
 
     /* Pop-up: cabeçalho, abas e cards do Início */
     'Rastreamento de vagas do LinkedIn': 'LinkedIn job tracking',
@@ -634,8 +636,8 @@ globalThis.PegaVagaShared = (() => {
 
     /* Motivos do relatório (aparecem nas dicas do pop-up; no CSV saem em pt) */
     'O modo simulação estava ligado: o formulário foi todo preenchido, mas a candidatura NÃO foi enviada de propósito.': 'Simulation mode was on: the form was fully filled but the application was deliberately NOT sent.',
-    'A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então ela é pulada.': 'This job does not use Easy Apply: the button leads to the company site, so it is skipped.',
-    'Não identifiquei a Candidatura Simplificada nesta vaga; para não sair do LinkedIn, não cliquei.': 'I could not identify Easy Apply on this job; so as not to leave LinkedIn, I did not click.',
+    'A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então não é possível se candidatar pelo LinkedIn.': 'This job does not use Easy Apply: the button leads to the company site, so it cannot be applied to through LinkedIn.',
+    'Não reconheci o botão de candidatura desta vaga; ela não foi pulada e será aberta de novo na próxima passada.': 'I could not recognise this job\'s apply button; it was not skipped and will be opened again on the next pass.',
     'O LinkedIn mostra que você já se candidatou a esta vaga antes; a candidatura não foi enviada de novo.': 'LinkedIn shows you already applied to this job before; the application was not sent again.',
     'O formulário parou numa pergunta obrigatória que a extensão não conseguiu responder (mesmo preenchendo as anteriores).': 'The form stopped on a required question the extension could not answer (even after filling the previous ones).',
     'O formulário não foi concluído dentro do tempo e do número de etapas permitidos.': 'The form was not completed within the allowed time and number of steps.',
@@ -1278,13 +1280,13 @@ globalThis.PegaVagaShared = (() => {
       label: 'Externa (site da empresa)',
       failure: true,
       reason:
-        'A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então ela é pulada.',
+        'A vaga não usa a Candidatura Simplificada: o botão leva ao site da empresa, então não é possível se candidatar pelo LinkedIn.',
     },
     desconhecida: {
       label: 'Botão de candidatura não reconhecido',
       failure: true,
       reason:
-        'Não identifiquei a Candidatura Simplificada nesta vaga; para não sair do LinkedIn, não cliquei.',
+        'Não reconheci o botão de candidatura desta vaga; ela não foi pulada e será aberta de novo na próxima passada.',
     },
     sem_botao: {
       label: 'Sem botão de candidatura',

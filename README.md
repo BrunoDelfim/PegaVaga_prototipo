@@ -264,6 +264,14 @@ verde e faça o merge (merge commit ou rebase: assim o commit da tag fica no
   `Travada em campo obrigatório` — o motivo no relatório diz **qual campo**
   ficou pendente e **o que já foi respondido**
   (ex.: “Campos não preenchidos: Telefone. Respondi sozinho: Sim.”).
+
+> A varredura **só ignora vaga já candidatada** (`enviada` ou `já candidatada`
+> antes). `travada`, `incompleta`, `externa`, `sem botão` e `sem modal` são
+> registradas no relatório e **voltam a ser abertas na próxima passada**. Um erro
+> numa vaga não interrompe a varredura: ele é registrado e o fluxo segue para a
+> próxima. A classificação do botão (`externa`/`desconhecida`) **não** é usada
+> para descartar a vaga antes de tentar: na dúvida, o botão é clicado e, se o
+> formulário não abrir, isso vira `sem modal` no relatório.
 - **Ritmo humano**: todo intervalo tem variação aleatória, o clique é precedido
   de rolagem + passagem de mouse pelo elemento, há pausas de “leitura” da vaga,
   pausas longas periódicas e a extensão **cede a vez** para você quando está
@@ -342,6 +350,16 @@ PegaVaga:
 > trabalho** — *“PegaVaga precisa de ajuda para continuar”* — com os botões
 > **“Preencher manualmente”** (foca a aba) e **“Pular vaga”**. A vaga nunca é
 > descartada em silêncio.
+>
+> **Campos de sugestão** (por exemplo, “Location (city)”): o LinkedIn só aceita
+> depois que você digita e **escolhe uma sugestão** da lista. O cartão não replica
+> essa lista, então nesses casos o PegaVaga vai direto para a **notificação**
+> (“Preencher manualmente”/“Pular vaga”), em vez de abrir o cartão. Se o sistema
+> não permitir a notificação, abre o cartão em modo **só manual/pular** (sem
+> campo), para a vaga não ser pulada em silêncio. Depois que você preenche e
+> **para de mexer por alguns segundos**, a automação retoma sozinha — inclusive
+> com **“Ceder a vez” desligado**, porque a retomada olha a sua inatividade, não
+> o ajuste.
 >
 > Duas redes de segurança: se o cartão ficar **45 s sem resposta** (ele pode ter
 > aberto atrás da janela do navegador), a **notificação também aparece** — e some

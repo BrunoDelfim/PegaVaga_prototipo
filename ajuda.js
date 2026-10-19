@@ -586,6 +586,16 @@
       );
     }
 
+    // Typeahead sem notificação disponível: este cartão é só um painel de
+    // "preencher na página" / "pular" — não há campo para responder aqui.
+    if (dados.motivo === 'typeahead') {
+      document.getElementById('msg').textContent = t(
+        'Este campo é de sugestão (como localização): preencha na página e escolha a sugestão do LinkedIn, ou pule a vaga.'
+      );
+      const aplicar = document.getElementById('aplicar');
+      if (aplicar) aplicar.hidden = true;
+    }
+
     const lerResposta = () => {
       const resposta = {};
 

@@ -131,12 +131,14 @@
     applyFlowTimeoutMs: 120000, // tempo máximo dentro do formulário de uma vaga
     applyKindWaitMs: 3000, // tempo máximo esperando o botão revelar o tipo (ícone/rótulo)
     applyKindPollMs: 200, // intervalo de releitura do botão de candidatura
+    applyButtonWaitMs: 4000, // tempo máximo esperando o botão de candidatura renderizar
     resumeTimerCapMs: 1800000, // teto do timer local de retomada (30 min)
 
     /* Ajuda: quando a vaga trava num campo que só o usuário preenche */
     helpWaitMs: 120000, // quanto esperamos a sua ajuda antes de desistir da vaga (2 min)
     helpPollMs: 1000, // rechecagem durante a espera por ajuda
     helpSettleMs: 3000, // silêncio no formulário que marca "você terminou de mexer"
+    helpIdleMs: 6000, // depois que você mexe e para, devolvemos o comando
 
     /* Ritmo humano / furtividade */
     humanRatio: 0.3, // variação padrão aplicada aos intervalos
@@ -2144,6 +2146,53 @@
     );
   }
 
+  /**
+   * É um campo de SUGESTÃO (typeahead)? O "Location (city)" do Easy Apply é um
+   * <input> editável que só valida depois de o usuário digitar e ESCOLHER uma
+   * sugestão da lista. O cartão não replica essa lista (seria pesado e frágil):
+   * nesses casos a ajuda vai pela notificação (preencher à mão ou pular).
+   */
+  function ehTypeahead(el) {
+    if (!el) return false;
+
+    const tag = String(el.tagName || '').toLowerCase();
+    const tipo = String(el.type || '').toLowerCase();
+
+    if (tag !== 'input') return false;
+    if (tipo === 'hidden' || tipo === 'file' || tipo === 'checkbox' || tipo === 'radio') return false;
+    if (el.readOnly) return false; // readonly é dropdown de lista, não sugestão
+
+    // <input list="..."> (datalist nativo) também exige escolher a sugestão.
+    if (el.list) return true;
+
+    const role = atributo(el, 'role').toLowerCase();
+    const auto = atributo(el, 'aria-autocomplete').toLowerCase();
+    const haspopup = atributo(el, 'aria-haspopup').toLowerCase();
+    const combo =
+      role === 'combobox' ||
+      haspopup === 'listbox' ||
+      auto === 'list' ||
+      auto === 'both' ||
+      auto === 'inline';
+
+    // O LinkedIn nem sempre marca o location com ARIA: o placeholder/rótulo é o
+    // sinal que sobra. `normalize` remove acento, então "Localização" vira
+    // "localizacao".
+    const rotulo = fieldLabel(el) || '';
+    const dica = normalize(
+      rotulo +
+        ' ' +
+        atributo(el, 'placeholder') +
+        ' ' +
+        atributo(el, 'aria-label')
+    );
+    const local = /(localiza|localidade|location|city|cidade|pais|country|estado|state|regiao)/.test(
+      dica
+    );
+
+    return combo || local;
+  }
+
   /** O combobox já mostra uma escolha (e não o placeholder)? */
   function comboTemValor(el) {
     if (!el) return false;
@@ -2279,6 +2328,12 @@
       return !opcaoMarcada(el) && ehObrigatorio(el);
     }
 
+    if (ehTypeahead(el)) {
+      // Sugestão com valor inválido (o LinkedIn marca aria-invalid) continua
+      // pendente; com valor escolhido, não trava a etapa.
+      return atributo(el, 'aria-invalid') === 'true' || !comboTemValor(el);
+    }
+
     if (ehCombo(el)) return !comboTemValor(el);
 
     if (tag === 'input' || tag === 'textarea') {
@@ -2347,6 +2402,11 @@
 
     if (tipo === 'checkbox' || role === 'checkbox') {
       return { rotulo: rotulo, tipo: 'checkbox', opcoes: [] };
+    }
+
+    // Sugestão (location etc.): o cartão não replica a lista do LinkedIn.
+    if (ehTypeahead(el)) {
+      return { rotulo: rotulo, tipo: 'typeahead', opcoes: [] };
     }
 
     if (ehCombo(el)) {
@@ -2537,39 +2597,69 @@
     // Lemos os campos ANTES de abrir: o combobox custom só revela as opções quando
     // é aberto, e essa leitura precisa acontecer com o formulário em foco.
     const campos = await descreverCamposAjuda(modal, labels);
+    const temTypeahead = campos.some((campo) => campo.tipo === 'typeahead');
 
-    const decisao = await pedirAjuda({
-      motivo: opts && opts.step ? 'clique' : 'campo',
-      titulo: job.title || '',
-      empresa: job.company || '',
-      campos: campos,
-      labels: labels,
-    });
+    if (temTypeahead) {
+      // O cartão não replica a lista de sugestões do LinkedIn (location etc.):
+      // a notificação oferece "Preencher manualmente" ou "Pular vaga".
+      console.info(
+        '[PegaVaga] campo de sugestão (typeahead) no formulário — usando a notificação em vez do cartão.'
+      );
 
-    if (decisao && decisao.acao === 'aplicar') {
-      const aplicados = await aplicarRespostaNosCampos(modal, decisao.resposta);
+      const notificacaoOk = await notifyHelp(labels, job.title || '');
+      console.info(
+        '[PegaVaga] notificação de ajuda:',
+        notificacaoOk ? 'mostrada' : 'indisponível'
+      );
 
-      if (aplicados > 0) {
-        await salvarRespostas(decisao.resposta);
-        console.info('[PegaVaga] Respostas do cartão aplicadas:', aplicados);
+      if (!notificacaoOk) {
+        // Sem notificação, o banner do pop-up seria a única pista. Abrimos o
+        // cartão em modo "só manual/pular" (sem campo de resposta) para não
+        // pular a vaga sem o usuário entender o que aconteceu.
+        const decisao = await pedirAjuda({
+          motivo: 'typeahead',
+          titulo: job.title || '',
+          empresa: job.company || '',
+          campos: [],
+          labels: labels,
+        });
 
-        state.helpRequested = false;
-        state.helpSkip = false;
-        await setRunHelp(null);
-        notifyHelpDone();
+        if (decisao && decisao.acao === 'pular') return 'skip';
+      }
+    } else {
+      const decisao = await pedirAjuda({
+        motivo: opts && opts.step ? 'clique' : 'campo',
+        titulo: job.title || '',
+        empresa: job.company || '',
+        campos: campos,
+        labels: labels,
+      });
 
-        return 'resolved';
+      if (decisao && decisao.acao === 'aplicar') {
+        const aplicados = await aplicarRespostaNosCampos(modal, decisao.resposta);
+
+        if (aplicados > 0) {
+          await salvarRespostas(decisao.resposta);
+          console.info('[PegaVaga] Respostas do cartão aplicadas:', aplicados);
+
+          state.helpRequested = false;
+          state.helpSkip = false;
+          await setRunHelp(null);
+          notifyHelpDone();
+
+          return 'resolved';
+        }
+
+        // Não achamos onde escrever (ou o formulário já saiu da tela): não finge
+        // que deu certo — segue para a notificação, e você assume à mão.
+        console.warn('[PegaVaga] nenhuma resposta do cartão pôde ser escrita no formulário.');
       }
 
-      // Não achamos onde escrever (ou o formulário já saiu da tela): não finge
-      // que deu certo — segue para a notificação, e você assume à mão.
-      console.warn('[PegaVaga] nenhuma resposta do cartão pôde ser escrita no formulário.');
+      if (decisao && decisao.acao === 'pular') return 'skip';
+
+      // O service worker mostra a notificação e, no clique, traz esta aba à frente.
+      await notifyHelp(labels, job.title || '');
     }
-
-    if (decisao && decisao.acao === 'pular') return 'skip';
-
-    // O service worker mostra a notificação e, no clique, traz esta aba à frente.
-    notifyHelp(labels, job.title || '');
 
     const outcome = await waitForHelp(modal, opts);
 
@@ -2590,6 +2680,7 @@
    */
   async function waitForHelp(modal, opts) {
     const waitStep = Boolean(opts && opts.step); // entrou porque o clique não avançou
+    const inicio = Date.now();
     let baseline = modal && document.contains(modal) ? scopeSignature(modal) : '';
     let changedAt = 0;
 
@@ -2598,6 +2689,18 @@
         if (state.abort || state.helpSkip) return 'skip';
         if (!modal || !document.contains(modal)) return 'resolved';
         if (looksSubmitted(modal) || !isApplyForm(modal)) return 'resolved';
+
+        // Você mexeu na página e depois parou. Devolvemos o comando mesmo que a
+        // assinatura do DOM não tenha mudado (escolher a sugestão do typeahead
+        // muda o VALOR do input, não necessariamente a estrutura). Sem isso, a
+        // automação podia ficar parada esperando o prazo inteiro.
+        const mexeu = state.lastUserActivity >= inicio;
+        const parou = mexeu && Date.now() - state.lastUserActivity >= CONFIG.helpIdleMs;
+
+        if (parou && (waitStep || getModalAction(modal))) {
+          console.info('[PegaVaga] ajuda: usuário parou de mexer — retomando a automação.');
+          return 'resolved';
+        }
 
         if (waitStep) {
           // O botão já estava habilitado: retomamos quando você parar de mexer
@@ -2863,10 +2966,24 @@
   }
 
   function notifyHelp(missing, jobTitle) {
-    sendRuntime({
-      type: MSG.HELP,
-      missing: (Array.isArray(missing) ? missing : []).slice(0, 3),
-      jobTitle: jobTitle || '',
+    // Devolve se a notificação foi mesmo criada: o typeahead usa isso para cair
+    // num cartão "só manual/pular" quando o sistema não deixa notificar.
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage(
+          {
+            type: MSG.HELP,
+            missing: (Array.isArray(missing) ? missing : []).slice(0, 3),
+            jobTitle: jobTitle || '',
+          },
+          (resposta) => {
+            void chrome.runtime.lastError;
+            resolve(Boolean(resposta && resposta.shown));
+          }
+        );
+      } catch (error) {
+        resolve(false);
+      }
     });
   }
 
@@ -3472,10 +3589,9 @@
    * Preenche e envia a candidatura simplificada da vaga aberta no painel.
    * Devolve { status, missing?, filled?, steps?, error? }, com estes status:
    *   enviada   → candidatura confirmada pelo LinkedIn;
-   *   externa   → botão manda para um site de fora: pulada, sem clique;
-   *   desconhecida → o botão não se parece com a Candidatura Simplificada:
-   *               também pulada, sem clique (tentamos de novo mais tarde);
-   *   sem_botao → a vaga não tem botão de candidatura;
+   *   externa   → botão manda para um site de fora: não clicamos (levaria a aba
+   *               embora) e o motivo fica no relatório;
+   *   sem_botao → a vaga não tem botão de candidatura (nem depois de esperar);
    *   sem_modal → clicou e o formulário não abriu;
    *   travada   → parou numa pergunta obrigatória que não deu para responder
    *               (`missing` traz os rótulos pendentes, `filled` o respondido);
@@ -3514,19 +3630,33 @@
     // Popup sobrando da vaga anterior? Sai da frente antes de qualquer clique.
     await closeStaleForm(CONFIG.popupBudgetMs);
 
-    const button = findApplyButton();
+    let button = findApplyButton();
 
     // Já candidatada antes? O LinkedIn tira o botão e mostra "Você se candidatou".
     if (looksAlreadyApplied()) return { status: 'ja_candidatada' };
 
+    // O botão pode chegar um instante depois da descrição. Esperar evita marcar
+    // "sem botão" numa vaga que ainda ia renderizar (e que seria pulada à toa).
+    if (!button) {
+      button = await waitUntil(() => findApplyButton(), CONFIG.applyButtonWaitMs, CONFIG.applyKindPollMs);
+    }
+
     if (!button) return { status: 'sem_botao' };
 
-    // Vaga que sai do LinkedIn (site da empresa)? Não clicamos: só registramos o
-    // motivo, para nunca levar a sua aba para fora.
     const kind = await resolveApplyKind(button);
-    if (kind !== SHARED.APPLY_KINDS.easy) {
-      return { status: kind === SHARED.APPLY_KINDS.external ? 'externa' : 'desconhecida', detail: applyDetail(button, kind) };
+    console.info('[PegaVaga] tipo do botão de candidatura:', kind, '—', applyDetail(button, kind));
+
+    // Único caso em que não clicamos: o botão claramente leva para fora do
+    // LinkedIn (link/ícone/rótulo do site da empresa). O clique levaria a sua
+    // aba embora no meio da varredura; registramos o motivo e seguimos.
+    if (kind === SHARED.APPLY_KINDS.external) {
+      return { status: 'externa', detail: applyDetail(button, kind) };
     }
+
+    // Easy Apply OU tipo não reconhecido: tentamos abrir de verdade. Antes, a
+    // "desconhecida" era descartada sem clique, e vagas boas sumiam da
+    // varredura; com o filtro de Candidatura Simplificada ligado, na dúvida o
+    // certo é abrir — se o formulário não vier, vira `sem_modal` no relatório.
 
     await humanPause(CONFIG.applyPreClickMs); // respira antes de abrir o formulário
     humanClick(button);
@@ -3636,6 +3766,7 @@
 
           if (help === 'resolved') {
             deadline = Date.now() + CONFIG.applyFlowTimeoutMs; // volta com fôlego novo
+            console.info('[PegaVaga] retomando o formulário depois da ajuda…');
             await waitForSettle(modal, CONFIG.applySettleMs);
             continue;
           }
@@ -3657,6 +3788,7 @@
       }
 
       const before = scopeSignature(modal);
+      console.info('[PegaVaga] clicando em', action.kind === 'submit' ? 'Enviar' : 'Avançar', '…');
       humanClick(action.button);
       steps += 1;
 
@@ -3690,6 +3822,7 @@
             if (help === 'resolved') {
               stalled = 0;
               deadline = Date.now() + CONFIG.applyFlowTimeoutMs;
+              console.info('[PegaVaga] retomando o formulário depois da ajuda…');
               await waitForSettle(modal, CONFIG.applySettleMs);
               continue;
             }
@@ -4090,17 +4223,22 @@
     scheduleRunPersist();
   }
 
-  /** A vaga ainda precisa de trabalho? (falta descrição ou candidatura) */
+  /**
+   * A vaga ainda precisa de trabalho? Só não voltamos em quem JÁ foi candidatada
+   * (`appliedAt`) ou em quem o LinkedIn já marcava como candidatada antes
+   * (`ja_candidatada`). `travada`, `incompleta`, `externa` e `desconhecida`
+   * voltam a ser abertas na próxima passada: o erro fica registrado no relatório,
+   * mas a vaga não é pulada em silêncio.
+   */
   function needsWork(id, settings) {
     const job = state.jobs[id] || {};
 
     if (!job.description) return true;
     if (!settings.apply.enabled) return false;
     if (job.appliedAt) return false;
-    // Vaga que sai do LinkedIn ou já candidatada antes: não voltamos nela.
-    if (job.applyStatus === 'externa' || job.applyStatus === 'ja_candidatada') return false;
+    if (job.applyStatus === 'ja_candidatada') return false;
 
-    return (job.applyAttempts || 0) < CONFIG.applyMaxAttempts;
+    return true;
   }
 
   /**
@@ -4132,29 +4270,19 @@
   }
 
   /**
-   * A vaga aberta no painel é candidatável aqui no LinkedIn? Se não for (o botão
-   * manda para o site da empresa, ou não é a Candidatura Simplificada), registra
-   * o motivo na vaga e devolve `true`: a varredura pula para a próxima sem
-   * clicar em nada. Devolve `false` quando é para seguir com a candidatura.
+   * A única vaga que pode ser pulada é a que já foi candidatada antes: o
+   * LinkedIn esconde/desabilita o botão e mostra "Você se candidatou".
+   *
+   * Tudo o mais TEM de ser aberto. A classificação do botão (externa/desconhecida)
+   * não serve de porteira aqui: quando ela falhava, a vaga era descartada sem
+   * nem clicar. Ela é resolvida depois, dentro do fluxo, e vira erro no
+   * relatório — nunca um pulo silencioso.
    */
-  async function skipIfOffsite(id) {
-    // Vaga em que você já se candidatou antes: o LinkedIn esconde/desabilita o
-    // botão e mostra "Você se candidatou". Registramos isso — e não "sem botão".
-    if (looksAlreadyApplied()) {
-      console.info('[PegaVaga] Vaga já candidatada antes (aviso do LinkedIn detectado).');
-      await recordApplyResult(id, { status: 'ja_candidatada' });
-      return true;
-    }
+  async function skipIfAlreadyApplied(id) {
+    if (!looksAlreadyApplied()) return false;
 
-    const button = findApplyButton();
-    if (!button) return false; // sem botão: o fluxo normal decide o desfecho
-
-    const kind = await resolveApplyKind(button);
-    if (kind === SHARED.APPLY_KINDS.easy) return false;
-
-    const status = kind === SHARED.APPLY_KINDS.external ? 'externa' : 'desconhecida';
-    await recordApplyResult(id, { status, detail: applyDetail(button, kind) });
-
+    console.info('[PegaVaga] Vaga já candidatada antes (aviso do LinkedIn detectado).');
+    await recordApplyResult(id, { status: 'ja_candidatada' });
     return true;
   }
 
@@ -4175,7 +4303,6 @@
 
     const job = state.jobs[id] || {};
     if (job.appliedAt) return;
-    if ((job.applyAttempts || 0) >= CONFIG.applyMaxAttempts) return;
     if (!quotaNow().ok) return;
 
     // Você está usando a página agora? Então esperamos (sem roubar o seu clique).
@@ -4187,9 +4314,9 @@
 
     if (state.abort) return;
 
-    // Vaga que sai do LinkedIn (site da empresa): registramos o motivo e pulamos
-    // na hora — sem clique, sem pausa de leitura e sem gastar cota de candidatura.
-    if (await skipIfOffsite(id)) return;
+    // Só pulamos quem já foi candidatado antes. As demais são abertas e, se não
+    // der para concluir, o erro fica registrado e a varredura segue.
+    if (await skipIfAlreadyApplied(id)) return;
 
     if (state.abort) return;
 
@@ -4249,6 +4376,10 @@
 
     let stop = null; // 'quota' | 'term_done' | 'scan_cap' | 'usuario'
     let round = 0;
+    // Uma tentativa por vaga NESTA passada. Sem isso, um card que continua na
+    // lista depois do scroll seria aberto de novo na mesma varredura; a próxima
+    // passada (novo run) tenta de novo uma vaga travada/incompleta.
+    const processados = new Set();
 
     try {
       await loadApps();
@@ -4267,6 +4398,8 @@
 
           const id = getJobId(card);
           if (!id || !needsWork(id, settings)) continue;
+          if (processados.has(id)) continue;
+          processados.add(id);
 
           stop = stopReason(settings);
           if (stop) {
@@ -4274,7 +4407,17 @@
             break;
           }
 
-          await processCard(card, id, settings);
+          try {
+            await processCard(card, id, settings);
+          } catch (error) {
+            // Uma vaga problemática não pode derrubar a varredura inteira: o
+            // erro fica registrado na vaga (rota de erro) e seguimos.
+            noteError('processar a vaga ' + id, error);
+            await recordApplyResult(id, {
+              status: 'incompleta',
+              error: (error && (error.message || error.reason)) || 'erro inesperado',
+            });
+          }
 
           // Você assumiu a página: paramos de mexer nela e descansamos um pouco.
           if (state.userBusy) {

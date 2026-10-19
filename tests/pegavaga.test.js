@@ -1268,6 +1268,66 @@ ok(
   'so grava a posicao depois de arrastar de verdade',
   /inicioX/.test(ajudaJs) && /window\.screenX - inicioX/.test(ajudaJs)
 );
+ok(
+  'typeahead usa a notificacao (nao abre o cartao)',
+  /function ehTypeahead/.test(contentJs) &&
+    /tipo: 'typeahead'/.test(contentJs) &&
+    /const temTypeahead/.test(contentJs) &&
+    /usando a notificação em vez do cartão/.test(contentJs) &&
+    /motivo: 'typeahead'/.test(contentJs) &&
+    /dados\.motivo === 'typeahead'/.test(ajudaJs) &&
+    /aplicar\.hidden = true/.test(ajudaJs)
+);
+ok(
+  'ajuda retoma quando o usuario para de mexer',
+  /helpIdleMs: \d+/.test(contentJs) &&
+    /const inicio = Date\.now\(\)/.test(contentJs) &&
+    /state\.lastUserActivity >= inicio/.test(contentJs) &&
+    /usuário parou de mexer/.test(contentJs) &&
+    /retomando o formulário depois da ajuda/.test(contentJs)
+);
+// A varredura só pode ignorar quem já foi candidatado; o resto volta a abrir.
+const needsWorkBody = contentJs.slice(
+  contentJs.indexOf('function needsWork'),
+  contentJs.indexOf('const STOP_REASONS')
+);
+ok(
+  'varredura so ignora vaga ja candidatada',
+  needsWorkBody.length > 0 &&
+    /job\.appliedAt/.test(needsWorkBody) &&
+    /ja_candidatada/.test(needsWorkBody) &&
+    !/applyAttempts/.test(needsWorkBody) &&
+    !/applyStatus === 'externa'/.test(needsWorkBody)
+);
+ok(
+  'erro numa vaga nao para a varredura',
+  /try \{\s*await processCard\(card, id, settings\);\s*\} catch \(error\)[\s\S]{0,500}recordApplyResult\(id, \{[\s\S]{0,160}status: 'incompleta'/.test(
+    contentJs
+  )
+);
+// O unico pulo permitido e "ja candidatada"; a classificacao do botao nao pode
+// descartar a vaga antes de tentar abrir.
+const skipBody = contentJs.slice(
+  contentJs.indexOf('async function skipIfAlreadyApplied'),
+  contentJs.indexOf('async function processCard')
+);
+ok(
+  'so pula vaga ja candidatada (sem porteira de tipo)',
+  skipBody.length > 0 &&
+    /looksAlreadyApplied\(\)/.test(skipBody) &&
+    !/resolveApplyKind/.test(skipBody) &&
+    !/APPLY_KINDS/.test(skipBody) &&
+    /skipIfAlreadyApplied\(id\)/.test(contentJs)
+);
+// Na duvida (desconhecida) o fluxo abre a vaga em vez de desistir sem clique.
+const flowStart = contentJs.indexOf('async function runApplyFlow');
+const flowBody = contentJs.slice(flowStart, contentJs.indexOf('await humanPause(CONFIG.applyPreClickMs)'));
+ok(
+  'botao desconhecido tenta abrir o formulario',
+  flowBody.length > 0 &&
+    /kind === SHARED\.APPLY_KINDS\.external/.test(flowBody) &&
+    !/kind !== SHARED\.APPLY_KINDS\.easy/.test(flowBody)
+);
 // Altura dinâmica com teto: encolhe/cresce com o conteúdo e rola no limite.
 ok(
   'cartao ajusta a altura ao conteudo com teto',
@@ -1291,7 +1351,9 @@ ok('content aplica a resposta no campo certo', /async function aplicarRespostaNo
 ok('content guarda as respostas para a proxima vaga', /async function salvarRespostas/.test(contentJs));
 ok(
   'ajuda tenta a janelinha antes da notificacao',
-  contentJs.indexOf('await pedirAjuda(') < contentJs.indexOf('notifyHelp(labels, job.title', contentJs.indexOf('async function askForHelp'))
+  contentJs.indexOf("motivo: opts && opts.step ? 'clique' : 'campo'") >= 0 &&
+    contentJs.indexOf("motivo: opts && opts.step ? 'clique' : 'campo'") <
+      contentJs.indexOf('// O service worker mostra a notificação e, no clique, traz esta aba à frente.')
 );
 ok('decisao "pular" devolve skip', /decisao\.acao === 'pular'[\s\S]{0,20}return 'skip'/.test(contentJs));
 ok(

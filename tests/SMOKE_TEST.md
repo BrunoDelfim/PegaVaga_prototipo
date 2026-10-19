@@ -155,8 +155,15 @@ fim — e não siga adiante antes de entender a falha.
 - [ ] Com **“Responder sozinho perguntas obrigatórias”** ligado, as perguntas
       Sim/Não, listas e números são respondidas (Sim/1) e a candidatura é
       **enviada**. Desligado (padrão), pergunta personalizada cai no pedido de ajuda.
-- [ ] Vaga **externa** (site da empresa): **não clica**, registra
-      `Externa (site da empresa)` com o motivo.
+- [ ] Vaga **externa** (site da empresa): **não clica** (o link levaria a aba
+      embora), registra `Externa (site da empresa)` com o motivo e continua.
+- [ ] Vaga cujo botão **não foi reconhecido** (`desconhecida`): na dúvida o
+      botão **é clicado** e o formulário tenta abrir; se não abrir, fica
+      `Formulário não abriu` no relatório — a vaga **não é pulada** antes disso.
+- [ ] Vaga que ficou `travada`/`incompleta` (erro no formulário): na **próxima
+      passada** ela é **aberta de novo**; só `enviada`/`já candidatada` não voltam.
+- [ ] Um erro numa vaga **não interrompe** a varredura: a vaga fica registrada e
+      as seguintes continuam.
 - [ ] Popups pós-candidatura (avaliação/pesquisa/salvar vaga) são **fechados**.
 
 ### H. Já candidatada antes
@@ -354,6 +361,15 @@ personalizada** (resposta não salva) e deixe a automação chegar ao formulári
       cartão na hora. Sem escolha salva, segue o tema do sistema.
 - [ ] No cartão, o **botão Aplicar** fica em destaque na primeira linha e
       “Vou preencher à mão”/“Pular esta vaga” dividem a segunda linha.
+- [ ] Campo de **sugestão/localização** (`input` editável com
+      `role="combobox"`/`aria-autocomplete`, ex.: “Location (city)”): o cartão
+      **não abre**; aparece a **notificação** com “Preencher manualmente” e
+      “Pular vaga”. Escolher a sugestão na página reabilita o botão e a varredura
+      retoma. Se a notificação não aparecer (permissão/Focus Assist), deve abrir o
+      cartão em modo **só manual/pular** (sem campo), nunca pular em silêncio.
+- [ ] **Retomada depois da ajuda**: preencha a sugestão e pare de mexer. Em ~6 s
+      o console mostra `retomando o formulário depois da ajuda…` e
+      `clicando em Avançar…`; funciona também com **“Ceder a vez” desligado**.
 - [ ] **Aplicar com campo vazio**: não envia nem fecha; o campo fica com borda
       vermelha e **“Campo obrigatório.”**, e o aviso **“Preencha os campos
       obrigatórios antes de continuar.”** aparece no topo. Preencher tudo (e
