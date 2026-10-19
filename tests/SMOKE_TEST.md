@@ -335,6 +335,21 @@ personalizada** (resposta não salva) e deixe a automação chegar ao formulári
       sem menu.
 - [ ] O cartão mostra a vaga (título — empresa) e **um controle por pergunta**;
       numa pergunta de lista, as opções são **as mesmas do LinkedIn**.
+- [ ] Pergunta de **lista nativa** (`<select>`): aparece um **select** com as
+      opções originais (não um campo de texto).
+- [ ] Pergunta de **lista custom** (`role="combobox"`/`aria-haspopup="listbox"`):
+      o cartão também traz as opções (a extensão abre o dropdown para ler e fecha
+      em seguida).
+- [ ] Pergunta de **rádio** nativa ou custom (`role="radiogroup"`/`role="radio"`):
+      aparecem **botões de rádio** com as opções, e a escolha marca a opção certa
+      no LinkedIn.
+- [ ] **Checkbox obrigatório** desmarcado: o cartão mostra a caixa; marcar e
+      aplicar faz o formulário avançar.
+- [ ] Se as opções não puderem ser lidas, o cartão mostra um campo de texto com
+      **“Digite a opção como aparece no LinkedIn”**; digitar o texto exato da
+      opção ainda aplica no campo certo.
+- [ ] No console da página, a aplicação registra
+      `[PegaVaga] cartão: resposta aplicada em <pergunta>`.
 - [ ] **Aplicar e continuar**: a resposta entra no campo, o formulário avança e a
       varredura segue sozinha (a notificação de ajuda **não** aparece).
 - [ ] A resposta fica **salva**: numa vaga seguinte com a mesma pergunta, a

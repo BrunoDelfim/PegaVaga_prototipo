@@ -1121,6 +1121,13 @@ eq('escolherRotulo devolve -1 sem alvo', S.escolherRotulo(['Sim'], ''), -1);
 eq('escolherRotulo devolve -1 sem lista', S.escolherRotulo([], 'sim'), -1);
 eq('escolherRotulo devolve -1 quando nada casa', S.escolherRotulo(['Talvez'], 'sim'), -1);
 
+// B2: casar a pergunta do relatório com o rótulo lido do formulário sem exigir
+// texto idêntico (o LinkedIn muda pontuação, acento e cola o "Obrigatório").
+eq('rotuloCombina casa texto normalizado', S.rotuloCombina('Anos de experiência', 'anos de experiencia'), true);
+eq('rotuloCombina aceita um dentro do outro', S.rotuloCombina('Você aceita trabalhar presencial?', 'trabalhar presencial'), true);
+eq('rotuloCombina recusa perguntas diferentes', S.rotuloCombina('Cidade', 'Telefone'), false);
+eq('rotuloCombina recusa vazio', S.rotuloCombina('', 'sim'), false);
+
 // O `URLSearchParams` já decodifica: um `decodeURIComponent` a mais quebrava
 // respostas com "%" ("Até 100%") — este teste é a trava contra a volta do bug.
 const contextoJanelinha = S.parseAjudaDados(
@@ -1157,6 +1164,46 @@ ok('fecha a janela quando a aba some', /lerAjudaId[\s\S]{0,160}windows\.remove/.
 ok('content pede a ajuda na janelinha', /async function pedirAjuda/.test(contentJs) && /AJUDA_PEDIDO/.test(contentJs));
 ok('content espera a decisao com prazo e Parar', /function esperarDecisao[\s\S]{0,900}state\.abort/.test(contentJs));
 ok('content descreve os campos com as opcoes originais', /function descreverCamposAjuda/.test(contentJs) && /function opcoesDoCampo/.test(contentJs));
+// B2: select, rádio e checkbox — nativos e custom (role=radiogroup/combobox).
+ok(
+  'content lista os campos pendentes (radio/checkbox/custom)',
+  /function camposPendentes/.test(contentJs) &&
+    /role="radiogroup"/.test(contentJs) &&
+    /role="option"/.test(contentJs)
+);
+ok(
+  'content descreve radio e checkbox para o cartao',
+  /function descreverCampoParaAjuda/.test(contentJs) &&
+    /tipo: 'radio'/.test(contentJs) &&
+    /tipo: 'checkbox'/.test(contentJs) &&
+    /function opcoesDoSelect/.test(contentJs)
+);
+ok(
+  'content aplica resposta em radio/checkbox/combobox',
+  /function aplicarEmRadio/.test(contentJs) &&
+    /function aplicarEmCheckbox/.test(contentJs) &&
+    /async function aplicarEmCombo/.test(contentJs)
+);
+ok(
+  'content abre o combobox para ler as opcoes',
+  /async function opcoesDoCampo/.test(contentJs) && /opcoesDoCombo\(modal, el\)/.test(contentJs)
+);
+ok(
+  'filtro de rotulo nao descarta o campo pendente',
+  /casados\.length \? casados : descritos/.test(contentJs)
+);
+ok(
+  'content le os campos antes de abrir o cartao',
+  /await descreverCamposAjuda\(modal, labels\)/.test(contentJs)
+);
+ok(
+  'cartao desenha radio e checkbox',
+  /el\.type = 'radio'/.test(ajudaJs) && /el\.type = 'checkbox'/.test(ajudaJs)
+);
+ok(
+  'cartao le a resposta de radio e checkbox',
+  /controle\.tipo === 'radio'/.test(ajudaJs) && /controle\.tipo === 'checkbox'/.test(ajudaJs)
+);
 ok('content aplica a resposta no campo certo', /async function aplicarRespostaNosCampos/.test(contentJs) && /SHARED\.escolherRotulo/.test(contentJs));
 ok('content guarda as respostas para a proxima vaga', /async function salvarRespostas/.test(contentJs));
 ok(

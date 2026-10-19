@@ -308,11 +308,14 @@ PegaVaga:
    desktop: uma janela **popup** do Chrome, **só com a barra de título e a borda**
    (sem aba, sem barra de endereço, sem menu);
 3. O cartão mostra a **vaga** e **um controle por pergunta travada** — numa
-   pergunta de lista, as opções são **as mesmas do LinkedIn**. Você responde e
-   clica em **“Aplicar e continuar”**: o PegaVaga **escreve a resposta no campo**
-   (casando com a opção original: `Sim` não cai em `Sim, com restrições`) e a
-   candidatura **segue sozinha** — e a resposta fica **salva** para as próximas
-   vagas com a mesma pergunta;
+   pergunta de lista, um **select com as opções do LinkedIn**; numa pergunta de
+   escolha, **botões de rádio**; um **checkbox** obrigatório vem como caixa para
+   marcar. Widgets custom (`role="combobox"`/`role="radiogroup"`) também são
+   lidos: a extensão abre o dropdown, copia as opções e fecha em seguida. Você
+   responde e clica em **“Aplicar e continuar”**: o PegaVaga **escreve a resposta
+   no campo** (casando com a opção original: `Sim` não cai em `Sim, com
+   restrições`) e a candidatura **segue sozinha** — e a resposta fica **salva**
+   para as próximas vagas com a mesma pergunta;
 4. Se preferir digitar você mesmo, **“Vou preencher à mão”** traz a aba do
    LinkedIn para frente e a automação espera; quando o campo estiver preenchido,
    ela **retoma sozinha**;

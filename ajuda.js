@@ -6,8 +6,9 @@
  *
  * O background abre esta página com `?dados=<json>` — a vaga, o motivo e os
  * CAMPOS travados (`{ rotulo, tipo, opcoes }`). Aqui cada campo vira o controle
- * certo (um <select> com as opções ORIGINAIS do LinkedIn, ou um <input>), e a
- * decisão volta para o worker, que a entrega à aba certa e fecha esta janela.
+ * certo (um <select> com as opções ORIGINAIS do LinkedIn, botões de rádio, uma
+ * caixa de confirmação ou um <input>), e a decisão volta para o worker, que a
+ * entrega à aba certa e fecha esta janela.
  * ===========================================================================*/
 'use strict';
 
@@ -50,24 +51,87 @@
     document.getElementById('pular').textContent = t('Pular esta vaga');
   }
 
-  /** Desenha um controle por campo travado; devolve `[{ rotulo, el }]`. */
+  /** Desenha um controle por campo travado; devolve `[{ rotulo, el, tipo }]`. */
   function desenharCampos() {
     const caixa = document.getElementById('campos');
     const controles = [];
 
-    campos.forEach((campo) => {
+    campos.forEach((campo, indice) => {
       const rotulo = String((campo && campo.rotulo) || '').trim();
       if (!rotulo) return;
 
       const bloco = document.createElement('div');
       bloco.className = 'campo';
 
-      const label = document.createElement('label');
-      const id = 'campo-' + controles.length;
-      label.textContent = rotulo;
-      label.htmlFor = id;
+      const tipo = String((campo && campo.tipo) || '').toLowerCase();
+      const opcoes = Array.isArray(campo && campo.opcoes) ? campo.opcoes.filter(Boolean) : [];
+      const id = 'campo-' + indice;
 
-      const opcoes = Array.isArray(campo.opcoes) ? campo.opcoes.filter(Boolean) : [];
+      const label = document.createElement('label');
+      label.textContent = rotulo;
+      // Rádio/checkbox têm o próprio <label> por opção; o rótulo da pergunta é
+      // só texto (apontar `for` para um grupo não associa nada no navegador).
+      if (tipo !== 'radio' && tipo !== 'checkbox') label.htmlFor = id;
+
+      if (tipo === 'checkbox') {
+        const linha = document.createElement('label');
+        linha.className = 'opcao';
+        linha.htmlFor = id;
+
+        const el = document.createElement('input');
+        el.type = 'checkbox';
+        el.id = id;
+
+        const texto = document.createElement('span');
+        texto.textContent = t('Marque para confirmar');
+
+        linha.appendChild(el);
+        linha.appendChild(texto);
+        bloco.appendChild(label);
+        bloco.appendChild(linha);
+        caixa.appendChild(bloco);
+
+        controles.push({ rotulo: rotulo, el: el, tipo: 'checkbox' });
+        return;
+      }
+
+      if (tipo === 'radio' && opcoes.length) {
+        const grupo = document.createElement('div');
+        grupo.className = 'opcoes';
+        grupo.id = id;
+        grupo.setAttribute('role', 'radiogroup');
+
+        const itens = [];
+        const nome = 'campo-' + indice;
+
+        opcoes.forEach((texto, posicao) => {
+          const linha = document.createElement('label');
+          linha.className = 'opcao';
+
+          const el = document.createElement('input');
+          el.type = 'radio';
+          el.name = nome;
+          el.value = String(texto);
+          el.id = id + '-' + posicao;
+
+          const span = document.createElement('span');
+          span.textContent = String(texto);
+
+          linha.htmlFor = el.id;
+          linha.appendChild(el);
+          linha.appendChild(span);
+          grupo.appendChild(linha);
+          itens.push(el);
+        });
+
+        bloco.appendChild(label);
+        bloco.appendChild(grupo);
+        caixa.appendChild(bloco);
+
+        controles.push({ rotulo: rotulo, el: grupo, tipo: 'radio', itens: itens });
+        return;
+      }
+
       let el;
 
       if (opcoes.length) {
@@ -87,8 +151,13 @@
         });
       } else {
         el = document.createElement('input');
-        el.type = campo.tipo === 'numero' ? 'number' : 'text';
-        el.placeholder = t('Sua resposta');
+        el.type = tipo === 'numero' ? 'number' : 'text';
+        // Lista/rádio sem opções lidas: o usuário digita o texto da opção e a
+        // volta casa por texto com a opção original do LinkedIn.
+        el.placeholder =
+          tipo === 'lista' || tipo === 'radio'
+            ? t('Digite a opção como aparece no LinkedIn')
+            : t('Sua resposta');
       }
 
       el.id = id;
@@ -96,7 +165,10 @@
       bloco.appendChild(el);
       caixa.appendChild(bloco);
 
-      controles.push({ rotulo: rotulo, el: el });
+      // Rádio sem opções lidas vira input de texto: o tipo do CONTROLE passa a
+      // ser texto (senão `lerResposta` procuraria `itens` que não existem).
+      const tipoControle = tipo === 'radio' && !opcoes.length ? 'texto' : tipo;
+      controles.push({ rotulo: rotulo, el: el, tipo: tipoControle });
     });
 
     return controles;
@@ -201,10 +273,27 @@
 
     const lerResposta = () => {
       const resposta = {};
+
       controles.forEach((controle) => {
-        const valor = String((controle.el && controle.el.value) || '').trim();
+        if (!controle.el) return;
+
+        let valor = '';
+
+        if (controle.tipo === 'radio') {
+          const marcado = (controle.itens || []).find((item) => item.checked);
+          valor = marcado ? String(marcado.value || '') : '';
+        } else if (controle.tipo === 'checkbox') {
+          // Desmarcado NÃO é resposta: se o usuário não confirmou, o campo
+          // continua pendente (melhor do que fingir que resolveu).
+          valor = controle.el.checked ? t('Sim') : '';
+        } else {
+          valor = String(controle.el.value || '');
+        }
+
+        valor = valor.trim();
         if (valor) resposta[controle.rotulo] = valor; // o rótulo é a chave da reaplicação
       });
+
       return resposta;
     };
 
@@ -213,18 +302,26 @@
     document.getElementById('pular').addEventListener('click', () => responder('pular', null));
     document.getElementById('fechar').addEventListener('click', () => responder('', null));
 
-    // Enter num campo de texto aplica e continua (atalho natural).
+    // Enter num campo de texto/opção aplica e continua (atalho natural).
     controles.forEach((controle) => {
-      if (!controle.el || controle.el.tagName === 'SELECT') return;
-      controle.el.addEventListener('keydown', (evento) => {
-        if (evento.key === 'Enter') {
-          evento.preventDefault();
-          responder('aplicar', lerResposta());
-        }
+      const alvos = controle.tipo === 'radio' ? controle.itens || [] : [controle.el];
+
+      alvos.forEach((el) => {
+        if (!el || el.tagName === 'SELECT' || el.type === 'checkbox') return;
+        el.addEventListener('keydown', (evento) => {
+          if (evento.key === 'Enter') {
+            evento.preventDefault();
+            responder('aplicar', lerResposta());
+          }
+        });
       });
     });
 
-    if (controles.length && controles[0].el) controles[0].el.focus();
+    const primeiro = controles[0];
+    if (primeiro) {
+      const alvo = primeiro.tipo === 'radio' ? (primeiro.itens || [])[0] : primeiro.el;
+      if (alvo) alvo.focus();
+    }
 
     permitirArrastar();
   }

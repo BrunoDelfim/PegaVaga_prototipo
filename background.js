@@ -615,8 +615,9 @@ async function mostrarAjuda(dados, sender) {
   const id = SHARED.ajudaId(tabId, pedidoId);
 
   // O contexto (vaga, motivo e os campos) viaja na URL: a janelinha abre já
-  // sabendo o que desenhar — um <select> com as opções ORIGINAIS do LinkedIn, ou
-  // um <input> para texto. Teto de 6 campos: cartão ilegível não ajuda ninguém.
+  // sabendo o que desenhar — um <select> com as opções ORIGINAIS do LinkedIn,
+  // botões de rádio/checkbox ou um <input> para texto. Teto de 6 campos: cartão
+  // ilegível não ajuda ninguém.
   const contexto = encodeURIComponent(
     JSON.stringify({
       avisoId: id, // é o que a janelinha manda de volta (o id carrega a aba)

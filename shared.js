@@ -336,6 +336,8 @@ globalThis.PegaVagaShared = (() => {
       'I couldn\u2019t build the card here. Take over manually or skip this job.',
     'Escolha uma opção': 'Choose an option',
     'Sua resposta': 'Your answer',
+    'Marque para confirmar': 'Check to confirm',
+    'Digite a opção como aparece no LinkedIn': 'Type the option as it appears on LinkedIn',
 
     /* Pop-up: cabeçalho, abas e cards do Início */
     'Rastreamento de vagas do LinkedIn': 'LinkedIn job tracking',
@@ -2256,6 +2258,20 @@ globalThis.PegaVagaShared = (() => {
   }
 
   /**
+   * Dois rótulos falam da MESMA pergunta? Casa o texto normalizado exato e,
+   * depois, um dentro do outro (dos dois lados): o LinkedIn muda a pontuação, o
+   * "Obrigatório" colado e o acento entre a tela do formulário e o relatório.
+   * Devolve `false` quando falta texto de um lado — rótulo vazio casaria com tudo.
+   */
+  function rotuloCombina(a, b) {
+    const na = plainText(a);
+    const nb = plainText(b);
+
+    if (!na || !nb) return false;
+    return na === nb || na.indexOf(nb) >= 0 || nb.indexOf(na) >= 0;
+  }
+
+  /**
    * Monta o texto do "copiar diagnóstico" (relato de problema). Função pura:
    * recebe dados já lidos do storage e devolve o texto que vai para a área de
    * transferência — os erros vêm do buffer que o content.js mantém.
@@ -2444,6 +2460,7 @@ globalThis.PegaVagaShared = (() => {
     lerAjudaId,
     parseAjudaDados,
     escolherRotulo,
+    rotuloCombina,
 
     /* Relatos de erro */
     REPORTS_MAX,
