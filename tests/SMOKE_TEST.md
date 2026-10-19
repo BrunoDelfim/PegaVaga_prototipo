@@ -69,6 +69,9 @@ fim — e não siga adiante antes de entender a falha.
       pular, exportar, limpar) e some sozinho — verde/ok, âmbar/aviso, vermelho/erro.
 - [ ] **Estado vazio**: com 0 vagas aparece “Ainda não capturei nenhuma vaga…”;
       some assim que entra a primeira.
+- [ ] **Primeiro clique** nos botões (Iniciar/Parar/Pular/Exportar/Limpar):
+      funciona de primeira; o pop-up **não fecha** antes de a ação rodar. Ele só
+      fecha depois, quando a ação abre/foca outra janela ou quando você clica fora.
 - [ ] **Fecha ao perder o foco**: com o pop-up aberto, clique fora dele (na página,
       na barra do Chrome, em outro programa) → ele **fecha**.
       *Obs.: com o **Inspecionar** (DevTools) aberto no pop-up, o Chrome costuma
@@ -334,7 +337,12 @@ personalizada** (resposta não salva) e deixe a automação chegar ao formulári
       desktop: **só barra de título e borda** — sem aba, sem barra de endereço,
       sem menu.
 - [ ] O cartão mostra a vaga (título — empresa) e **um controle por pergunta**;
-      numa pergunta de lista, as opções são **as mesmas do LinkedIn**.
+      numa pergunta de lista, as opções são **as mesmas do LinkedIn**. Todos os
+      campos aparecem com **asterisco** de obrigatório.
+- [ ] **Aplicar com campo vazio**: não envia nem fecha; o campo fica com borda
+      vermelha e **“Campo obrigatório.”**, e o aviso **“Preencha os campos
+      obrigatórios antes de continuar.”** aparece no topo. Preencher tudo (e
+      marcar o checkbox) libera o envio.
 - [ ] Pergunta de **lista nativa** (`<select>`): aparece um **select** com as
       opções originais (não um campo de texto).
 - [ ] Pergunta de **lista custom** (`role="combobox"`/`aria-haspopup="listbox"`):

@@ -69,6 +69,16 @@
 
       const label = document.createElement('label');
       label.textContent = rotulo;
+
+      // Todos os campos do cartão vêm de uma pergunta obrigatória do LinkedIn:
+      // o asterisco avisa antes do envio (o bloqueio de verdade é no "Aplicar").
+      const marca = document.createElement('span');
+      marca.className = 'obrigatorio';
+      marca.textContent = '*';
+      marca.title = t('Obrigatório');
+      marca.setAttribute('aria-label', t('Obrigatório'));
+      label.appendChild(marca);
+
       // Rádio/checkbox têm o próprio <label> por opção; o rótulo da pergunta é
       // só texto (apontar `for` para um grupo não associa nada no navegador).
       if (tipo !== 'radio' && tipo !== 'checkbox') label.htmlFor = id;
@@ -91,7 +101,7 @@
         bloco.appendChild(linha);
         caixa.appendChild(bloco);
 
-        controles.push({ rotulo: rotulo, el: el, tipo: 'checkbox' });
+        controles.push({ rotulo: rotulo, el: el, tipo: 'checkbox', bloco: bloco });
         return;
       }
 
@@ -128,7 +138,7 @@
         bloco.appendChild(grupo);
         caixa.appendChild(bloco);
 
-        controles.push({ rotulo: rotulo, el: grupo, tipo: 'radio', itens: itens });
+        controles.push({ rotulo: rotulo, el: grupo, tipo: 'radio', itens: itens, bloco: bloco });
         return;
       }
 
@@ -168,10 +178,108 @@
       // Rádio sem opções lidas vira input de texto: o tipo do CONTROLE passa a
       // ser texto (senão `lerResposta` procuraria `itens` que não existem).
       const tipoControle = tipo === 'radio' && !opcoes.length ? 'texto' : tipo;
-      controles.push({ rotulo: rotulo, el: el, tipo: tipoControle });
+      controles.push({ rotulo: rotulo, el: el, tipo: tipoControle, bloco: bloco });
     });
 
     return controles;
+  }
+
+  /* ---- Obrigatórios: não deixa enviar o cartão com campo em branco -------- */
+
+  /** Valor atual de um controle do cartão (`''` quando ainda não há resposta). */
+  function valorDoControle(controle) {
+    if (!controle || !controle.el) return '';
+
+    if (controle.tipo === 'radio') {
+      const marcado = (controle.itens || []).find((item) => item.checked);
+      return marcado ? String(marcado.value || '') : '';
+    }
+
+    if (controle.tipo === 'checkbox') return controle.el.checked ? t('Sim') : '';
+
+    return String(controle.el.value || '');
+  }
+
+  /** Borda + mensagem de campo obrigatório (some assim que o usuário preenche). */
+  function marcarInvalido(controle, invalido) {
+    if (!controle || !controle.bloco) return;
+
+    controle.bloco.classList.toggle('invalido', invalido);
+
+    if (!controle.erro) {
+      const erro = document.createElement('span');
+      erro.className = 'erro';
+      erro.setAttribute('role', 'alert');
+      erro.hidden = true;
+      erro.textContent = t('Campo obrigatório.');
+      controle.bloco.appendChild(erro);
+      controle.erro = erro;
+    }
+
+    controle.erro.hidden = !invalido;
+
+    if (controle.el && typeof controle.el.setAttribute === 'function') {
+      if (invalido) controle.el.setAttribute('aria-invalid', 'true');
+      else controle.el.removeAttribute('aria-invalid');
+    }
+  }
+
+  /** Some com o aviso geral quando todos os campos estão preenchidos. */
+  function limparAvisoSeTudoPreenchido(controles) {
+    const falta = controles.some((controle) => !String(valorDoControle(controle) || '').trim());
+    if (falta) return;
+
+    const aviso = document.getElementById('aviso');
+    if (aviso) {
+      aviso.hidden = true;
+      aviso.textContent = '';
+    }
+  }
+
+  /**
+   * Valida TODOS os campos do cartão (o LinkedIn trata as perguntas do Easy Apply
+   * como obrigatórias). Devolve `false` e foca o primeiro que falta; quem chama
+   * só manda a resposta quando isto devolve `true`.
+   */
+  function validarCampos(controles) {
+    const aviso = document.getElementById('aviso');
+
+    if (!controles.length) {
+      if (aviso) {
+        aviso.textContent = t(
+          'Não consegui ler o campo travado. Assuma à mão ou pule esta vaga.'
+        );
+        aviso.hidden = false;
+      }
+
+      return false;
+    }
+
+    let primeiro = null;
+
+    controles.forEach((controle) => {
+      const invalido = !String(valorDoControle(controle) || '').trim();
+      marcarInvalido(controle, invalido);
+      if (invalido && !primeiro) primeiro = controle;
+    });
+
+    if (primeiro) {
+      if (aviso) {
+        aviso.textContent = t('Preencha os campos obrigatórios antes de continuar.');
+        aviso.hidden = false;
+      }
+
+      const alvo = primeiro.tipo === 'radio' ? (primeiro.itens || [])[0] : primeiro.el;
+      if (alvo && typeof alvo.focus === 'function') alvo.focus();
+      return false;
+    }
+
+    if (aviso) {
+      aviso.hidden = true;
+      aviso.textContent = '';
+    }
+
+    return true;
   }
 
   /* A posição da janela é decidida por quem conhece o monitor da aba: o content
@@ -275,29 +383,19 @@
       const resposta = {};
 
       controles.forEach((controle) => {
-        if (!controle.el) return;
-
-        let valor = '';
-
-        if (controle.tipo === 'radio') {
-          const marcado = (controle.itens || []).find((item) => item.checked);
-          valor = marcado ? String(marcado.value || '') : '';
-        } else if (controle.tipo === 'checkbox') {
-          // Desmarcado NÃO é resposta: se o usuário não confirmou, o campo
-          // continua pendente (melhor do que fingir que resolveu).
-          valor = controle.el.checked ? t('Sim') : '';
-        } else {
-          valor = String(controle.el.value || '');
-        }
-
-        valor = valor.trim();
+        const valor = String(valorDoControle(controle) || '').trim();
         if (valor) resposta[controle.rotulo] = valor; // o rótulo é a chave da reaplicação
       });
 
       return resposta;
     };
 
-    document.getElementById('aplicar').addEventListener('click', () => responder('aplicar', lerResposta()));
+    document.getElementById('aplicar').addEventListener('click', () => {
+      // Campo vazio = não manda: o worker devolveria a vaga como "resolvida"
+      // sem ter escrito nada, e a automação seguiria com o formulário travado.
+      if (!validarCampos(controles)) return;
+      responder('aplicar', lerResposta());
+    });
     document.getElementById('manual').addEventListener('click', () => responder('manual', null));
     document.getElementById('pular').addEventListener('click', () => responder('pular', null));
     document.getElementById('fechar').addEventListener('click', () => responder('', null));
@@ -311,8 +409,26 @@
         el.addEventListener('keydown', (evento) => {
           if (evento.key === 'Enter') {
             evento.preventDefault();
-            responder('aplicar', lerResposta());
+            if (validarCampos(controles)) responder('aplicar', lerResposta());
           }
+        });
+      });
+    });
+
+    // Ao preencher, some a marca daquele campo (e o aviso geral quando tudo
+    // estiver preenchido). Os vazios só são marcados quando o usuário tenta
+    // enviar — não durante a digitação.
+    controles.forEach((controle) => {
+      const alvos = controle.tipo === 'radio' ? controle.itens || [] : [controle.el];
+
+      alvos.forEach((el) => {
+        if (!el || typeof el.addEventListener !== 'function') return;
+
+        ['input', 'change'].forEach((evento) => {
+          el.addEventListener(evento, () => {
+            if (String(valorDoControle(controle) || '').trim()) marcarInvalido(controle, false);
+            limparAvisoSeTudoPreenchido(controles);
+          });
         });
       });
     });

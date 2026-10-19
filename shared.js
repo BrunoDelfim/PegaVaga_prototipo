@@ -338,6 +338,10 @@ globalThis.PegaVagaShared = (() => {
     'Sua resposta': 'Your answer',
     'Marque para confirmar': 'Check to confirm',
     'Digite a opção como aparece no LinkedIn': 'Type the option as it appears on LinkedIn',
+    'Obrigatório': 'Required',
+    'Campo obrigatório.': 'Required field.',
+    'Preencha os campos obrigatórios antes de continuar.':
+      'Fill in the required fields before continuing.',
 
     /* Pop-up: cabeçalho, abas e cards do Início */
     'Rastreamento de vagas do LinkedIn': 'LinkedIn job tracking',

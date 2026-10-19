@@ -113,19 +113,41 @@ async function init() {
  * O Chrome já fecha o pop-up quando ele perde o foco, mas nem sempre — e quem
  * clica fora espera que ele saia. Aqui o fechamento fica explícito.
  *
+ * Cuidado que custou caro: em alguns ambientes o pop-up abre SEM foco e o
+ * primeiro clique apenas o foca. O `blur` atrasado da abertura fechava a janela
+ * antes de o clique no botão chegar — "o primeiro clique não funciona; abrir de
+ * novo e clicar funciona". Por isso o fechamento espera o evento assentar e só
+ * acontece se o pop-up já recebeu foco e `document.hasFocus()` diz que ele saiu
+ * de verdade.
+ *
  * A única exceção é o **seletor de arquivo** da restauração: o diálogo do sistema
  * tira o foco do pop-up, e ali o usuário espera voltar para confirmar. Por isso o
  * fluxo levanta `segurarFoco` ao abrir o seletor e ele volta ao normal assim que
  * o pop-up recupera o foco (escolhendo ou cancelando o arquivo).
  */
 function bindBlurClose() {
-  window.addEventListener('blur', () => {
-    if (segurarFoco) return;
-    window.close();
-  });
+  let focoRecebido = document.hasFocus();
+  let blurTimer = null;
 
   window.addEventListener('focus', () => {
+    focoRecebido = true;
+    clearTimeout(blurTimer);
     segurarFoco = false;
+  });
+
+  window.addEventListener('blur', () => {
+    if (segurarFoco) return;
+
+    clearTimeout(blurTimer);
+    blurTimer = setTimeout(() => {
+      if (segurarFoco) return;
+
+      // Ainda não recebeu foco: o primeiro clique está chegando para focar o
+      // pop-up, não para sair dele. Não fecha.
+      if (!focoRecebido) return;
+
+      if (!document.hasFocus()) window.close();
+    }, 150);
   });
 }
 

@@ -551,7 +551,14 @@ ok('env de exemplo documentado e o real fora do git', read('env.example.js').inc
 ok('empacotador inclui o env.js', packSh.includes("zipfile") && packSh.includes('env.js'));
 
 section('18d. Pop-up fecha ao perder o foco');
-ok('popup fecha no blur', /window\.addEventListener\('blur'[\s\S]{0,140}window\.close\(\)/.test(popupJs));
+ok(
+  'popup fecha no blur so depois de conferir o foco',
+  /window\.addEventListener\('blur'[\s\S]{0,1600}document\.hasFocus\(\)[\s\S]{0,80}window\.close\(\)/.test(popupJs)
+);
+ok(
+  'blur nao fecha antes do primeiro foco',
+  /focoRecebido/.test(popupJs) && /if \(!focoRecebido\) return;/.test(popupJs) && /setTimeout\(/.test(popupJs)
+);
 ok('segurar o foco so no seletor de arquivo', /segurarFoco = true;[\s\S]{0,90}inputRestore\.click\(\)/.test(popupJs));
 ok('foco de volta libera o fechamento', /window\.addEventListener\('focus'[\s\S]{0,90}segurarFoco = false/.test(popupJs));
 
@@ -1204,6 +1211,31 @@ ok(
   'cartao le a resposta de radio e checkbox',
   /controle\.tipo === 'radio'/.test(ajudaJs) && /controle\.tipo === 'checkbox'/.test(ajudaJs)
 );
+// Todos os campos do cartão são obrigatórios: "Aplicar e continuar" valida antes.
+ok(
+  'cartao valida os campos antes de aplicar',
+  /function validarCampos/.test(ajudaJs) && /if \(!validarCampos\(controles\)\) return/.test(ajudaJs)
+);
+ok(
+  'campo invalido fica marcado e com mensagem',
+  /function marcarInvalido/.test(ajudaJs) &&
+    /classList\.toggle\('invalido'/.test(ajudaJs) &&
+    /aria-invalid/.test(ajudaJs) &&
+    /Campo obrigatório\./.test(ajudaJs)
+);
+ok(
+  'cartao avisa que falta preencher',
+  /Preencha os campos obrigatórios antes de continuar\./.test(ajudaJs) &&
+    /id="aviso"/.test(ajudaHtml) &&
+    /role="alert"/.test(ajudaHtml)
+);
+eq('aviso de obrigatorio em ingles', S.t('Campo obrigatório.', null, 'en'), 'Required field.');
+eq(
+  'resumo de obrigatorios em ingles',
+  S.t('Preencha os campos obrigatórios antes de continuar.', null, 'en'),
+  'Fill in the required fields before continuing.'
+);
+eq('marcador de obrigatorio em ingles', S.t('Obrigatório', null, 'en'), 'Required');
 ok('content aplica a resposta no campo certo', /async function aplicarRespostaNosCampos/.test(contentJs) && /SHARED\.escolherRotulo/.test(contentJs));
 ok('content guarda as respostas para a proxima vaga', /async function salvarRespostas/.test(contentJs));
 ok(

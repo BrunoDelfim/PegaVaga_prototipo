@@ -69,6 +69,16 @@
       user-select: text;
     }
     .msg { margin: 0 0 10px; font-size: 12.5px; overflow-wrap: anywhere; }
+    .aviso {
+      margin: 0 0 10px;
+      padding: 7px 9px;
+      border-radius: 8px;
+      background: #fdecea;
+      color: #8a1c1c;
+      font-size: 12px;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
     .campo { margin: 0 0 10px; min-width: 0; }
     .campo label {
       display: block;
@@ -101,6 +111,21 @@
       cursor: pointer;
     }
     .campo label.opcao input { width: auto; margin: 0; }
+    .campo.invalido input,
+    .campo.invalido select { border-color: #c53030; }
+    .campo.invalido .opcoes {
+      outline: 1px solid #c53030;
+      outline-offset: 2px;
+      border-radius: 8px;
+    }
+    .campo .erro {
+      display: block;
+      margin-top: 4px;
+      color: #c53030;
+      font-size: 11.5px;
+    }
+    .campo .erro[hidden] { display: none; }
+    .obrigatorio { color: #c53030; margin-left: 2px; }
     .acoes { display: flex; gap: 8px; padding: 8px 12px 10px; }
     .acoes button {
       flex: 1;
@@ -126,6 +151,7 @@
     <div class="corpo">
       <p class="vaga" id="vaga" hidden></p>
       <p class="msg" id="msg"></p>
+      <p class="aviso" id="aviso" role="alert" hidden></p>
       <div id="campos"></div>
     </div>
     <div class="acoes">
