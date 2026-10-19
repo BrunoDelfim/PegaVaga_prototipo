@@ -469,6 +469,7 @@ function cacheElements() {
   els.termsCard = document.getElementById('terms-card');
   els.termsBody = document.getElementById('terms-body');
   els.termsEmpty = document.getElementById('terms-empty');
+  els.termsHint = document.getElementById('terms-hint');
   els.termsBars = document.getElementById('terms-bars');
   els.termSpark = document.getElementById('term-spark');
   els.termSparkName = document.getElementById('term-spark-name');
@@ -776,10 +777,9 @@ async function onStopClick() {
   setScanning(false);
   setStatus('Varredura interrompida.', 'warn');
 
-  // "Parar" fecha também este pop-up. O estado já foi gravado no storage e a
-  // luz do ícone continua refletindo a varredura parada; quem quiser ver o
-  // status abre o pop-up de novo.
-  setTimeout(() => window.close(), 250);
+  // Não fechamos este pop-up à força: ele continua mostrando o estado logo
+  // depois do Parar e só sai quando perder o foco (bindBlurClose). Fechar aqui
+  // escondia a confirmação de quem queria conferir a varredura interrompida.
 }
 
 /**
@@ -1555,13 +1555,15 @@ function renderSpark() {
     })
     .join('');
 
-  els.sparkCard.hidden = total === 0;
+  // O card fica sempre visível: sem candidaturas, a linha de base das 24 h
+  // aparece e o texto explica o vazio (antes o card inteiro sumia).
+  els.sparkCard.hidden = false;
   els.sparkHint.textContent = total
     ? total +
       ' candidatura(s) nas últimas 24 h (pico de ' +
       max +
       ' em uma hora) · barra clara = ontem.'
-    : '';
+    : SHARED.t('Nenhuma candidatura nas últimas 24 h.');
 }
 /**
  * Dia e hora de uma barra do gráfico de 24 h (`i` = 0 é a hora mais antiga).
@@ -1611,12 +1613,17 @@ function renderTerms(jobs) {
     (a, b) => b.total - a.total || a.term.localeCompare(b.term, 'pt-BR')
   );
 
-  // O card fica sempre visível: sem vagas, mostra o aviso de vazio.
-  if (els.termsBody) els.termsBody.hidden = rows.length === 0;
-  if (els.termsEmpty) els.termsEmpty.hidden = rows.length > 0;
+  // O card fica sempre visível: sem vagas, o mini-gráfico continua desenhando
+  // a linha de base das 24 h (o "____"), igual ao card de candidaturas.
+  const vazio = rows.length === 0;
 
-  if (!rows.length) {
+  if (els.termsBody) els.termsBody.hidden = false;
+  if (els.termsEmpty) els.termsEmpty.hidden = !vazio;
+  if (els.termsHint) els.termsHint.hidden = vazio;
+
+  if (vazio) {
     els.termsBars.innerHTML = '';
+    renderTermSpark(jobs, rows);
     return;
   }
 
@@ -1666,10 +1673,43 @@ function renderTerms(jobs) {
 function renderTermSpark(jobs, rows) {
   if (!els.termSpark) return;
 
-  const entry = rows.find((row) => row.term === selectedTerm);
-  if (!entry) return;
-
   const now = Date.now();
+  const barWidth = 320 / 24;
+  const entry = rows.find((row) => row.term === selectedTerm);
+
+  // Linha de base: uma barrinha de 2 px por hora, igual ao gráfico de
+  // candidaturas. Sem ela, o card "Vagas por termo" ficava sem o "____"
+  // quando não havia atividade nas últimas 24 h (ou nenhuma vaga capturada).
+  const base = (i) => {
+    const info = bucketInfo(i, now);
+    const day = info.isToday ? '' : ' prev';
+    const x = (i * barWidth + 1.5).toFixed(1);
+    const w = (barWidth - 3).toFixed(1);
+
+    return (
+      '<rect class="base' +
+      day +
+      '" x="' +
+      x +
+      '" y="38" width="' +
+      w +
+      '" height="2" rx="1.5"></rect>'
+    );
+  };
+
+  // Sem nenhuma vaga ainda: desenha a linha de base e um rótulo curto, em vez
+  // de deixar o bloco do gráfico vazio.
+  if (!entry) {
+    els.termSpark.innerHTML = new Array(24)
+      .fill(0)
+      .map((_, i) => base(i))
+      .join('');
+
+    if (els.termSparkName) els.termSparkName.textContent = SHARED.t('Sem vagas por termo ainda');
+    if (els.termSparkTotal) els.termSparkTotal.textContent = '';
+    return;
+  }
+
   const found = new Array(24).fill(0);
   const applied = new Array(24).fill(0);
 
@@ -1690,7 +1730,6 @@ function renderTermSpark(jobs, rows) {
   }
 
   const max = Math.max(1, ...found, ...applied);
-  const barWidth = 320 / 24;
 
   els.termSpark.innerHTML = found
     .map((count, i) => {
@@ -1722,7 +1761,7 @@ function renderTermSpark(jobs, rows) {
         );
       };
 
-      return bar(count, 'job') + bar(applied[i], 'app');
+      return base(i) + bar(count, 'job') + bar(applied[i], 'app');
     })
     .join('');
 

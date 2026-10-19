@@ -187,13 +187,15 @@ verde e faça o merge (merge commit ou rebase: assim o commit da tag fica no
      de progresso** da fila de termos;
    - as **barras de cota** (sessão, hora, 24 h, dia) — a que estourou fica
      vermelha; o texto continua disponível no tooltip;
-   - o **mini-gráfico de candidaturas por hora** nas últimas 24 h;
+   - o **mini-gráfico de candidaturas por hora** nas últimas 24 h — fica sempre
+     visível; sem candidaturas, mostra a linha de base e “Nenhuma candidatura
+     nas últimas 24 h.”;
    - o card **“Vagas por termo”**: uma barra por termo de busca, com
      **vagas capturadas · candidatadas** ao lado. **Clique num termo** para ver o
      mini-gráfico das últimas 24 h **daquele termo** (barra clara = vagas
      capturadas, escura = candidaturas) — é assim que dá para ver *quando* cada
-     termo rendeu. O card fica **sempre visível**: sem vagas capturadas, ele
-     mostra um aviso de vazio;
+     termo rendeu. O card fica **sempre visível**: sem vagas capturadas, o
+     mini-gráfico mantém a **linha de base** das 24 h e aparece o aviso de vazio;
    - a linha do agendador, ex.:
      `Janela: Seg, Ter, Qua, Qui, Sex, 08:00 → 18:00 · próxima: seg. 08:00.`
      (quando a fila está pausada, ela também diz **por quê**: cota, janela,
@@ -345,8 +347,9 @@ PegaVaga:
    lâmpada; se nunca houve escolha, segue o tema do sistema.
 
 > **Parar** encerra tudo: interrompe a aba que está varrendo (mesmo que você
-> esteja em outra aba), fecha o cartão de ajuda, limpa as notificações da
-> extensão que ainda estiverem na tela e fecha o pop-up principal.
+> esteja em outra aba), fecha o cartão de ajuda e limpa as notificações da
+> extensão que ainda estiverem na tela. O **pop-up principal não é fechado à
+> força**: ele continua mostrando o estado e só sai quando perder o foco.
 
 > Se a janela não puder abrir (sistema que bloqueia janelas, `windows`
 > indisponível), o PegaVaga usa o caminho antigo: **notificação na área de

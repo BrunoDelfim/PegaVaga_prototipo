@@ -73,6 +73,19 @@ eq('todos os IDs do popup.js existem no HTML', ids.filter((id) => !popupHtml.inc
 console.log('   ' + ids.length + ' IDs verificados');
 ok('popup carrega shared.js antes de popup.js', popupHtml.indexOf('shared.js') < popupHtml.indexOf('popup.js'));
 
+// Os dois gráficos ficam sempre visíveis: sem dados, mostram a linha de base.
+ok(
+  'graficos aparecem mesmo sem dados',
+  !/id="spark-card" hidden/.test(popupHtml) &&
+    /els\.sparkCard\.hidden = false/.test(popupJs) &&
+    /Nenhuma candidatura nas últimas 24 h\./.test(popupJs) &&
+    /els\.termsBody\.hidden = false/.test(popupJs) &&
+    /els\.termsEmpty\.hidden = !vazio/.test(popupJs) &&
+    /els\.termsHint\.hidden = vazio/.test(popupJs) &&
+    /class="base/.test(popupJs) &&
+    /return base\(i\) \+ bar\(count/.test(popupJs)
+);
+
 section('3. Codigos de status');
 const codes = [...new Set([...read('content.js').matchAll(/status:\s*'([a-z_]+)'/g)].map((m) => m[1]))];
 const known = new Set(Object.keys(S.APPLY_OUTCOMES).concat([S.APPLY_PENDING]));
@@ -573,6 +586,12 @@ ok(
 );
 ok('segurar o foco so no seletor de arquivo', /segurarFoco = true;[\s\S]{0,90}inputRestore\.click\(\)/.test(popupJs));
 ok('foco de volta libera o fechamento', /window\.addEventListener\('focus'[\s\S]{0,90}segurarFoco = false/.test(popupJs));
+// Iniciar/Parar não podem fechar o pop-up à força: ele só sai no blur.
+ok(
+  'parar mantem o popup aberto ate perder o foco',
+  !/setTimeout\(\(\) => window\.close\(\), 250\)/.test(popupJs) &&
+    /Não fechamos este pop-up à força/.test(popupJs)
+);
 
 section('19. Idioma da interface (pt/en)');
 const marcadoresDe = (s) => [...String(s).matchAll(/\{([a-z0-9_]+)\}/gi)].map((m) => m[1]).sort().join(',');
@@ -1365,7 +1384,8 @@ ok(
     /window\.resizeTo/.test(ajudaJs) &&
     /height: altura/.test(ajudaJs)
 );
-// "Parar" precisa recolher o que vive fora da aba (cartão e notificações).
+// "Parar" precisa recolher o que vive fora da aba (cartão e notificações),
+// mas NÃO pode fechar o pop-up à força: ele só sai no blur.
 ok(
   'parar tudo fecha cartoes e notificacoes',
   /MSG\.STOP_ALL/.test(popupJs) &&
@@ -1373,7 +1393,8 @@ ok(
     /fecharTodasAsAjudas/.test(backgroundJs) &&
     /let parando = false/.test(backgroundJs) &&
     /if \(parando\) return false/.test(backgroundJs) &&
-    /async function onStopClick[\s\S]{0,3000}window\.close\(\)/.test(popupJs)
+    /async function onStopClick[\s\S]{0,3000}MSG\.STOP_ALL/.test(popupJs) &&
+    !/setTimeout\(\(\) => window\.close\(\)/.test(popupJs)
 );
 ok('content aplica a resposta no campo certo', /async function aplicarRespostaNosCampos/.test(contentJs) && /SHARED\.escolherRotulo/.test(contentJs));
 ok('content guarda as respostas para a proxima vaga', /async function salvarRespostas/.test(contentJs));

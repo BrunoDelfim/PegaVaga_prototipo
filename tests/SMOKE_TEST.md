@@ -43,6 +43,9 @@ fim — e não siga adiante antes de entender a falha.
       terminar).
 - [ ] **Parar com outra aba ativa** também funciona: mude de aba, clique em
       **Parar** e volte para a do LinkedIn — ela para sem continuar varrendo.
+- [ ] **Iniciar/Parar não fecham o pop-up à força**: depois do clique, o painel
+      continua aberto mostrando o estado; ele só fecha ao clicar fora (perder o
+      foco) — inclusive quando o Chrome abre uma aba ativa.
 - [ ] Se estiver em **English**, confira que **nada** do painel ficou em português
       (seção T).
 
@@ -94,7 +97,12 @@ fim — e não siga adiante antes de entender a falha.
       destacadas); vaga sem termo identificado entra como `sem termo`.
 - [ ] **24 h**: o card “Candidaturas nas últimas 24 h” traz uma barra por hora, com
       as de **ontem mais claras** que as de hoje; embaixo, o total e o **pico de uma
-      hora**. Sem candidatura nas últimas 24 h, o card **não aparece**.
+      hora**. Sem candidatura nas últimas 24 h, o card **continua visível**, com a
+      linha de base e o texto “Nenhuma candidatura nas últimas 24 h.”.
+- [ ] **Vagas por termo sem dados**: o card também **continua visível**; o
+      mini-gráfico mostra a linha de base (24 barrinhas de 2 px), com
+      “Sem vagas por termo ainda” e o aviso de vazio abaixo. O mesmo vale para um
+      termo sem atividade nas últimas 24 h.
 - [ ] Com o popup **aberto**, os gráficos acompanham a varredura (sem fechar/abrir).
 ### C. Avisos do app
 - [ ] **Risco/beta** (fim do card **Como funciona**): caixa âmbar com “Use por sua
